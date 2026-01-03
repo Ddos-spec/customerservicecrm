@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageCircle, Clock, Star, ThumbsUp, TrendingUp, ArrowRight, Smartphone, QrCode, Wifi, WifiOff, X, RefreshCw } from 'lucide-react';
+import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, WifiOff, X, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from 'sonner';
