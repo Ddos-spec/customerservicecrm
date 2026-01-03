@@ -1,0 +1,55 @@
+-- STRUKTUR DATABASE SAAS (PostgreSQL/MySQL Compatible)
+-- Final Version - Tanpa Subscription Plan
+
+-- 1. Table Tenants (Perusahaan/Klien)
+-- Merepresentasikan "Admin Agent" sebagai entitas bisnis tunggal.
+CREATE TABLE tenants (
+    id SERIAL PRIMARY KEY,
+    company_name VARCHAR(255) NOT NULL,
+    status VARCHAR(20) DEFAULT 'active', -- 'active', 'suspended'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Table Users (Super Admin, Admin Agent, Agent)
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    tenant_id INT, -- NULL jika Super Admin. Jika Agent, merujuk ke ID Tenant-nya.
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL, -- 'super_admin', 'admin_agent', 'agent'
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+
+-- 3. Table Tickets (Sesi Chat/Percakapan)
+CREATE TABLE tickets (
+    id SERIAL PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    customer_name VARCHAR(100),
+    customer_contact VARCHAR(100), -- Nomor WhatsApp
+    status VARCHAR(50) DEFAULT 'open', -- 'open', 'handled_by_ai', 'escalated', 'resolved'
+    assigned_agent_id INT, -- ID Agent yang melakukan "Take Over"
+    internal_notes TEXT, -- Catatan rahasia untuk tim (kuning di UI)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (assigned_agent_id) REFERENCES users(id)
+);
+
+-- 4. Table Messages (Detail isi percakapan per Ticket)
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    ticket_id INT NOT NULL,
+    sender_type VARCHAR(20) NOT NULL, -- 'customer', 'ai', 'agent', 'system'
+    message_text TEXT,
+    file_url TEXT, -- Path file jika pengirim melampirkan dokumen/gambar
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+);
+
+-- ANALISA LOGIKA:
+-- * Multi-Tenancy: Setiap query data Chat (Tickets) WAJIB difilter berdasarkan 'tenant_id'.
+-- * AI Logic: Pesan dengan sender_type='ai' dikirim oleh n8n.
+-- * Escalation: Jika status='escalated', UI akan menampilkan tanda peringatan merah.
