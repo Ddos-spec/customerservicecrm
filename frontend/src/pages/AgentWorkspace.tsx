@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Send, Paperclip, Smile, MoreVertical, Search,
@@ -39,8 +39,6 @@ const AgentWorkspace = () => {
     { id: 4, name: 'Agus Prayogo', lastMsg: 'Pesanan saya belum dikirim', time: '3h ago', unread: 1, online: false, phone: '+62 878-8765-4321', status: 'Regular', totalSpend: 'Rp 5.200.000' },
   ];
 
-  const [selectedContact, setSelectedContact] = useState<Contact>(contacts[0]);
-
   // Chat messages per contact
   const allMessages: Record<number, Message[]> = {
     1: [
@@ -67,19 +65,16 @@ const AgentWorkspace = () => {
     ],
   };
 
-  const [messages, setMessages] = useState<Message[]>(allMessages[1]);
+  const getInitialContact = () => {
+    const selectedName = location.state?.selectedChat?.name;
+    return contacts.find(c => c.name === selectedName) ?? contacts[0];
+  };
 
-  // Handle incoming selected chat from dashboard
-  useEffect(() => {
-    if (location.state?.selectedChat) {
-      const chat = location.state.selectedChat;
-      const found = contacts.find(c => c.name === chat.name);
-      if (found) {
-        setSelectedContact(found);
-        setMessages(allMessages[found.id] || []);
-      }
-    }
-  }, [location.state]);
+  const [selectedContact, setSelectedContact] = useState<Contact>(getInitialContact);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const initialContact = getInitialContact();
+    return allMessages[initialContact.id] || [];
+  });
 
   const handleSelectContact = (contact: Contact) => {
     setSelectedContact(contact);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Clock, Star, Wifi, X, RefreshCw, Activity, Settings,
   CheckCircle2, MessageSquare, Bell, Moon, Globe, Shield, LogOut, Send, MessageCircle
@@ -58,7 +58,7 @@ const AgentDashboard = () => {
   ];
 
   // Fetch Session Data (skip for demo mode)
-  const fetchSessionStatus = async () => {
+  const fetchSessionStatus = useCallback(async () => {
     if (user?.isDemo) return; // Skip API calls for demo mode
 
     try {
@@ -74,15 +74,22 @@ const AgentDashboard = () => {
     } catch (error) {
         console.error('Failed to fetch session:', error);
     }
-  };
+  }, [user?.isDemo]);
 
   useEffect(() => {
       if (user?.isDemo) return; // Skip for demo mode
 
-      fetchSessionStatus();
-      const interval = setInterval(fetchSessionStatus, 5000);
-      return () => clearInterval(interval);
-  }, [user?.isDemo]);
+      const interval = setInterval(() => {
+        void fetchSessionStatus();
+      }, 5000);
+      const timeout = setTimeout(() => {
+        void fetchSessionStatus();
+      }, 0);
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
+  }, [user?.isDemo, fetchSessionStatus]);
 
   // Handle help form submit
   const handleHelpSubmit = () => {
