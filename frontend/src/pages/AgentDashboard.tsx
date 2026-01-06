@@ -1,3 +1,4 @@
+import { useState, useEffect, useMemo } from 'react';
 import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
@@ -235,7 +236,7 @@ const AgentDashboard = () => {
            </div>
            
            <div className="space-y-4 flex-1">
-              {currentChats.map((chat) => (
+              {currentChats.map((chat: any) => (
                 <div key={chat.id} className="flex items-center p-4 hover:bg-gray-50 rounded-2xl border border-gray-50 transition-colors cursor-pointer group">
                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${chat.avatar} font-bold text-lg mr-4`}>
                       {chat.name.charAt(0)}

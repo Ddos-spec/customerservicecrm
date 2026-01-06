@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import type { User } from '../store/useAuthStore';
 import { Sparkles, Mail, Lock, ChevronDown, ChevronUp, User as UserIcon, Loader2 } from 'lucide-react';
-import { clsx } from 'clsx';
+
 import { toast } from 'sonner';
 
 const Login = () => {
@@ -16,18 +16,11 @@ const Login = () => {
   const [password, setPassword] = useState('');
 
   // --- HARDCODED DATA (Simulasi Database) ---
-  const superAdminUser: User = {
-    id: 'sa-1', name: 'Super Admin', role: 'super_admin', email: 'owner@myaicustom.com'
-  };
-
-  const adminAgentUser: User = {
-    id: 'aa-1', name: 'Pak Bos (Owner)', role: 'admin_agent', email: 'bos@tokomaju.com', tenantName: 'Toko Maju Jaya'
-  };
-
-  const agentUsers: User[] = [
-    { id: 'ag-1', name: 'Budi (Shift Pagi)', role: 'agent', email: 'budi@tokomaju.com', tenantName: 'Toko Maju Jaya' },
-    { id: 'ag-2', name: 'Siti (Shift Siang)', role: 'agent', email: 'siti@tokomaju.com', tenantName: 'Toko Maju Jaya' },
-    { id: 'ag-3', name: 'Rudi (Shift Malam)', role: 'agent', email: 'rudi@tokomaju.com', tenantName: 'Toko Maju Jaya' },
+  const adminAgentUser = { email: 'admin@tokomaju.com', role: 'admin_agent' as const, id: 'tenant-admin', name: 'Admin Toko Maju' };
+  const agents = [
+    { email: 'siti@tokomaju.com', name: 'Siti Aminah', id: 'agent-1' },
+    { email: 'budi@tokomaju.com', name: 'Budi Santoso', id: 'agent-2' },
+    { email: 'dewi@tokomaju.com', name: 'Dewi Lestari', id: 'agent-3' },
   ];
 
   // Handle DEMO Login (Bypass)
@@ -170,11 +163,11 @@ const Login = () => {
                 </button>
                 
                 {/* List of 3 Specific Agents */}
-                <div className={clsx("transition-all duration-300 ease-in-out bg-white", showAgents ? "max-h-60 opacity-100 border-t border-gray-100" : "max-h-0 opacity-0 overflow-hidden")}>
-                  {agentUsers.map((agent) => (
+                <div className="space-y-3 mt-4">
+                  {agents.map((agent: any) => (
                     <button 
-                      key={agent.id}
-                      onClick={() => handleDemoLogin(agent)}
+                      key={agent.id} 
+                      onClick={() => handleDemoLogin({ ...agent, role: 'user_agent' })}
                       className="w-full flex items-center space-x-3 p-3 hover:bg-sky-50 transition-colors text-left border-b border-gray-50 last:border-0"
                     >
                       <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600">

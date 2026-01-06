@@ -12,9 +12,9 @@ const api = axios.create({
 });
 
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
+  (response: any) => response,
+  (error: any) => {
+    if (error.response?.status === 401) {
       console.warn('Session expired or unauthorized.');
     }
     return Promise.reject(error);
