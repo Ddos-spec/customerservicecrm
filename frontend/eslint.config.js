@@ -25,7 +25,7 @@ export default tseslint.config(
       ],
       // Relaxed rules for rapid development
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
 )

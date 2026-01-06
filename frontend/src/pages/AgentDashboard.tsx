@@ -1,9 +1,7 @@
-import { useState, useMemo, useEffect } from 'react';
-import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2, CheckCircle2, User, Clock3, Settings } from 'lucide-react';
+import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from 'sonner';
-import Pagination from '../components/Pagination';
 import api from '../lib/api';
 
 const AgentDashboard = () => {
@@ -14,22 +12,19 @@ const AgentDashboard = () => {
   const [sessionData, setSessionData] = useState<any>(null);
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [qrUrl, setQrUrl] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
   // Settings State
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [pairingMethod, setPairingMethod] = useState<'qr' | 'code'>('qr');
-  const [pairingCode, setPairingCode] = useState('');
   const [autoReject, setAutoReject] = useState(true);
   const [autoReplyMessage, setAutoReplyMessage] = useState('');
 
   // Fetch Session Data
   const fetchSessionStatus = async () => {
-    setIsLoading(true);
     try {
         const { data } = await api.get('/api/v1/sessions');
-        // Admin Agent should only see their own session. Take the first one.
+        // Admin Agent should only see their own session. Take the first one. 
         const mySession = data[0]; 
         
         if (mySession) {
@@ -50,8 +45,6 @@ const AgentDashboard = () => {
         }
     } catch (error) {
         console.error('Failed to fetch session:', error);
-    } finally {
-        setIsLoading(false);
     }
   };
 
@@ -62,14 +55,15 @@ const AgentDashboard = () => {
           await api.delete(`/api/v1/sessions/${sessionData.sessionId}`);
           toast.success('Koneksi diputuskan.');
           fetchSessionStatus();
-      } catch (e) {
+      } catch {
           toast.error('Gagal memutuskan koneksi.');
       }
   };
 
   const handleCreateSession = async () => {
       // Create a session for this user if none exists
-      const sessionId = user?.id || `user_${Date.now()}`;
+      const timestamp = new Date().getTime();
+      const sessionId = user?.id || `user_${timestamp}`;
       try {
           await api.post('/api/v1/sessions', { sessionId });
           toast.success('Sesi inisialisasi dibuat. Silakan scan.');
@@ -82,7 +76,12 @@ const AgentDashboard = () => {
 
   // --- Effects ---
   useEffect(() => {
-      fetchSessionStatus();
+      const initFetch = async () => {
+          await fetchSessionStatus();
+      };
+      
+      initFetch();
+      
       // Poll status every 5 seconds
       const interval = setInterval(fetchSessionStatus, 5000);
       return () => clearInterval(interval);
@@ -99,9 +98,6 @@ const AgentDashboard = () => {
     avatar: 'bg-gray-100 text-gray-600'
   })), []);
 
-  const [chatPage, setChatPage] = useState(1);
-  const chatsPerPage = 5;
-  const totalChatPages = Math.ceil(allRecentChats.length / chatsPerPage);
   const currentChats = allRecentChats; // Mock small list
 
   const openQrModal = (method: 'qr' | 'code' = 'qr') => {
