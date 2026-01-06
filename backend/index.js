@@ -152,6 +152,8 @@ app.use(bodyParser.json());
 app.use(helmet());
 app.use(session({ store: new RedisStore({ client: redisSessionClient }), secret: process.env.SESSION_SECRET, resave: false, saveUninitialized: false }));
 
+app.get('/', (req, res) => res.json({ status: 'online', message: 'WA Gateway Engine is running', version: '1.0.0' }));
+
 async function saveSessionSettings(sessionId, settings) {
     await redisClient.set(`wa:settings:${sessionId}`, JSON.stringify(settings));
 }
