@@ -1,31 +1,33 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
+/* Reset Default Vite/React Styles that break layouts */
 :root {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color-scheme: light !important; /* Force light mode for consistency */
 }
 
 body {
   margin: 0;
   padding: 0;
+  display: block !important; /* Overwrite Vite's flex-center */
+  place-items: unset !important; /* Overwrite Vite's place-items */
   min-height: 100vh;
-  background-color: #f8fafc; /* Light gray background */
+  background-color: #f8fafc;
   color: #1e293b;
-  overflow-x: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   
-  /* Proteksi Anti-Copy (Opsional, tetap saya pasang tapi tidak merusak layout) */
+  /* Proteksi Anti-Copy */
   user-select: none;
   -webkit-user-select: none;
 }
 
-/* Biarkan input tetap bisa diketik */
+/* Allow interaction with inputs */
 input, textarea {
   user-select: text !important;
   -webkit-user-select: text !important;
 }
 
-/* Smooth transitions */
-* {
-  transition: background-color 0.2s, border-color 0.2s;
+/* Ensure root element takes full height */
+#root {
+  width: 100%;
+  height: 100%;
 }
