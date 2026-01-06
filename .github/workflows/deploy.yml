@@ -31,7 +31,10 @@ jobs:
         run: cd client && npm ci
 
       - name: Build
-        run: cd client && npm run build
+        run: |
+          cd client
+          npm run build
+          cp dist/index.html dist/404.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
