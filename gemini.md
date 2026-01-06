@@ -1,0 +1,47 @@
+# 🤖 Gemini Agent Workflow Status
+
+File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas yang selesai, dan rencana selanjutnya agar transparan bagi pengguna.
+
+**Project:** Customer Service CRM (Omnichannel WhatsApp)
+**Arsitektur:** Headless Backend (Node.js/VPS) + React Frontend (Vercel)
+
+---
+
+## 📋 Roadmap & Progress
+
+### 1. Refactoring & Cleanup (✅ Selesai)
+- [x] Restrukturisasi Folder: Rename `client` -> `frontend`
+- [x] Restrukturisasi Folder: Rename `wagateway` -> `backend`
+- [x] Kerapihan Dokumen: Pindahkan `readme`, `strukturdatabase` ke `docs/`
+- [x] Backend Cleanup: Hapus folder legacy `admin` (HTML/JS lama)
+- [x] Backend Cleanup: Hapus endpoint static file & documentation lama di `index.js`
+- [x] Git Configuration: Update `.gitignore` untuk struktur folder baru
+
+### 2. Frontend Security & Demo Prep (✅ Selesai)
+- [x] Hapus "Super Admin" dari tombol Login Demo (hanya Admin Agent & User)
+- [x] Implementasi "Hardened Mode":
+  - [x] Disable Klik Kanan
+  - [x] Disable Text Selection (Copy-Paste)
+  - [x] Disable Shortcut Inspect Element (F12, Ctrl+U, Ctrl+S)
+- [x] Konfigurasi Environment: Support `VITE_API_URL` untuk deploy Vercel
+
+### 3. API Integration (✅ Selesai)
+- [x] Super Admin Dashboard: Integrasi `GET /sessions` (Real Data)
+- [x] Super Admin Dashboard: Integrasi `GET /logs` (Real Data)
+- [x] Super Admin Dashboard: Fitur Create & Delete Session
+- [x] Agent Dashboard: Integrasi Status Koneksi WA
+- [x] Agent Dashboard: Integrasi QR Code Real-time
+- [x] Backend: Konfigurasi CORS (Allow Vercel & Localhost)
+
+### 4. Next Steps / Pending Tasks (🚧 To Do)
+- [ ] **Deployment**: User perlu deploy Frontend ke Vercel & Backend ke VPS.
+- [ ] **Database**: Implementasi penyimpanan Chat History (saat ini masih Mock).
+- [ ] **Webhook Handler**: Logic penyimpanan pesan masuk ke Database.
+- [ ] **Real-time Chat**: Sinkronisasi pesan masuk ke UI via WebSocket/Polling.
+
+---
+
+## 📝 Catatan Teknis
+- **Backend Port:** 3000
+- **Frontend Port:** 5173
+- **Login:** Gunakan Admin Agent / User Agent untuk demo.
