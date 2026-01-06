@@ -122,7 +122,7 @@ const MainLayout = () => {
               </div>
               <div className="text-left hidden xl:block">
                 <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{user?.name}</p>
-                <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest pt-1">{user?.tenantName || user?.role}</p>
+                <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest pt-1">{user?.tenant_name || user?.role}</p>
               </div>
               <ChevronDown size={14} className="text-gray-300 dark:text-gray-600" />
             </button>
@@ -166,7 +166,7 @@ const MainLayout = () => {
           </div>
           <div className="overflow-hidden">
              <p className="font-black text-lg truncate text-white leading-tight">{user?.name}</p>
-             <p className={clsx("text-xs font-bold uppercase tracking-widest mt-1 truncate", isSuperAdmin ? "text-green-400" : "text-blue-400")}>{user?.tenantName || user?.role}</p>
+             <p className={clsx("text-xs font-bold uppercase tracking-widest mt-1 truncate", isSuperAdmin ? "text-green-400" : "text-blue-400")}>{user?.tenant_name || user?.role}</p>
           </div>
         </div>
 
