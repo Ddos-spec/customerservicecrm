@@ -10,6 +10,7 @@ export interface User {
   role: any; // Use any temporarily for flexibility in demo
   email: string;
   tenantName?: string;
+  isDemo?: boolean; // Flag to identify demo mode
 }
 
 interface AuthState {

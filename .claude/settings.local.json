@@ -3,7 +3,11 @@
     "allow": [
       "WebSearch",
       "Bash(npm run build:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(tree:*)",
+      "Bash(cat:*)"
     ]
   }
 }

@@ -26,14 +26,14 @@ const Login = () => {
 
   const handleDemoLogin = (user: any) => {
     // Manually set the auth state for demo purposes
-    useAuthStore.setState({ 
-      user, 
+    useAuthStore.setState({
+      user: { ...user, isDemo: true },
       isAuthenticated: true,
       token: 'demo-token-' + Math.random().toString(36).substring(7)
     });
-    
+
     toast.success(`Selamat datang (Demo), ${user.name}!`);
-    
+
     // Navigate based on role
     if (user.role === 'super_admin') navigate('/super-admin');
     else if (user.role === 'admin_agent') navigate('/admin');
