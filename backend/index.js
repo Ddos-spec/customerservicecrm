@@ -58,8 +58,17 @@ if (requiredEnvVars.some(k => !process.env[k])) {
     process.exit(1);
 }
 
-// --- CORS ---
-app.use(cors({ origin: true, credentials: true }));
+// --- CORS (untuk cross-domain frontend) ---
+const allowedOrigins = process.env.FRONTEND_URL
+    ? [process.env.FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000']
+    : true; // Allow all in dev
+
+app.use(cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
+}));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -185,7 +194,19 @@ app.use(rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 }));
-app.use(session({ store: new RedisStore({ client: redisSessionClient }), secret: process.env.SESSION_SECRET, resave: false, saveUninitialized: false }));
+// Session config untuk cross-domain (Vercel frontend + Easypanel backend)
+app.use(session({
+    store: new RedisStore({ client: redisSessionClient }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: isProd, // HTTPS only in production
+        httpOnly: true,
+        sameSite: isProd ? 'none' : 'lax', // 'none' untuk cross-domain
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
 
 app.get('/', (req, res) => res.json({ status: 'online', message: 'WA Gateway Engine is running', version: '1.0.0' }));
 
