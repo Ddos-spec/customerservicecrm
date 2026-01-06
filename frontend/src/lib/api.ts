@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 // Gunakan Environment Variable jika ada (Production), jika tidak pakai relative (Local Proxy)
-const baseURL = import.meta.env.VITE_API_URL || '/';
+// VITE_API_URL should be the backend URL, e.g., https://backend.example.com/api/v1
+const baseURL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const api = axios.create({
   baseURL: baseURL,
@@ -9,6 +10,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10 second timeout
 });
 
 api.interceptors.response.use(

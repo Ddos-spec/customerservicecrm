@@ -120,7 +120,7 @@ async function getUsersByTenant(tenantId) {
  */
 async function updateUserStatus(userId, status) {
     const result = await query(
-        `UPDATE users SET status = $1 WHERE id = $2 RETURNING *`,
+        'UPDATE users SET status = $1 WHERE id = $2 RETURNING *',
         [status, userId]
     );
     return result.rows[0];
@@ -133,7 +133,7 @@ async function updateUserStatus(userId, status) {
  */
 async function deleteUser(userId) {
     const result = await query(
-        `DELETE FROM users WHERE id = $1`,
+        'DELETE FROM users WHERE id = $1',
         [userId]
     );
     return result.rowCount > 0;
@@ -179,7 +179,7 @@ async function getAllTenants() {
  */
 async function getTenantById(tenantId) {
     const result = await query(
-        `SELECT * FROM tenants WHERE id = $1`,
+        'SELECT * FROM tenants WHERE id = $1',
         [tenantId]
     );
     return result.rows[0] || null;
@@ -193,7 +193,7 @@ async function getTenantById(tenantId) {
  */
 async function updateTenantStatus(tenantId, status) {
     const result = await query(
-        `UPDATE tenants SET status = $1 WHERE id = $2 RETURNING *`,
+        'UPDATE tenants SET status = $1 WHERE id = $2 RETURNING *',
         [status, tenantId]
     );
     return result.rows[0];
@@ -251,7 +251,7 @@ async function getOrCreateTicket({ tenant_id, customer_name, customer_contact })
  */
 async function getMessagesByTicket(ticketId) {
     const result = await query(
-        `SELECT * FROM messages WHERE ticket_id = $1 ORDER BY created_at ASC`,
+        'SELECT * FROM messages WHERE ticket_id = $1 ORDER BY created_at ASC',
         [ticketId]
     );
     return result.rows;
@@ -286,7 +286,7 @@ async function getTicketsByTenant(tenantId, limit = 50, offset = 0) {
  */
 async function updateTicketStatus(ticketId, status) {
     const result = await query(
-        `UPDATE tickets SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+        'UPDATE tickets SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
         [status, ticketId]
     );
     return result.rows[0];
@@ -300,7 +300,7 @@ async function updateTicketStatus(ticketId, status) {
  */
 async function assignTicketToAgent(ticketId, agentId) {
     const result = await query(
-        `UPDATE tickets SET assigned_agent_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+        'UPDATE tickets SET assigned_agent_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
         [agentId, ticketId]
     );
     return result.rows[0];
@@ -387,9 +387,9 @@ async function getDashboardStats(tenantId = null) {
  */
 async function getSuperAdminStats() {
     const [tenantStats, userStats, ticketStats] = await Promise.all([
-        query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'active') as active FROM tenants`),
-        query(`SELECT COUNT(*) as total FROM users`),
-        query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'open') as open FROM tickets`)
+        query('SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = \'active\') as active FROM tenants'),
+        query('SELECT COUNT(*) as total FROM users'),
+        query('SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = \'open\') as open FROM tickets')
     ]);
 
     return {

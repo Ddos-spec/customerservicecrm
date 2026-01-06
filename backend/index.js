@@ -18,6 +18,8 @@ const axios = require('axios');
 const { createClient } = require('redis');
 const useRedisAuthState = require('./redis-auth');
 const { initializeApi, getWebhookUrl } = require('./api_v1');
+const { router: authRouter, ensureSuperAdmin } = require('./auth');
+const n8nRouter = require('./n8n-api');
 require('dotenv').config();
 const session = require('express-session');
 const PhonePairing = require('./phone-pairing');
@@ -339,11 +341,26 @@ async function regenerateSessionToken(sessionId) {
     return token;
 }
 
+// WhatsApp API routes
 app.use('/api/v1', initializeApi(sessions, sessionTokens, createSession, getSessionsDetails, deleteSession, console.log, phonePairing, saveSessionSettings, regenerateSessionToken, redisClient, scheduleMessageSend, validateWhatsAppRecipient, getSessionContacts, upsertSessionContact, removeSessionContact, postToWebhook));
 
+// Admin authentication routes
+app.use('/api/v1/admin', authRouter);
+
+// n8n integration routes
+app.use('/api/v1/n8n', n8nRouter);
+
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
     loadTokens();
+
+    // Ensure super admin exists (from ENV)
+    try {
+        await ensureSuperAdmin();
+    } catch (err) {
+        logger.warn('Super admin check failed:', err.message);
+    }
+
     logger.info(`🚀 Gateway Engine running on port ${PORT}`);
 });
 
