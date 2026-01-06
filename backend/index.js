@@ -23,7 +23,8 @@ const n8nRouter = require('./n8n-api');
 require('dotenv').config();
 const session = require('express-session');
 const PhonePairing = require('./phone-pairing');
-const RedisStore = require('connect-redis').default;
+const connectRedis = require('connect-redis');
+const RedisStore = connectRedis.default || connectRedis;
 const cors = require('cors');
 const crypto = require('crypto');
 const helmet = require('helmet');
@@ -65,10 +66,17 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
-const redisSessionClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379', legacyMode: true });
+const redisSessionClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
 
+// Connect Redis clients
 (async () => {
-    await Promise.all([redisClient.connect(), redisSessionClient.connect()]);
+    try {
+        await redisClient.connect();
+        await redisSessionClient.connect();
+        console.log('✅ Redis connected');
+    } catch (err) {
+        console.error('❌ Redis connection error:', err.message);
+    }
 })();
 
 const sessions = new Map();
