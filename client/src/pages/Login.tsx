@@ -21,7 +21,6 @@ const Login = () => {
     id: 'aa-1', name: 'Pak Bos (Owner)', role: 'admin_agent', email: 'bos@tokomaju.com', tenantName: 'Toko Maju Jaya'
   };
 
-  // 1 Admin Agent menaungi 3 User Agents ini:
   const agentUsers: User[] = [
     { id: 'ag-1', name: 'Budi (Shift Pagi)', role: 'agent', email: 'budi@tokomaju.com', tenantName: 'Toko Maju Jaya' },
     { id: 'ag-2', name: 'Siti (Shift Siang)', role: 'agent', email: 'siti@tokomaju.com', tenantName: 'Toko Maju Jaya' },
@@ -30,7 +29,7 @@ const Login = () => {
 
   const handleLogin = (user: User) => {
     login(user);
-    toast.success(`Welcome back, ${user.name}!`); // Feedback visual
+    toast.success(`Selamat datang kembali, ${user.name}!`);
     
     if (user.role === 'super_admin') navigate('/super-admin');
     else if (user.role === 'admin_agent') navigate('/admin');
@@ -39,56 +38,62 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-white flex">
-      {/* Left Side - Visual & Branding */}
-      <div className="hidden lg:flex w-5/12 bg-indigo-950 relative overflow-hidden flex-col justify-between p-12 text-white">
-        {/* Abstract Shapes */}
-        <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-           <div className="absolute right-0 top-0 w-96 h-96 bg-purple-500 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2"></div>
-           <div className="absolute left-0 bottom-0 w-64 h-64 bg-blue-500 rounded-full blur-3xl transform -translate-x-1/2 translate-y-1/2"></div>
+      {/* Left Side - Visual & Branding with Image Overlay */}
+      <div className="hidden lg:flex w-5/12 relative overflow-hidden flex-col justify-between p-12 text-white">
+        {/* Background Image & Overlay */}
+        <div className="absolute inset-0 z-0">
+            <img 
+                src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2670&auto=format&fit=crop" 
+                alt="Technology Background" 
+                className="w-full h-full object-cover"
+            />
+            {/* Blue Overlay */}
+            <div className="absolute inset-0 bg-blue-900/85 mix-blend-multiply"></div>
+            <div className="absolute inset-0 bg-gradient-to-b from-blue-900/50 to-blue-950/90"></div>
         </div>
         
         <div className="relative z-10">
-          <div className="flex items-center space-x-2 text-indigo-400 mb-12">
+          <div className="flex items-center space-x-2 text-blue-200 mb-12">
             <Sparkles size={28} />
             <span className="text-xl font-bold tracking-wide">myaicustom.com</span>
           </div>
           
           <h1 className="text-4xl font-bold leading-tight mb-6">
             Kelola Tim Support <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-sky-200">
               Lebih Efisien
             </span>
           </h1>
-          <p className="text-indigo-200 text-lg leading-relaxed max-w-sm">
+          <p className="text-blue-100 text-lg leading-relaxed max-w-sm">
             Contoh Skenario:<br/>
             <span className="text-white font-bold">"Toko Maju Jaya"</span> menggunakan platform ini. Pemilik toko mengelola 3 agen CS untuk melayani pelanggan bersama bantuan AI.
           </p>
         </div>
 
-        <div className="text-xs text-indigo-400/60 mt-8">
+        <div className="relative z-10 text-xs text-blue-300/60 mt-8">
           © 2026 myaicustom.com. Hak cipta dilindungi.
         </div>
       </div>
 
       {/* Right Side - Login Form */}
-      <div className="w-full lg:w-7/12 flex flex-col justify-center items-center p-8 bg-gray-50/50">
-        <div className="w-full max-w-sm bg-white p-8 rounded-2xl shadow-xl shadow-gray-200/50 border border-white">
+      <div className="w-full lg:w-7/12 flex flex-col justify-center items-center p-8 bg-blue-50/30">
+        <div className="w-full max-w-sm bg-white p-8 rounded-2xl shadow-xl shadow-blue-100/50 border border-white">
           <div className="text-center mb-10">
             <h2 className="text-2xl font-bold text-gray-900">Masuk</h2>
             <p className="text-gray-500 text-sm mt-2">Akses Dashboard CRM Anda</p>
           </div>
 
           <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-            {/* Fake Inputs just for visuals */}
+            {/* Fake Inputs */}
             <div className="relative group">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input type="email" placeholder="Email" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
+              <input type="email" placeholder="Email" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
             </div>
             <div className="relative group">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input type="password" placeholder="Kata Sandi" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
+              <input type="password" placeholder="Kata Sandi" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
             </div>
-            <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg text-sm">Masuk</button>
+            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm shadow-lg shadow-blue-200 transition-all active:scale-95">Masuk</button>
           </form>
 
           {/* HIERARCHY DEMO SECTION */}
@@ -100,15 +105,15 @@ const Login = () => {
 
             <div className="mt-6 space-y-3">
               {/* 1. Super Admin */}
-              <button onClick={() => handleLogin(superAdminUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-indigo-500 bg-white group transition-all">
+              <button onClick={() => handleLogin(superAdminUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-green-500 bg-white group transition-all">
                 <span className="text-xs font-bold text-gray-800">1. Super Admin (Pemilik Platform)</span>
-                <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded group-hover:bg-indigo-100 group-hover:text-indigo-700">Login</span>
+                <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded group-hover:bg-green-100 group-hover:text-green-700">Login</span>
               </button>
 
               {/* Connector */}
               <div className="flex justify-center -my-2"><div className="h-4 w-px bg-gray-300"></div></div>
 
-              {/* 2. Admin Agent (Toko Maju Jaya) */}
+              {/* 2. Admin Agent */}
               <button onClick={() => handleLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-blue-500 bg-white group transition-all">
                 <div className="text-left">
                   <span className="block text-xs font-bold text-gray-800">2. Admin Agen (Pemilik Toko)</span>
@@ -128,7 +133,7 @@ const Login = () => {
                 >
                   <div className="flex items-center space-x-2">
                     <span className="text-xs font-bold text-gray-700">3. User Agents (Karyawan)</span>
-                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">3 Agen</span>
+                    <span className="text-[10px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">3 Agen</span>
                   </div>
                   {showAgents ? <ChevronUp size={16} className="text-gray-500"/> : <ChevronDown size={16} className="text-gray-500"/>}
                 </button>
@@ -139,9 +144,9 @@ const Login = () => {
                     <button 
                       key={agent.id}
                       onClick={() => handleLogin(agent)}
-                      className="w-full flex items-center space-x-3 p-3 hover:bg-green-50 transition-colors text-left border-b border-gray-50 last:border-0"
+                      className="w-full flex items-center space-x-3 p-3 hover:bg-sky-50 transition-colors text-left border-b border-gray-50 last:border-0"
                     >
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                      <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600">
                         <UserIcon size={14} />
                       </div>
                       <div>
