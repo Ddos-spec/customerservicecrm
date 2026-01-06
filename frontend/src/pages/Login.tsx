@@ -1,62 +1,67 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import type { User } from '../store/useAuthStore';
 import { Sparkles, Mail, Lock, ChevronDown, ChevronUp, User as UserIcon, Loader2 } from 'lucide-react';
-
 import { toast } from 'sonner';
 
 const Login = () => {
-  const { setSession, loginReal, isLoading } = useAuthStore();
   const navigate = useNavigate();
-  const [showAgents, setShowAgents] = useState(false);
-  
-  // Real Login State
+  const { login, isLoading: authLoading } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showAgents, setShowAgents] = useState(false);
 
-  // --- HARDCODED DATA (Simulasi Database) ---
-  const adminAgentUser = { email: 'admin@tokomaju.com', role: 'admin_agent' as const, id: 'tenant-admin', name: 'Admin Toko Maju' };
+  const adminAgentUser = { 
+    email: 'admin@tokomaju.com', 
+    role: 'admin_agent' as const, 
+    id: 'tenant-admin', 
+    name: 'Admin Toko Maju' 
+  };
+  
   const agents = [
     { email: 'siti@tokomaju.com', name: 'Siti Aminah', id: 'agent-1' },
     { email: 'budi@tokomaju.com', name: 'Budi Santoso', id: 'agent-2' },
     { email: 'dewi@tokomaju.com', name: 'Dewi Lestari', id: 'agent-3' },
   ];
 
-  // Handle DEMO Login (Bypass)
-  const handleDemoLogin = (user: User) => {
-    setSession(user);
-    toast.success(`(Demo) Selamat datang, ${user.name}!`);
-    redirectUser(user.role);
+  const handleDemoLogin = (user: any) => {
+    // Manually set the auth state for demo purposes
+    useAuthStore.setState({ 
+      user, 
+      isAuthenticated: true,
+      token: 'demo-token-' + Math.random().toString(36).substring(7)
+    });
+    
+    toast.success(`Selamat datang (Demo), ${user.name}!`);
+    
+    // Navigate based on role
+    if (user.role === 'super_admin') navigate('/super-admin');
+    else if (user.role === 'admin_agent') navigate('/admin');
+    else navigate('/agent');
   };
 
-  // Handle REAL Backend Login
-  const handleRealLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
         toast.error('Mohon isi email dan kata sandi');
         return;
     }
 
-    const success = await loginReal(email, password);
-    if (success) {
-        // Karena backend saat ini hanya me-return role 'admin', kita asumsi dia Super Admin atau Admin Agent
-        // Untuk sekarang, default ke Super Admin jika email mengandung 'admin'
-        // Logic ini akan diperbaiki saat backend User Management sudah matang
-        const role = email.includes('admin') ? 'super_admin' : 'admin_agent';
-        redirectUser(role);
+    try {
+        const success = await login(email, password);
+        if (success) {
+            const role = email.includes('admin') ? 'super_admin' : 'admin_agent';
+            if (role === 'super_admin') navigate('/super-admin');
+            else navigate('/admin');
+        }
+    } catch (error: any) {
+        toast.error(error.message || 'Gagal masuk');
     }
-  };
-
-  const redirectUser = (role: string | null) => {
-    if (role === 'super_admin') navigate('/super-admin');
-    else if (role === 'admin_agent') navigate('/admin');
-    else if (role === 'agent') navigate('/agent');
   };
 
   return (
     <div className="min-h-screen bg-white flex">
-      {/* Left Side - Visual & Branding with Image Overlay */}
+      {/* Left Side - Visual & Branding */}
       <div className="hidden lg:flex w-5/12 relative overflow-hidden flex-col justify-between p-12 text-white">
         <div className="absolute inset-0 z-0">
             <img 
@@ -98,7 +103,7 @@ const Login = () => {
             <p className="text-gray-500 text-sm mt-2">Akses Dashboard CRM Anda</p>
           </div>
 
-          <form className="space-y-4" onSubmit={handleRealLogin}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="relative group">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
               <input 
@@ -121,11 +126,11 @@ const Login = () => {
             </div>
             <button 
                 type="submit" 
-                disabled={isLoading}
+                disabled={authLoading}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center justify-center space-x-2"
             >
-                {isLoading && <Loader2 className="animate-spin" size={16} />}
-                <span>{isLoading ? 'Memproses...' : 'Masuk'}</span>
+                {authLoading && <Loader2 className="animate-spin" size={16} />}
+                <span>{authLoading ? 'Memproses...' : 'Masuk'}</span>
             </button>
           </form>
 
@@ -137,7 +142,15 @@ const Login = () => {
             </div>
 
             <div className="mt-6 space-y-3">
-              {/* 2. Admin Agent */}
+              {/* Super Admin Option (Hidden subtle) */}
+              <button 
+                onClick={() => handleDemoLogin({ email: 'admin@localhost', role: 'super_admin', id: 'system-admin', name: 'Super Admin' })}
+                className="w-full text-[10px] text-gray-300 hover:text-blue-400 transition-colors py-1"
+              >
+                Login as System Super Admin
+              </button>
+
+              {/* 1. Admin Agent */}
               <button onClick={() => handleDemoLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-blue-500 bg-white group transition-all">
                 <div className="text-left">
                   <span className="block text-xs font-bold text-gray-800">1. Admin Agen (Pemilik Toko)</span>
@@ -146,10 +159,7 @@ const Login = () => {
                 <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded group-hover:bg-blue-100 group-hover:text-blue-700">Login</span>
               </button>
 
-              {/* Connector */}
-              <div className="flex justify-center -my-2"><div className="h-4 w-px bg-gray-300"></div></div>
-
-              {/* 3. User Agents Group */}
+              {/* 2. User Agents Group */}
               <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                 <button 
                   onClick={() => setShowAgents(!showAgents)}
@@ -162,29 +172,28 @@ const Login = () => {
                   {showAgents ? <ChevronUp size={16} className="text-gray-500"/> : <ChevronDown size={16} className="text-gray-500"/>}
                 </button>
                 
-                {/* List of 3 Specific Agents */}
-                <div className="space-y-3 mt-4">
-                  {agents.map((agent: any) => (
-                    <button 
-                      key={agent.id} 
-                      onClick={() => handleDemoLogin({ ...agent, role: 'user_agent' })}
-                      className="w-full flex items-center space-x-3 p-3 hover:bg-sky-50 transition-colors text-left border-b border-gray-50 last:border-0"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600">
-                        <UserIcon size={14} />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-gray-800">{agent.name}</div>
-                        <div className="text-[10px] text-gray-500">{agent.email}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                {showAgents && (
+                  <div className="p-2 space-y-2 bg-gray-50 border-t border-gray-100">
+                    {agents.map((agent: any) => (
+                      <button 
+                        key={agent.id} 
+                        onClick={() => handleDemoLogin({ ...agent, role: 'user_agent' })}
+                        className="w-full flex items-center space-x-3 p-2 rounded-md hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200 transition-all text-left"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                          <UserIcon size={14} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-gray-800">{agent.name}</div>
+                          <div className="text-[10px] text-gray-500">{agent.email}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-
             </div>
           </div>
-
         </div>
       </div>
     </div>
