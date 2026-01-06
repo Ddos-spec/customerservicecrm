@@ -15,10 +15,10 @@ const AgentManagement = () => {
   const handleAddAgent = (e: any) => {
     e.preventDefault();
     if (agents.length >= maxAgents) {
-      toast.error('You have reached the maximum limit of 3 agents.');
+      toast.error('Anda telah mencapai batas maksimum 3 agen.');
       return;
     }
-    toast.success('Agent invited successfully!');
+    toast.success('Undangan agen berhasil dikirim!');
     setIsModalOpen(false);
   };
 
@@ -26,8 +26,8 @@ const AgentManagement = () => {
     <div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Team Management</h1>
-          <p className="text-gray-500 text-sm">Organize your support staff and their roles.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Manajemen Tim</h1>
+          <p className="text-gray-500 text-sm">Atur staf support dan peran mereka.</p>
         </div>
         
         <button 
@@ -36,7 +36,7 @@ const AgentManagement = () => {
           className="flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
         >
           <UserPlus size={18} />
-          <span className="font-bold text-sm">Add New Agent</span>
+          <span className="font-bold text-sm">Tambah Agen Baru</span>
         </button>
       </div>
 
@@ -44,9 +44,9 @@ const AgentManagement = () => {
         <div className="relative z-10">
           <div className="flex items-center space-x-3 text-indigo-700 mb-1">
             <Shield size={20} />
-            <span className="font-bold">Subscription Quota</span>
+            <span className="font-bold">Kuota Langganan</span>
           </div>
-          <p className="text-indigo-600/70 text-sm">You are using {agents.length} of {maxAgents} agent slots available.</p>
+          <p className="text-indigo-600/70 text-sm">Anda menggunakan {agents.length} dari {maxAgents} slot agen yang tersedia.</p>
         </div>
         <div className="relative z-10 text-3xl font-black text-indigo-700">
           {agents.length} / {maxAgents}
@@ -96,28 +96,28 @@ const AgentManagement = () => {
             <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-600"><X size={24} /></button>
             
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-gray-900">Add Team Member</h2>
-              <p className="text-gray-500 text-sm mt-1">Create a new agent account for your team.</p>
+              <h2 className="text-2xl font-bold text-gray-900">Tambah Anggota Tim</h2>
+              <p className="text-gray-500 text-sm mt-1">Buat akun agen baru untuk tim Anda.</p>
             </div>
 
             <form onSubmit={handleAddAgent} className="space-y-5">
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Full Name</label>
-                <input required type="text" placeholder="e.g. Budi Santoso" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm" />
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Nama Lengkap</label>
+                <input required type="text" placeholder="cth. Budi Santoso" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Email Address</label>
-                <input required type="email" placeholder="agent@tokomaju.com" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm" />
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Alamat Email</label>
+                <input required type="email" placeholder="agen@tokomaju.com" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm" />
               </div>
               <div className="relative">
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Initial Password</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Kata Sandi Awal</label>
                 <Lock className="absolute right-4 top-[38px] text-gray-300" size={18} />
                 <input required type="password" placeholder="••••••••" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm" />
               </div>
 
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition-colors">Cancel</button>
-                <button type="submit" className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 transition-all transform active:scale-95">Create Account</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition-colors">Batal</button>
+                <button type="submit" className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 transition-all transform active:scale-95">Buat Akun</button>
               </div>
             </form>
           </div>

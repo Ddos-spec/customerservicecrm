@@ -54,19 +54,19 @@ const Login = () => {
           </div>
           
           <h1 className="text-4xl font-bold leading-tight mb-6">
-            Orchestrate your <br/>
+            Kelola Tim Support <br/>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
-              Support Team
+              Lebih Efisien
             </span>
           </h1>
           <p className="text-indigo-200 text-lg leading-relaxed max-w-sm">
-            Example Scenario:<br/>
-            <span className="text-white font-bold">"Toko Maju Jaya"</span> uses our platform. The owner manages 3 agents to handle customer chats alongside AI.
+            Contoh Skenario:<br/>
+            <span className="text-white font-bold">"Toko Maju Jaya"</span> menggunakan platform ini. Pemilik toko mengelola 3 agen CS untuk melayani pelanggan bersama bantuan AI.
           </p>
         </div>
 
         <div className="text-xs text-indigo-400/60 mt-8">
-          © 2026 myaicustom.com. All rights reserved.
+          © 2026 myaicustom.com. Hak cipta dilindungi.
         </div>
       </div>
 
@@ -74,8 +74,8 @@ const Login = () => {
       <div className="w-full lg:w-7/12 flex flex-col justify-center items-center p-8 bg-gray-50/50">
         <div className="w-full max-w-sm bg-white p-8 rounded-2xl shadow-xl shadow-gray-200/50 border border-white">
           <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold text-gray-900">Sign In</h2>
-            <p className="text-gray-500 text-sm mt-2">Access your CRM Dashboard</p>
+            <h2 className="text-2xl font-bold text-gray-900">Masuk</h2>
+            <p className="text-gray-500 text-sm mt-2">Akses Dashboard CRM Anda</p>
           </div>
 
           <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
@@ -86,22 +86,22 @@ const Login = () => {
             </div>
             <div className="relative group">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input type="password" placeholder="Password" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm" />
+              <input type="password" placeholder="Kata Sandi" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm" />
             </div>
-            <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg text-sm">Sign In</button>
+            <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg text-sm">Masuk</button>
           </form>
 
           {/* HIERARCHY DEMO SECTION */}
           <div className="mt-8">
             <div className="relative">
               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
-              <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-400 font-medium">Demo Access Hierarchy</span></div>
+              <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-400 font-medium">Akses Demo Berjenjang</span></div>
             </div>
 
             <div className="mt-6 space-y-3">
               {/* 1. Super Admin */}
               <button onClick={() => handleLogin(superAdminUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-indigo-500 bg-white group transition-all">
-                <span className="text-xs font-bold text-gray-800">1. Super Admin (Platform Owner)</span>
+                <span className="text-xs font-bold text-gray-800">1. Super Admin (Pemilik Platform)</span>
                 <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded group-hover:bg-indigo-100 group-hover:text-indigo-700">Login</span>
               </button>
 
@@ -111,7 +111,7 @@ const Login = () => {
               {/* 2. Admin Agent (Toko Maju Jaya) */}
               <button onClick={() => handleLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-blue-500 bg-white group transition-all">
                 <div className="text-left">
-                  <span className="block text-xs font-bold text-gray-800">2. Admin Agent (Owner Toko)</span>
+                  <span className="block text-xs font-bold text-gray-800">2. Admin Agen (Pemilik Toko)</span>
                   <span className="text-[10px] text-gray-400">Toko Maju Jaya</span>
                 </div>
                 <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded group-hover:bg-blue-100 group-hover:text-blue-700">Login</span>
@@ -127,8 +127,8 @@ const Login = () => {
                   className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-gray-700">3. User Agents (Employees)</span>
-                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">3 Agents</span>
+                    <span className="text-xs font-bold text-gray-700">3. User Agents (Karyawan)</span>
+                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">3 Agen</span>
                   </div>
                   {showAgents ? <ChevronUp size={16} className="text-gray-500"/> : <ChevronDown size={16} className="text-gray-500"/>}
                 </button>

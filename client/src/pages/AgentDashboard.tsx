@@ -46,7 +46,7 @@ const AgentDashboard = () => {
     setTimeout(() => {
       setWaStatus('connected');
       setIsQrModalOpen(false);
-      toast.success('WhatsApp Gateway connected successfully!');
+      toast.success('WhatsApp Gateway berhasil terhubung!');
     }, 2000); 
   };
 
@@ -54,15 +54,15 @@ const AgentDashboard = () => {
     <div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 text-shadow-sm">Performance Dashboard</h1>
-          <p className="text-gray-500">Your activity summary for today.</p>
+          <h1 className="text-2xl font-bold text-gray-900 text-shadow-sm">Dashboard Performa</h1>
+          <p className="text-gray-500">Ringkasan aktivitas Anda hari ini.</p>
         </div>
         <button 
           onClick={() => navigate('chat')}
           className="flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl transition-all shadow-lg shadow-indigo-100 transform active:scale-95"
         >
           <MessageCircle size={20} />
-          <span className="font-bold">Open Chat Workspace</span>
+          <span className="font-bold">Buka Workspace Chat</span>
           <ArrowRight size={18} className="opacity-70" />
         </button>
       </div>
@@ -79,11 +79,11 @@ const AgentDashboard = () => {
                          {waStatus === 'connected' ? <ShieldCheck size={32} /> : <Activity size={32} className={waStatus === 'connecting' ? 'animate-pulse' : ''} />}
                       </div>
                       <div>
-                         <h3 className="font-black text-xl tracking-tight">WhatsApp Connection</h3>
+                         <h3 className="font-black text-xl tracking-tight">Koneksi WhatsApp</h3>
                          <div className="flex items-center space-x-3 mt-1.5 text-sm">
                             <span className={`flex items-center space-x-1.5 ${waStatus === 'connected' ? 'text-green-400' : waStatus === 'connecting' ? 'text-yellow-400' : 'text-red-400'}`}>
                                <Wifi size={14} className={waStatus === 'connected' ? 'animate-pulse' : ''} />
-                               <span className="font-bold uppercase tracking-widest text-[10px]">{waStatus}</span>
+                               <span className="font-bold uppercase tracking-widest text-[10px]">{waStatus === 'connected' ? 'TERHUBUNG' : waStatus === 'connecting' ? 'MENGHUBUNGKAN' : 'TERPUTUS'}</span>
                             </span>
                             <span className="text-slate-500">•</span>
                             <span className="text-slate-400 font-mono text-xs">+62 812-XXXX-XXXX</span>
@@ -94,10 +94,10 @@ const AgentDashboard = () => {
                    <div className="flex items-center space-x-3">
                       {waStatus === 'connected' ? (
                          <button 
-                           onClick={() => { setWaStatus('disconnected'); toast.warning('Gateway disconnected'); }}
+                           onClick={() => { setWaStatus('disconnected'); toast.warning('Gateway terputus'); }}
                            className="px-5 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-50 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-red-500/20"
                          >
-                           Disconnect
+                           Putuskan
                          </button>
                       ) : (
                          <div className="flex space-x-2">
@@ -113,7 +113,7 @@ const AgentDashboard = () => {
                               className="flex items-center space-x-2 px-5 py-2.5 bg-white/10 text-white hover:bg-white/20 rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-white/10"
                             >
                               <Link2 size={16} />
-                              <span>Pairing Code</span>
+                              <span>Kode Pairing</span>
                             </button>
                          </div>
                       )}
@@ -127,11 +127,11 @@ const AgentDashboard = () => {
                         <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100/50">
                             <h4 className="font-bold text-gray-900 mb-4 flex items-center space-x-2">
                               <Activity size={18} className="text-indigo-600" />
-                              <span>Connection Health</span>
+                              <span>Kesehatan Koneksi</span>
                             </h4>
                             <div className="space-y-4">
-                              <HealthMetric label="Service Status" status={waStatus === 'connected' ? 'Operational' : 'Action Required'} value={waStatus === 'connected' ? '100%' : '0%'} />
-                              <HealthMetric label="Last Sync" status="Just now" value="OK" />
+                              <HealthMetric label="Status Layanan" status={waStatus === 'connected' ? 'Operasional' : 'Perlu Tindakan'} value={waStatus === 'connected' ? '100%' : '0%'} />
+                              <HealthMetric label="Sinkronisasi Terakhir" status="Baru saja" value="OK" />
                             </div>
                         </div>
                       </div>
@@ -141,14 +141,14 @@ const AgentDashboard = () => {
                               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-4 border-4 border-white shadow-xl">
                                   <ShieldCheck size={40} />
                               </div>
-                              <h4 className="font-black text-gray-900 text-lg">Connected & Secure</h4>
-                              <p className="text-gray-500 text-sm max-w-[240px] mt-2">Your WhatsApp number is paired and ready to receive messages.</p>
+                              <h4 className="font-black text-gray-900 text-lg">Terhubung & Aman</h4>
+                              <p className="text-gray-500 text-sm max-w-[240px] mt-2">Nomor WhatsApp Anda telah terhubung dan siap menerima pesan.</p>
                             </>
                         ) : (
                             <>
                               <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-slate-400 mb-4 border-4 border-white shadow-xl italic font-black text-2xl">?</div>
-                              <h4 className="font-black text-gray-400 text-lg">No Active Connection</h4>
-                              <p className="text-gray-400 text-sm max-w-[240px] mt-2 italic text-balance">Please scan the QR code to reconnect your WhatsApp number.</p>
+                              <h4 className="font-black text-gray-400 text-lg">Tidak Ada Koneksi Aktif</h4>
+                              <p className="text-gray-400 text-sm max-w-[240px] mt-2 italic text-balance">Silakan scan kode QR untuk menghubungkan kembali nomor WhatsApp Anda.</p>
                             </>
                         )}
                       </div>
@@ -161,32 +161,31 @@ const AgentDashboard = () => {
 
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-
         <StatCard 
-          title="Total Chats" 
+          title="Total Chat" 
           value="24" 
-          subtitle="Today"
+          subtitle="Hari Ini"
           icon={<MessageCircle className="text-blue-600" />} 
           color="bg-blue-100"
         />
         <StatCard 
-          title="Avg. Response Time" 
-          value="1m 30s" 
-          subtitle="-15s vs yesterday"
+          title="Rata-rata Respon" 
+          value="1m 30d" 
+          subtitle="-15d vs kemarin"
           icon={<Clock className="text-purple-600" />} 
           color="bg-purple-100"
         />
         <StatCard 
-          title="Customer Satisfaction" 
+          title="Kepuasan Pelanggan" 
           value="4.8/5" 
-          subtitle="Excellent"
+          subtitle="Sangat Baik"
           icon={<Star className="text-yellow-600" />} 
           color="bg-yellow-100"
         />
         <StatCard 
-          title="Issues Resolved" 
+          title="Masalah Terselesaikan" 
           value="92%" 
-          subtitle="Success Rate"
+          subtitle="Tingkat Sukses"
           icon={<ThumbsUp className="text-green-600" />} 
           color="bg-green-100"
         />
@@ -196,11 +195,11 @@ const AgentDashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
            {/* Placeholder for chart to match existing structure */}
-           <div className="h-64 flex items-center justify-center text-gray-400">Chart Visualization Area</div>
+           <div className="h-64 flex items-center justify-center text-gray-400">Area Visualisasi Grafik</div>
         </div>
          <div className="space-y-6">
            {/* Placeholder for sidebar widgets */}
-           <div className="bg-white p-6 rounded-2xl h-full border border-gray-100">Shortcuts & Tips</div>
+           <div className="bg-white p-6 rounded-2xl h-full border border-gray-100">Pintasan & Tips</div>
          </div>
       </div>
 
@@ -215,12 +214,12 @@ const AgentDashboard = () => {
                     {pairingMethod === 'qr' ? <QrCode size={32} /> : <Smartphone size={32} />}
                  </div>
                  <h2 className="text-2xl font-black text-gray-900 tracking-tight">
-                    {pairingMethod === 'qr' ? 'Scan QR Code' : 'Pairing Code'}
+                    {pairingMethod === 'qr' ? 'Scan Kode QR' : 'Kode Pairing'}
                  </h2>
                  <p className="text-gray-500 text-sm mt-2 px-4 leading-relaxed">
                     {pairingMethod === 'qr' 
-                      ? 'Open WhatsApp > Settings > Linked Devices > Link a Device'
-                      : 'Open WhatsApp > Settings > Linked Devices > Link with Phone Number'}
+                      ? 'Buka WhatsApp > Setelan > Perangkat Tertaut > Tautkan Perangkat'
+                      : 'Buka WhatsApp > Setelan > Perangkat Tertaut > Tautkan dengan Nomor Telepon'}
                  </p>
               </div>
 
@@ -228,19 +227,19 @@ const AgentDashboard = () => {
                  {qrState === 'generating' ? (
                     <div className="flex flex-col items-center py-8">
                        <RefreshCw className="animate-spin text-indigo-600 mb-4" size={40} />
-                       <p className="text-sm font-black text-indigo-600 animate-pulse uppercase tracking-widest">Handshaking...</p>
+                       <p className="text-sm font-black text-indigo-600 animate-pulse uppercase tracking-widest">Menyiapkan...</p>
                     </div>
                  ) : qrState === 'scanned' ? (
                     <div className="flex flex-col items-center py-8 animate-in zoom-in duration-500">
                        <div className="w-20 h-20 bg-green-500 text-white rounded-full flex items-center justify-center mb-4 shadow-xl shadow-green-200">
                          <ShieldCheck size={40} />
                        </div>
-                       <p className="text-lg font-black text-gray-900 uppercase">Authenticated</p>
-                       <p className="text-xs text-gray-500 mt-1">Establishing secure tunnel...</p>
+                       <p className="text-lg font-black text-gray-900 uppercase">Terotentikasi</p>
+                       <p className="text-xs text-gray-500 mt-1">Membuat jalur aman...</p>
                     </div>
                  ) : pairingMethod === 'qr' ? (
                     <div className="relative group cursor-pointer bg-white p-4 rounded-3xl shadow-sm" onClick={generateNewQr}>
-                       <img src={qrUrl} alt="Scan Me" className="w-56 h-56 rounded-lg mix-blend-multiply" />
+                       <img src={qrUrl} alt="Scan Saya" className="w-56 h-56 rounded-lg mix-blend-multiply" />
                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="w-52 h-1 bg-indigo-500/40 absolute top-0 animate-[scan_3s_ease-in-out_infinite]" />
                        </div>
@@ -254,7 +253,7 @@ const AgentDashboard = () => {
                              </div>
                           ))}
                        </div>
-                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Enter this code on your phone</p>
+                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Masukkan kode ini di ponsel Anda</p>
                     </div>
                  )}
               </div>
@@ -265,13 +264,13 @@ const AgentDashboard = () => {
                      onClick={handleSimulateScan}
                      className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95"
                    >
-                     Simulate Connection
+                     Simulasikan Koneksi
                    </button>
                    <button 
                      onClick={pairingMethod === 'qr' ? generateNewQr : generatePairingCode}
                      className="text-gray-400 text-[10px] font-bold uppercase tracking-widest hover:text-indigo-600 transition-colors"
                    >
-                     Regenerate Code
+                     Buat Ulang Kode
                    </button>
                 </div>
               )}

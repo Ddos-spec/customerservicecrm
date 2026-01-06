@@ -4,9 +4,9 @@ import { toast } from 'sonner';
 
 const TenantManagement = () => {
   const [tenants, setTenants] = useState([
-    { id: 1, name: 'Toko Maju Jaya', adminEmail: 'admin@majujaya.com', agents: 3, status: 'Active' },
-    { id: 2, name: 'Batik Sejahtera', adminEmail: 'contact@batik.id', agents: 1, status: 'Active' },
-    { id: 3, name: 'Coffee Shop ABC', adminEmail: 'owner@coffeeabc.com', agents: 2, status: 'Suspended' },
+    { id: 1, name: 'Toko Maju Jaya', adminEmail: 'admin@majujaya.com', agents: 3, status: 'Aktif' },
+    { id: 2, name: 'Batik Sejahtera', adminEmail: 'contact@batik.id', agents: 1, status: 'Aktif' },
+    { id: 3, name: 'Kopi Kenangan Indah', adminEmail: 'owner@kopiindah.com', agents: 2, status: 'Ditangguhkan' },
   ]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,17 +28,17 @@ const TenantManagement = () => {
     setActiveDropdown(null);
     if (action === 'suspend') {
       const updatedTenants = tenants.map(t => 
-        t.id === tenant.id ? { ...t, status: t.status === 'Active' ? 'Suspended' : 'Active' } : t
+        t.id === tenant.id ? { ...t, status: t.status === 'Aktif' ? 'Ditangguhkan' : 'Aktif' } : t
       );
       setTenants(updatedTenants);
-      toast.success(`Tenant ${tenant.name} has been ${tenant.status === 'Active' ? 'suspended' : 'activated'}.`);
+      toast.success(`Tenant ${tenant.name} berhasil ${tenant.status === 'Aktif' ? 'ditangguhkan' : 'diaktifkan'}.`);
     } else if (action === 'delete') {
-      if (confirm(`Are you sure you want to delete ${tenant.name}?`)) {
+      if (confirm(`Apakah Anda yakin ingin menghapus ${tenant.name}?`)) {
         setTenants(tenants.filter(t => t.id !== tenant.id));
-        toast.success('Tenant deleted successfully.');
+        toast.success('Tenant berhasil dihapus.');
       }
     } else {
-      toast.info(`${action} action triggered for ${tenant.name}`);
+      toast.info(`Aksi ${action} dipicu untuk ${tenant.name}`);
     }
   };
 
@@ -51,12 +51,12 @@ const TenantManagement = () => {
       name: formData.name,
       adminEmail: formData.email,
       agents: 0,
-      status: 'Active'
+      status: 'Aktif'
     };
 
     setTenants([newTenant, ...tenants]); // Add to top
     setIsModalOpen(false);
-    toast.success('New Tenant (Admin Agent) created successfully!');
+    toast.success('Tenant Baru (Admin Agen) berhasil dibuat!');
     
     // Reset form
     setFormData({ name: '', email: '', password: '' });
@@ -66,15 +66,15 @@ const TenantManagement = () => {
     <div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tenant Management</h1>
-          <p className="text-gray-500 text-sm">Manage your SaaS customers (Admin Agents).</p>
+          <h1 className="text-2xl font-bold text-gray-900">Manajemen Tenant</h1>
+          <p className="text-gray-500 text-sm">Kelola pelanggan SaaS Anda (Admin Agen).</p>
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
           className="flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-100"
         >
           <Plus size={20} />
-          <span className="font-bold text-sm">Add New Tenant</span>
+          <span className="font-bold text-sm">Tambah Tenant Baru</span>
         </button>
       </div>
 
@@ -84,7 +84,7 @@ const TenantManagement = () => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input 
               type="text" 
-              placeholder="Search tenants..." 
+              placeholder="Cari tenant..." 
               className="pl-10 pr-4 py-2.5 w-full md:max-w-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm"
             />
           </div>
@@ -94,11 +94,11 @@ const TenantManagement = () => {
           <table className="w-full text-left">
             <thead className="bg-gray-50 border-b border-gray-100 text-gray-500 text-xs uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-4 font-semibold">Company Name</th>
-                <th className="px-6 py-4 font-semibold">Admin Email</th>
-                <th className="px-6 py-4 font-semibold">Agents Used</th>
+                <th className="px-6 py-4 font-semibold">Nama Perusahaan</th>
+                <th className="px-6 py-4 font-semibold">Email Admin</th>
+                <th className="px-6 py-4 font-semibold">Agen Digunakan</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
-                <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                <th className="px-6 py-4 font-semibold text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -116,7 +116,7 @@ const TenantManagement = () => {
                   <td className="px-6 py-4 text-sm text-gray-600 font-medium">{tenant.agents} / 3</td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
-                      tenant.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      tenant.status === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                     }`}>
                       {tenant.status}
                     </span>
@@ -137,7 +137,7 @@ const TenantManagement = () => {
                             onClick={() => handleAction('edit', tenant)}
                             className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 flex items-center space-x-2 font-medium"
                           >
-                            <span>Edit Details</span>
+                            <span>Edit Detail</span>
                           </button>
                           <button 
                             onClick={() => handleAction('reset', tenant)}
@@ -149,13 +149,13 @@ const TenantManagement = () => {
                             onClick={() => handleAction('suspend', tenant)}
                             className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-orange-600 flex items-center space-x-2 font-medium border-t border-gray-50"
                           >
-                            <span>{tenant.status === 'Active' ? 'Suspend Account' : 'Activate Account'}</span>
+                            <span>{tenant.status === 'Aktif' ? 'Tangguhkan Akun' : 'Aktifkan Akun'}</span>
                           </button>
                           <button 
                             onClick={() => handleAction('delete', tenant)}
                             className="w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2 font-medium"
                           >
-                            <span>Delete Tenant</span>
+                            <span>Hapus Tenant</span>
                           </button>
                         </div>
                       </div>
@@ -180,14 +180,14 @@ const TenantManagement = () => {
             <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
             
             <div className="mb-8 pr-8">
-              <h2 className="text-2xl font-bold text-gray-900">Register New Tenant</h2>
-              <p className="text-gray-500 text-sm mt-1">Create an account for a new company/client (Admin Agent).</p>
+              <h2 className="text-2xl font-bold text-gray-900">Registrasi Tenant Baru</h2>
+              <p className="text-gray-500 text-sm mt-1">Buat akun untuk perusahaan/klien baru (Admin Agen).</p>
             </div>
 
             <form onSubmit={handleAddTenant} className="space-y-5">
               <div className="grid grid-cols-2 gap-4">
                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Company Name</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Nama Perusahaan</label>
                     <div className="relative">
                       <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                       <input 
@@ -195,14 +195,14 @@ const TenantManagement = () => {
                         type="text" 
                         value={formData.name}
                         onChange={(e) => setFormData({...formData, name: e.target.value})}
-                        placeholder="e.g. Toko Sukses Abadi" 
+                        placeholder="cth. Toko Sukses Abadi" 
                         className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm transition-all" 
                       />
                     </div>
                  </div>
 
                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Admin Email</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Email Admin</label>
                     <div className="relative">
                       <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                       <input 
@@ -210,14 +210,14 @@ const TenantManagement = () => {
                         type="email" 
                         value={formData.email}
                         onChange={(e) => setFormData({...formData, email: e.target.value})}
-                        placeholder="owner@company.com" 
+                        placeholder="owner@perusahaan.com" 
                         className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm transition-all" 
                       />
                     </div>
                  </div>
 
                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Password</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Kata Sandi</label>
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                       <input 
@@ -233,8 +233,8 @@ const TenantManagement = () => {
               </div>
 
               <div className="pt-6 flex gap-3 border-t border-gray-50 mt-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition-colors">Cancel</button>
-                <button type="submit" className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 transition-all transform active:scale-95">Create Tenant</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition-colors">Batal</button>
+                <button type="submit" className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 transition-all transform active:scale-95">Buat Tenant</button>
               </div>
             </form>
           </div>
