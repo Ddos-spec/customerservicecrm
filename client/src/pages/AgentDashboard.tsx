@@ -1,74 +1,113 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2, CheckCircle2, User, Clock3, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
+import api from '../lib/api';
 
 const AgentDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   
-  // State untuk status WA (Simulasi)
-  const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
-  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [pairingMethod, setPairingMethod] = useState<'qr' | 'code'>('qr');
-  const [qrState, setQrState] = useState<'generating' | 'ready' | 'scanned'>('generating');
+  // Real State
+  const [sessionData, setSessionData] = useState<any>(null);
+  const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [qrUrl, setQrUrl] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Settings State
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [pairingMethod, setPairingMethod] = useState<'qr' | 'code'>('qr');
   const [pairingCode, setPairingCode] = useState('');
-
-  // State Pengaturan Panggilan
   const [autoReject, setAutoReject] = useState(true);
-  const [autoReplyMessage, setAutoReplyMessage] = useState('Maaf, saat ini kami tidak dapat menerima panggilan. Silakan hubungi kami melalui chat teks di sini. Terima kasih.');
+  const [autoReplyMessage, setAutoReplyMessage] = useState('');
 
-  // Generate 50 Mock Chats
-  const allRecentChats = useMemo(() => Array.from({ length: 50 }, (_, i) => ({
+  // Fetch Session Data
+  const fetchSessionStatus = async () => {
+    setIsLoading(true);
+    try {
+        const { data } = await api.get('/api/v1/sessions');
+        // Admin Agent should only see their own session. Take the first one.
+        const mySession = data[0]; 
+        
+        if (mySession) {
+            setSessionData(mySession);
+            if (mySession.status === 'CONNECTED') {
+                setWaStatus('connected');
+            } else if (mySession.status === 'CONNECTING') {
+                setWaStatus('connecting');
+            } else {
+                setWaStatus('disconnected');
+            }
+
+            // QR Code Handling
+            if (mySession.qr) {
+                // Use a QR code API to render the string from backend
+                setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(mySession.qr)}`);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to fetch session:', error);
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+      if(!sessionData?.sessionId) return;
+      if(!confirm('Putuskan koneksi WA?')) return;
+      try {
+          await api.delete(`/api/v1/sessions/${sessionData.sessionId}`);
+          toast.success('Koneksi diputuskan.');
+          fetchSessionStatus();
+      } catch (e) {
+          toast.error('Gagal memutuskan koneksi.');
+      }
+  };
+
+  const handleCreateSession = async () => {
+      // Create a session for this user if none exists
+      const sessionId = user?.id || `user_${Date.now()}`;
+      try {
+          await api.post('/api/v1/sessions', { sessionId });
+          toast.success('Sesi inisialisasi dibuat. Silakan scan.');
+          fetchSessionStatus();
+          openQrModal('qr');
+      } catch (e: any) {
+          toast.error(e.response?.data?.error || 'Gagal membuat sesi.');
+      }
+  };
+
+  // --- Effects ---
+  useEffect(() => {
+      fetchSessionStatus();
+      // Poll status every 5 seconds
+      const interval = setInterval(fetchSessionStatus, 5000);
+      return () => clearInterval(interval);
+  }, []);
+
+
+  // --- MOCK DATA FOR CHATS (Placeholder) ---
+  const allRecentChats = useMemo(() => Array.from({ length: 5 }, (_, i) => ({
     id: i + 1,
-    name: i === 0 ? 'Budi Santoso' : i === 1 ? 'Siti Aminah' : `Pelanggan ${i + 1}`,
-    message: i % 2 === 0 ? 'Halo, apakah produk ini ready?' : 'Terima kasih atas bantuannya!',
-    time: i === 0 ? 'Baru saja' : `${i * 5} mnt lalu`,
-    status: i % 3 === 0 ? 'unread' : i % 3 === 1 ? 'replied' : 'read',
-    avatar: i % 3 === 0 ? 'bg-blue-100 text-blue-600' : i % 3 === 1 ? 'bg-green-100 text-green-600' : 'bg-purple-100 text-purple-600'
+    name: `Pelanggan Demo ${i + 1}`,
+    message: 'Chat history belum terhubung ke database.',
+    time: 'N/A',
+    status: 'read',
+    avatar: 'bg-gray-100 text-gray-600'
   })), []);
 
   const [chatPage, setChatPage] = useState(1);
   const chatsPerPage = 5;
   const totalChatPages = Math.ceil(allRecentChats.length / chatsPerPage);
-  const currentChats = allRecentChats.slice((chatPage - 1) * chatsPerPage, chatPage * chatsPerPage);
+  const currentChats = allRecentChats; // Mock small list
 
   const openQrModal = (method: 'qr' | 'code' = 'qr') => {
     setPairingMethod(method);
     setIsQrModalOpen(true);
-    if (method === 'qr') generateNewQr();
-    else generatePairingCode();
-  };
-
-  const generateNewQr = () => {
-    setQrState('generating');
-    setTimeout(() => {
-      const sessionId = `WA-SESSION-${Date.now()}`;
-      setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${sessionId}`);
-      setQrState('ready');
-    }, 1500);
-  };
-
-  const generatePairingCode = () => {
-    setQrState('generating');
-    setTimeout(() => {
-      const code = Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-      setPairingCode(code);
-      setQrState('ready');
-    }, 1500);
-  };
-
-  const handleSimulateScan = () => {
-    setQrState('scanned');
-    setTimeout(() => {
-      setWaStatus('connected');
-      setIsQrModalOpen(false);
-      toast.success('WhatsApp Gateway berhasil terhubung!');
-    }, 2000); 
+    if (!sessionData) handleCreateSession();
   };
 
   return (
@@ -106,7 +145,7 @@ const AgentDashboard = () => {
                                <span className="font-bold uppercase tracking-widest text-[10px]">{waStatus === 'connected' ? 'TERHUBUNG' : waStatus === 'connecting' ? 'MENGHUBUNGKAN' : 'TERPUTUS'}</span>
                             </span>
                             <span className="text-slate-500">•</span>
-                            <span className="text-slate-400 font-mono text-xs">+62 812-XXXX-XXXX</span>
+                            <span className="text-slate-400 font-mono text-xs">{sessionData?.sessionId || 'Belum ada sesi'}</span>
                          </div>
                       </div>
                    </div>
@@ -124,7 +163,7 @@ const AgentDashboard = () => {
                       
                       {waStatus === 'connected' ? (
                          <button 
-                           onClick={() => { setWaStatus('disconnected'); toast.warning('Gateway terputus'); }}
+                           onClick={handleDisconnect}
                            className="px-5 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-50 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-red-500/20"
                          >
                            Putuskan
@@ -137,13 +176,6 @@ const AgentDashboard = () => {
                             >
                               <QrCode size={16} />
                               <span>Scan QR</span>
-                            </button>
-                            <button 
-                              onClick={() => openQrModal('code')}
-                              className="flex items-center space-x-2 px-5 py-2.5 bg-white/10 text-white hover:bg-white/20 rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-white/10"
-                            >
-                              <Link2 size={16} />
-                              <span>Kode Pairing</span>
                             </button>
                          </div>
                       )}
@@ -160,8 +192,10 @@ const AgentDashboard = () => {
                               <span>Kesehatan Koneksi</span>
                             </h4>
                             <div className="space-y-4">
-                              <HealthMetric label="Status Layanan" status={waStatus === 'connected' ? 'Operasional' : 'Perlu Tindakan'} value={waStatus === 'connected' ? '100%' : '0%'} />
-                              <HealthMetric label="Sinkronisasi Terakhir" status="Baru saja" value="OK" />
+                              <div className="flex justify-between border-b border-blue-100/30 pb-2">
+                                <span className="text-xs font-bold text-gray-500">Status</span>
+                                <span className="text-xs font-bold text-blue-600">{sessionData?.detail || 'Menunggu inisialisasi...'}</span>
+                              </div>
                             </div>
                         </div>
                       </div>
@@ -172,15 +206,12 @@ const AgentDashboard = () => {
                                   <ShieldCheck size={40} />
                               </div>
                               <h4 className="font-black text-gray-900 text-lg">Terhubung & Aman</h4>
-                              <p className="text-gray-500 text-sm max-w-[240px] mt-2 text-balance">
-                                Panggilan suara otomatis {autoReject ? 'ditolak' : 'diterima'} sesuai pengaturan Anda.
-                              </p>
                             </>
                         ) : (
                             <>
                               <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-slate-400 mb-4 border-4 border-white shadow-xl italic font-black text-2xl">?</div>
-                              <h4 className="font-black text-gray-400 text-lg">Tidak Ada Koneksi Aktif</h4>
-                              <p className="text-gray-400 text-sm max-w-[240px] mt-2 italic text-balance">Silakan scan kode QR untuk menghubungkan kembali nomor WhatsApp Anda.</p>
+                              <h4 className="font-black text-gray-400 text-lg">Siap Hubungkan</h4>
+                              <p className="text-gray-400 text-sm max-w-[240px] mt-2 italic text-balance">Klik Scan QR untuk memulai.</p>
                             </>
                         )}
                       </div>
@@ -193,21 +224,18 @@ const AgentDashboard = () => {
 
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard title="Total Chat" value="24" subtitle="Hari Ini" icon={<MessageCircle className="text-blue-600" />} color="bg-blue-100" />
-        <StatCard title="Rata-rata Respon" value="1m 30d" subtitle="-15d vs kemarin" icon={<Clock className="text-purple-600" />} color="bg-purple-100" />
-        <StatCard title="Kepuasan Pelanggan" value="4.8/5" subtitle="Sangat Baik" icon={<Star className="text-yellow-600" />} color="bg-yellow-100" />
-        <StatCard title="Masalah Terselesaikan" value="92%" subtitle="Tingkat Sukses" icon={<ThumbsUp className="text-green-600" />} color="bg-green-100" />
+        <StatCard title="Total Chat" value="0" subtitle="Hari Ini" icon={<MessageCircle className="text-blue-600" />} color="bg-blue-100" />
+        <StatCard title="Rata-rata Respon" value="-" subtitle="Belum ada data" icon={<Clock className="text-purple-600" />} color="bg-purple-100" />
+        <StatCard title="Kepuasan Pelanggan" value="-" subtitle="Belum ada data" icon={<Star className="text-yellow-600" />} color="bg-yellow-100" />
+        <StatCard title="Masalah Terselesaikan" value="-" subtitle="Belum ada data" icon={<ThumbsUp className="text-green-600" />} color="bg-green-100" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* RECENT CHATS */}
+        {/* RECENT CHATS - MOCK ONLY FOR NOW */}
         <div className="lg:col-span-2 bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full">
            <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-gray-900 text-lg">Chat Terbaru</h3>
-              <button onClick={() => navigate('history')} className="text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1">
-                <span>Lihat Semua</span>
-                <ArrowRight size={14} />
-              </button>
+              <span className="text-xs text-orange-500 font-bold bg-orange-50 px-2 py-1 rounded">Simulasi Data</span>
            </div>
            
            <div className="space-y-4 flex-1">
@@ -223,63 +251,15 @@ const AgentDashboard = () => {
                       </div>
                       <p className="text-xs text-gray-500 truncate">{chat.message}</p>
                    </div>
-                   <div className="ml-4">
-                      {chat.status === 'unread' && <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></div>}
-                      {chat.status === 'replied' && <CheckCircle2 size={16} className="text-green-500" />}
-                   </div>
                 </div>
               ))}
-           </div>
-
-           <div className="mt-6 pt-4 border-t border-gray-50">
-              <Pagination 
-                currentPage={chatPage} 
-                totalPages={totalChatPages} 
-                onPageChange={setChatPage} 
-                totalItems={allRecentChats.length}
-                itemsPerPage={chatsPerPage}
-                colorTheme="blue"
-              />
            </div>
         </div>
 
          {/* QUEUE STATUS */}
          <div className="space-y-6">
-           <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm h-full">
-              <h3 className="font-bold text-gray-900 text-lg mb-6">Status Antrian</h3>
-              
-              <div className="space-y-4">
-                 <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                       <div className="p-2 bg-red-100 text-red-600 rounded-xl"><MessageCircle size={20} /></div>
-                       <div><p className="text-xs font-bold text-red-800 uppercase tracking-wide">Menunggu Respon</p><p className="text-[10px] text-red-600/70">Butuh perhatian segera</p></div>
-                    </div>
-                    <span className="text-2xl font-black text-red-600">5</span>
-                 </div>
-                 <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                       <div className="p-2 bg-blue-100 text-blue-600 rounded-xl"><User size={20} /></div>
-                       <div><p className="text-xs font-bold text-blue-800 uppercase tracking-wide">Sedang Ditangani</p><p className="text-[10px] text-blue-600/70">Chat aktif berlangsung</p></div>
-                    </div>
-                    <span className="text-2xl font-black text-blue-600">8</span>
-                 </div>
-                 <div className="bg-green-50 p-4 rounded-2xl border border-green-100 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                       <div className="p-2 bg-green-100 text-green-600 rounded-xl"><CheckCircle2 size={20} /></div>
-                       <div><p className="text-xs font-bold text-green-800 uppercase tracking-wide">Selesai Hari Ini</p><p className="text-[10px] text-green-600/70">Tiket ditutup</p></div>
-                    </div>
-                    <span className="text-2xl font-black text-green-600">42</span>
-                 </div>
-              </div>
-
-              <div className="mt-8 pt-6 border-t border-gray-100">
-                 <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                    <span>Rata-rata Waktu Tunggu</span>
-                    <span className="font-bold text-gray-900">4m 12d</span>
-                 </div>
-                 <div className="w-full bg-gray-100 rounded-full h-2"><div className="bg-orange-400 h-2 rounded-full" style={{ width: '35%' }}></div></div>
-                 <p className="text-[10px] text-orange-500 mt-2 flex items-center"><Clock3 size={12} className="mr-1" /> Sedikit lebih lambat dari biasanya</p>
-              </div>
+           <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm h-full flex items-center justify-center text-center">
+              <p className="text-gray-400 text-sm">Menunggu integrasi modul Chat History...</p>
            </div>
          </div>
       </div>
@@ -330,7 +310,7 @@ const AgentDashboard = () => {
 
                  <button 
                    onClick={() => {
-                      toast.success('Pengaturan balasan berhasil disimpan!');
+                      toast.success('Pengaturan balasan berhasil disimpan! (Simulasi)');
                       setIsSettingsModalOpen(false);
                    }}
                    className="w-full py-4 bg-slate-900 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-xl shadow-slate-200 hover:bg-blue-600 transition-all active:scale-95"
@@ -342,7 +322,7 @@ const AgentDashboard = () => {
         </div>
       )}
 
-      {/* QR Code / Pairing Modal (REALISTIC) */}
+      {/* QR Code Modal - Connected to Real Backend Data */}
       {isQrModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
            <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-10 relative animate-in zoom-in-95 duration-200 text-center border border-white/20">
@@ -353,66 +333,28 @@ const AgentDashboard = () => {
                     {pairingMethod === 'qr' ? <QrCode size={32} /> : <Smartphone size={32} />}
                  </div>
                  <h2 className="text-2xl font-black text-gray-900 tracking-tight">
-                    {pairingMethod === 'qr' ? 'Scan Kode QR' : 'Kode Pairing'}
+                    Scan Kode QR
                  </h2>
                  <p className="text-gray-500 text-sm mt-2 px-4 leading-relaxed">
-                    {pairingMethod === 'qr' 
-                      ? 'Buka WhatsApp > Setelan > Perangkat Tertaut > Tautkan Perangkat'
-                      : 'Buka WhatsApp > Setelan > Perangkat Tertaut > Tautkan dengan Nomor Telepon'}
+                    Buka WhatsApp {'>'} Perangkat Tertaut {'>'} Tautkan Perangkat
                  </p>
               </div>
 
               <div className="bg-gray-50 p-6 rounded-[2rem] border-2 border-dashed border-gray-200 flex items-center justify-center mb-8 relative min-h-[280px] shadow-inner">
-                 {qrState === 'generating' ? (
-                    <div className="flex flex-col items-center py-8">
-                       <RefreshCw className="animate-spin text-indigo-600 mb-4" size={40} />
-                       <p className="text-sm font-black text-indigo-600 animate-pulse uppercase tracking-widest">Menyiapkan...</p>
-                    </div>
-                 ) : qrState === 'scanned' ? (
-                    <div className="flex flex-col items-center py-8 animate-in zoom-in duration-500">
-                       <div className="w-20 h-20 bg-green-500 text-white rounded-full flex items-center justify-center mb-4 shadow-xl shadow-green-200">
-                         <ShieldCheck size={40} />
-                       </div>
-                       <p className="text-lg font-black text-gray-900 uppercase">Terotentikasi</p>
-                       <p className="text-xs text-gray-500 mt-1">Membuat jalur aman...</p>
-                    </div>
-                 ) : pairingMethod === 'qr' ? (
-                    <div className="relative group cursor-pointer bg-white p-4 rounded-3xl shadow-sm" onClick={generateNewQr}>
+                 {qrUrl ? (
+                    <div className="relative group cursor-pointer bg-white p-4 rounded-3xl shadow-sm">
                        <img src={qrUrl} alt="Scan Saya" className="w-56 h-56 rounded-lg mix-blend-multiply" />
                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="w-52 h-1 bg-indigo-500/40 absolute top-0 animate-[scan_3s_ease-in-out_infinite]" />
                        </div>
                     </div>
                  ) : (
-                    <div className="flex flex-col items-center">
-                       <div className="flex space-x-2 mb-4">
-                          {pairingCode.split('-').map((part, idx) => (
-                             <div key={idx} className="bg-white border-2 border-indigo-100 rounded-2xl px-4 py-3 text-2xl font-black text-indigo-600 shadow-sm font-mono tracking-[0.2em]">
-                                {part}
-                             </div>
-                          ))}
-                       </div>
-                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Masukkan kode ini di ponsel Anda</p>
+                    <div className="flex flex-col items-center py-8">
+                       <RefreshCw className="animate-spin text-indigo-600 mb-4" size={40} />
+                       <p className="text-sm font-black text-indigo-600 animate-pulse uppercase tracking-widest">Menunggu QR dari Server...</p>
                     </div>
                  )}
               </div>
-
-              {qrState === 'ready' && (
-                <div className="space-y-3">
-                   <button 
-                     onClick={handleSimulateScan}
-                     className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95"
-                   >
-                     Simulasikan Koneksi
-                   </button>
-                   <button 
-                     onClick={pairingMethod === 'qr' ? generateNewQr : generatePairingCode}
-                     className="text-gray-400 text-[10px] font-bold uppercase tracking-widest hover:text-indigo-600 transition-colors"
-                   >
-                     Buat Ulang Kode
-                   </button>
-                </div>
-              )}
            </div>
         </div>
       )}
@@ -420,29 +362,13 @@ const AgentDashboard = () => {
   );
 };
 
-const HealthMetric = ({ label, status, value }: any) => (
-  <div className="flex items-center justify-between border-b border-blue-100/30 pb-3 last:border-0 last:pb-0">
-     <div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</p>
-        <p className="text-sm font-bold text-gray-900">{status}</p>
-     </div>
-     <span className="text-xs font-mono bg-white px-2 py-1 rounded-lg border border-blue-100 text-blue-600 font-bold">{value}</span>
-  </div>
-);
-
 const StatCard = ({ title, value, subtitle, icon, color }: any) => (
   <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
     <div className="flex justify-between items-start mb-4">
       <div className={`p-3 rounded-xl ${color}`}>
         {icon}
       </div>
-      {subtitle.includes('+') ? (
-        <span className="text-green-600 bg-green-50 px-2 py-1 rounded-lg text-xs font-bold">{subtitle}</span>
-      ) : subtitle.includes('-') ? (
-         <span className="text-green-600 bg-green-50 px-2 py-1 rounded-lg text-xs font-bold">{subtitle}</span>
-      ) : (
-         <span className="text-gray-500 bg-gray-50 px-2 py-1 rounded-lg text-xs font-bold">{subtitle}</span>
-      )}
+      <span className="text-gray-500 bg-gray-50 px-2 py-1 rounded-lg text-xs font-bold">{subtitle}</span>
     </div>
     <h3 className="text-3xl font-bold text-gray-900 mb-1 leading-tight tracking-tighter">{value}</h3>
     <p className="text-gray-500 text-sm font-medium">{title}</p>

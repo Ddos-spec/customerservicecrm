@@ -1,33 +1,19 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { TrendingUp, Users, Server, Activity, DollarSign, ArrowRight, Smartphone, Terminal, Settings, Trash2, RefreshCw, ShieldCheck, QrCode, ArrowLeft, Globe, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Pagination from '../components/Pagination';
+import api from '../lib/api';
+import { toast } from 'sonner';
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'sessions' | 'logs' | 'config'>('sessions');
   const [selectedSession, setSelectedSession] = useState<any>(null);
 
-  // Mock Sessions Data (100 Items)
-  const allSessions = useMemo(() => Array.from({ length: 100 }, (_, i) => ({
-    id: i === 0 ? 'TokoMaju_Main' : `Session_Bot_${i}`,
-    status: Math.random() > 0.2 ? 'connected' : 'disconnected',
-    phone: `+62 812-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
-    uptime: `${Math.floor(Math.random() * 7)}d ${Math.floor(Math.random() * 24)}h`,
-    apiKey: `wa_live_${Math.random().toString(36).substring(7)}...`
-  })), []);
-
-  // Mock Logs Data (200 Items)
-  const allLogs = useMemo(() => Array.from({ length: 200 }, (_, i) => {
-    const types = ['INFO', 'WARN', 'SYS', 'ERR'];
-    const type = types[Math.floor(Math.random() * types.length)];
-    return {
-      id: i,
-      time: new Date(Date.now() - i * 60000).toLocaleTimeString(),
-      type,
-      msg: type === 'INFO' ? `Pesan baru diterima dari +628...` : type === 'WARN' ? 'Rate limit warning' : 'System webhook event'
-    };
-  }), []);
+  // Real Data State
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Pagination State
   const [sessionPage, setSessionPage] = useState(1);
@@ -35,11 +21,82 @@ const SuperAdminDashboard = () => {
   const sessionsPerPage = 9;
   const logsPerPage = 15;
 
-  const currentSessions = allSessions.slice((sessionPage - 1) * sessionsPerPage, sessionPage * sessionsPerPage);
-  const currentLogs = allLogs.slice((logPage - 1) * logsPerPage, logPage * logsPerPage);
+  // --- API FETCH FUNCTIONS ---
+
+  const fetchSessions = async () => {
+    setIsLoading(true);
+    try {
+      const { data } = await api.get('/api/v1/sessions');
+      // Backend returns array of session objects
+      setSessions(data || []); 
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+      toast.error('Gagal memuat daftar sesi.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchLogs = async () => {
+    // Backend endpoint for logs
+    try {
+      const { data } = await api.get('/admin/test-logs');
+      if (data && data.logs) {
+        setLogs(data.logs.reverse()); // Show newest first
+      }
+    } catch (error) {
+      console.error('Failed to fetch logs:', error);
+    }
+  };
+
+  const handleCreateSession = async () => {
+    const sessionId = `Session_${Date.now().toString().slice(-4)}`; // Simple ID Gen
+    if(!confirm(`Buat sesi baru dengan ID: ${sessionId}?`)) return;
+
+    try {
+      await api.post('/api/v1/sessions', { sessionId });
+      toast.success(`Sesi ${sessionId} berhasil dibuat!`);
+      fetchSessions(); // Refresh list
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Gagal membuat sesi.');
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    if(!confirm(`Yakin hapus sesi ${sessionId}? Ini akan memutuskan koneksi WA.`)) return;
+
+    try {
+      await api.delete(`/api/v1/sessions/${sessionId}`);
+      toast.success('Sesi berhasil dihapus.');
+      if(selectedSession?.sessionId === sessionId) setSelectedSession(null);
+      fetchSessions();
+    } catch (error: any) {
+        toast.error('Gagal menghapus sesi.');
+    }
+  };
+
+  // --- EFFECTS ---
+
+  useEffect(() => {
+    fetchSessions();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'logs') {
+        fetchLogs();
+    }
+  }, [activeTab]);
+
+
+  // --- PAGINATION LOGIC ---
+  const currentSessions = sessions.slice((sessionPage - 1) * sessionsPerPage, sessionPage * sessionsPerPage);
+  const currentLogs = logs.slice((logPage - 1) * logsPerPage, logPage * logsPerPage);
 
   const handleBack = () => setSelectedSession(null);
 
+  // Helper to format uptime (since backend doesn't give precise duration, we mock or use created time if available)
+  // Backend returns: { sessionId, status, detail, qr, token, owner }
+  
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -62,7 +119,7 @@ const SuperAdminDashboard = () => {
       {/* Main Stats Grid */}
       {!selectedSession && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard title="Total Pendapatan" value="Rp 185.450.000" trend="+12%" icon={<DollarSign className="text-emerald-600" />} color="bg-emerald-50" />
+          <StatCard title="Total Sesi" value={sessions.length.toString()} trend="Live" icon={<Smartphone className="text-emerald-600" />} color="bg-emerald-50" />
           <StatCard title="Tenant Aktif" value="45" trend="+3" icon={<Users className="text-green-600" />} color="bg-green-50" />
           <StatCard title="Total Pesan (WA)" value="854rb" trend="+24%" icon={<Server className="text-teal-600" />} color="bg-teal-50" />
           <StatCard title="Uptime Gateway" value="99.9%" trend="Stabil" icon={<Activity className="text-lime-600" />} color="bg-lime-50" />
@@ -84,7 +141,7 @@ const SuperAdminDashboard = () => {
               )}
               <div>
                  <h3 className="text-white font-black tracking-tight text-lg">
-                    {selectedSession ? `Sesi: ${selectedSession.id}` : 'Mesin WhatsApp Gateway'}
+                    {selectedSession ? `Sesi: ${selectedSession.sessionId}` : 'Mesin WhatsApp Gateway'}
                  </h3>
                  <div className="flex items-center space-x-2 text-xs text-emerald-200/80">
                     <span className="flex items-center space-x-1">
@@ -113,22 +170,25 @@ const SuperAdminDashboard = () => {
                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="space-y-6">
                        <div className="bg-slate-50 border border-gray-100 rounded-[2rem] p-8 text-center">
-                          <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-xl ${selectedSession.status === 'connected' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-500'}`}>
-                             {selectedSession.status === 'connected' ? <ShieldCheck size={48} /> : <WifiOff size={48} />}
+                          <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-xl ${selectedSession.status === 'CONNECTED' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-500'}`}>
+                             {selectedSession.status === 'CONNECTED' ? <ShieldCheck size={48} /> : <WifiOff size={48} />}
                           </div>
-                          <h4 className="font-black text-gray-900 text-xl uppercase tracking-tighter">{selectedSession.status === 'connected' ? 'TERHUBUNG' : 'TERPUTUS'}</h4>
-                          <p className="text-gray-500 text-sm mt-1 font-mono">{selectedSession.phone}</p>
+                          <h4 className="font-black text-gray-900 text-xl uppercase tracking-tighter">{selectedSession.status}</h4>
+                          <p className="text-gray-500 text-sm mt-1 font-mono">{selectedSession.detail}</p>
                           <div className="mt-8 grid grid-cols-2 gap-3">
                              <button className="flex items-center justify-center space-x-2 py-3 bg-green-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-green-100 hover:bg-green-700 transition-all">
                                 <RefreshCw size={14} /><span>Restart</span>
                              </button>
-                             <button className="flex items-center justify-center space-x-2 py-3 bg-white text-red-500 border border-red-100 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-red-50 transition-all">
+                             <button 
+                                onClick={() => handleDeleteSession(selectedSession.sessionId)}
+                                className="flex items-center justify-center space-x-2 py-3 bg-white text-red-500 border border-red-100 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-red-50 transition-all"
+                             >
                                 <Trash2 size={14} /><span>Hapus</span>
                              </button>
                           </div>
                        </div>
                     </div>
-                    {/* ... (Configuration Part - Simplified for brevity) ... */}
+                    {/* ... (Configuration Part) ... */}
                     <div className="lg:col-span-2 space-y-6">
                         <div className="bg-white border border-gray-100 rounded-3xl p-8 shadow-sm">
                             <h5 className="font-black text-gray-900 mb-6 flex items-center space-x-2 uppercase tracking-tight">
@@ -148,15 +208,22 @@ const SuperAdminDashboard = () => {
               activeTab === 'sessions' && (
                 <div className="space-y-4 animate-in fade-in duration-500">
                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="font-black text-gray-900 text-lg tracking-tight uppercase">Armada Sesi Aktif ({allSessions.length})</h4>
-                      <button className="text-[10px] font-black uppercase tracking-widest text-green-600 hover:bg-green-50 px-4 py-2 rounded-xl transition-all flex items-center space-x-2 border border-green-100 shadow-sm">
-                         <RefreshCw size={14} className="animate-spin-slow" />
+                      <h4 className="font-black text-gray-900 text-lg tracking-tight uppercase">Armada Sesi Aktif ({sessions.length})</h4>
+                      <button 
+                        onClick={fetchSessions}
+                        disabled={isLoading}
+                        className="text-[10px] font-black uppercase tracking-widest text-green-600 hover:bg-green-50 px-4 py-2 rounded-xl transition-all flex items-center space-x-2 border border-green-100 shadow-sm disabled:opacity-50"
+                      >
+                         <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
                          <span>Sinkronisasi</span>
                       </button>
                    </div>
                    
                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-                      <div className="border-2 border-dashed border-gray-200 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center hover:border-green-400 hover:bg-green-50/30 transition-all cursor-pointer group shadow-sm">
+                      <div 
+                        onClick={handleCreateSession}
+                        className="border-2 border-dashed border-gray-200 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center hover:border-green-400 hover:bg-green-50/30 transition-all cursor-pointer group shadow-sm"
+                      >
                          <div className="w-16 h-16 bg-green-50 text-green-600 rounded-3xl flex items-center justify-center mb-4 group-hover:scale-110 group-hover:rotate-12 transition-all shadow-lg shadow-green-100/50">
                             <QrCode size={32} />
                          </div>
@@ -164,19 +231,19 @@ const SuperAdminDashboard = () => {
                       </div>
 
                       {currentSessions.map((session) => (
-                         <div key={session.id} className="bg-white border border-gray-100 rounded-[2.5rem] p-6 hover:shadow-2xl hover:shadow-green-100/50 transition-all relative group">
-                            <div className={`absolute top-6 right-6 flex items-center space-x-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${session.status === 'connected' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                               <div className={`w-1.5 h-1.5 rounded-full ${session.status === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                               <span>{session.status === 'connected' ? 'TERHUBUNG' : 'TERPUTUS'}</span>
+                         <div key={session.sessionId} className="bg-white border border-gray-100 rounded-[2.5rem] p-6 hover:shadow-2xl hover:shadow-green-100/50 transition-all relative group">
+                            <div className={`absolute top-6 right-6 flex items-center space-x-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${session.status === 'CONNECTED' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                               <div className={`w-1.5 h-1.5 rounded-full ${session.status === 'CONNECTED' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                               <span>{session.status}</span>
                             </div>
                             
                             <div className="flex items-center space-x-4 mb-6">
-                               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 ${session.status === 'connected' ? 'bg-green-600 text-white shadow-green-200' : 'bg-slate-100 text-slate-400'}`}>
+                               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 ${session.status === 'CONNECTED' ? 'bg-green-600 text-white shadow-green-200' : 'bg-slate-100 text-slate-400'}`}>
                                   <Smartphone size={28} />
                                </div>
                                <div>
-                                  <h5 className="font-black text-gray-900 text-lg tracking-tighter leading-none">{session.id}</h5>
-                                  <p className="text-xs text-gray-400 font-mono mt-1.5">{session.phone}</p>
+                                  <h5 className="font-black text-gray-900 text-lg tracking-tighter leading-none">{session.sessionId}</h5>
+                                  <p className="text-xs text-gray-400 font-mono mt-1.5 truncate max-w-[120px]">{session.detail}</p>
                                </div>
                             </div>
 
@@ -191,9 +258,9 @@ const SuperAdminDashboard = () => {
 
                    <Pagination 
                       currentPage={sessionPage} 
-                      totalPages={Math.ceil(allSessions.length / sessionsPerPage)} 
+                      totalPages={Math.ceil(sessions.length / sessionsPerPage)} 
                       onPageChange={setSessionPage} 
-                      totalItems={allSessions.length}
+                      totalItems={sessions.length}
                       itemsPerPage={sessionsPerPage}
                       colorTheme="green"
                    />
@@ -206,23 +273,26 @@ const SuperAdminDashboard = () => {
               <div className="animate-in fade-in duration-500 flex flex-col h-full">
                  <div className="flex justify-between items-center mb-4">
                     <h4 className="font-black text-gray-900 uppercase tracking-tight">Log Infrastruktur Global</h4>
+                    <button onClick={fetchLogs} className="text-xs font-bold text-green-600 hover:text-green-800">Refresh</button>
                  </div>
                  <div className="bg-slate-950 rounded-3xl p-6 font-mono text-[11px] h-[450px] overflow-y-auto shadow-2xl border border-slate-800 custom-scrollbar mb-4">
-                    {currentLogs.map((log) => (
-                       <div key={log.id} className="mb-2 flex space-x-4 hover:bg-white/5 p-1 rounded-lg px-3 transition-colors">
-                          <span className="text-slate-600 select-none">[{log.time}]</span>
-                          <span className={`font-black w-12 text-center rounded px-1.5 ${log.type === 'INFO' ? 'bg-blue-500/10 text-blue-400' : log.type === 'WARN' ? 'bg-yellow-500/10 text-yellow-400' : log.type === 'SYS' ? 'bg-purple-500/10 text-purple-400' : 'text-slate-300'}`}>
-                             {log.type}
+                    {currentLogs.length > 0 ? currentLogs.map((log, idx) => (
+                       <div key={idx} className="mb-2 flex space-x-4 hover:bg-white/5 p-1 rounded-lg px-3 transition-colors">
+                          <span className="text-slate-600 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                          <span className={`font-black w-16 text-center rounded px-1.5 bg-blue-500/10 text-blue-400`}>
+                             LOG
                           </span>
-                          <span className="text-slate-300 flex-1">{log.msg}</span>
+                          <span className="text-slate-300 flex-1">{log.message}</span>
                        </div>
-                    ))}
+                    )) : (
+                        <p className="text-slate-500 text-center italic mt-10">Tidak ada log tersedia.</p>
+                    )}
                  </div>
                  <Pagination 
                     currentPage={logPage} 
-                    totalPages={Math.ceil(allLogs.length / logsPerPage)} 
+                    totalPages={Math.ceil(logs.length / logsPerPage)} 
                     onPageChange={setLogPage} 
-                    totalItems={allLogs.length}
+                    totalItems={logs.length}
                     itemsPerPage={logsPerPage}
                     colorTheme="green"
                  />
