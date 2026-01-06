@@ -1,16 +1,12 @@
 import { useState, useEffect } from 'react';
 import { 
-  TrendingUp, Users, Server, Activity, ArrowRight, Smartphone, 
-  Terminal, Settings, Trash2, RefreshCw, ShieldCheck, QrCode, 
-  ArrowLeft, Globe, WifiOff, MessageSquare, Database
+  Users, Server, Activity, Smartphone, 
+  Terminal, Trash2, RefreshCw, 
+  Globe, MessageSquare, Database
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
-import { toast } from 'sonner';
 
 const SuperAdminDashboard = () => {
-  const navigate = useNavigate();
-  
   // Real States
   const [sessions, setSessions] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);

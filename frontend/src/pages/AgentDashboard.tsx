@@ -1,12 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, 
-  QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Settings,
-  TrendingUp, Users, CheckCircle2, MessageSquare
+  Clock, Star, QrCode, Wifi, X, RefreshCw, Activity, Settings,
+  CheckCircle2, MessageSquare
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { toast } from 'sonner';
 import api from '../lib/api';
 
 const AgentDashboard = () => {
@@ -14,7 +12,7 @@ const AgentDashboard = () => {
   const { user } = useAuthStore();
   
   // Real State for WA Connection
-  const [sessionData, setSessionData] = useState<any>(null);
+  const [, setSessionData] = useState<any>(null);
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [qrUrl, setQrUrl] = useState('');
 
