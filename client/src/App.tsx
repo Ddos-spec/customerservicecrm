@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import MainLayout from './layouts/MainLayout';
@@ -12,6 +13,46 @@ import { Toaster } from 'sonner';
 import AgentDashboard from './pages/AgentDashboard';
 
 function App() {
+  
+  // --- CONTENT PROTECTION LOGIC ---
+  useEffect(() => {
+    // 1. Disable Right Click
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    // 2. Disable Keyboard Shortcuts (Inspect, Save, Print, Source)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === 'F12' || 
+        (e.ctrlKey && (e.key === 's' || e.key === 'S')) || // Save
+        (e.ctrlKey && (e.key === 'u' || e.key === 'U')) || // View Source
+        (e.ctrlKey && (e.key === 'p' || e.key === 'P')) || // Print
+        (e.ctrlKey && e.shiftKey && (e.key === 'i' || e.key === 'I')) || // DevTools
+        (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) || // DevTools
+        (e.ctrlKey && e.shiftKey && (e.key === 'j' || e.key === 'J'))    // DevTools
+      ) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    // 3. Disable Image Dragging
+    const handleDragStart = (e: DragEvent) => {
+        e.preventDefault();
+    };
+
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('dragstart', handleDragStart);
+
+    return () => {
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('dragstart', handleDragStart);
+    };
+  }, []);
+
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Toaster position="top-right" expand={true} richColors />

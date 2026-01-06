@@ -144,19 +144,10 @@ const Login = () => {
             </div>
 
             <div className="mt-6 space-y-3">
-              {/* 1. Super Admin */}
-              <button onClick={() => handleDemoLogin(superAdminUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-green-500 bg-white group transition-all">
-                <span className="text-xs font-bold text-gray-800">1. Super Admin (Pemilik Platform)</span>
-                <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded group-hover:bg-green-100 group-hover:text-green-700">Login</span>
-              </button>
-
-              {/* Connector */}
-              <div className="flex justify-center -my-2"><div className="h-4 w-px bg-gray-300"></div></div>
-
               {/* 2. Admin Agent */}
               <button onClick={() => handleDemoLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-blue-500 bg-white group transition-all">
                 <div className="text-left">
-                  <span className="block text-xs font-bold text-gray-800">2. Admin Agen (Pemilik Toko)</span>
+                  <span className="block text-xs font-bold text-gray-800">1. Admin Agen (Pemilik Toko)</span>
                   <span className="text-[10px] text-gray-400">Toko Maju Jaya</span>
                 </div>
                 <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded group-hover:bg-blue-100 group-hover:text-blue-700">Login</span>
@@ -172,7 +163,7 @@ const Login = () => {
                   className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-gray-700">3. User Agents (Karyawan)</span>
+                    <span className="text-xs font-bold text-gray-700">2. User Agents (Karyawan)</span>
                     <span className="text-[10px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">3 Agen</span>
                   </div>
                   {showAgents ? <ChevronUp size={16} className="text-gray-500"/> : <ChevronDown size={16} className="text-gray-500"/>}

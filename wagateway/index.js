@@ -653,7 +653,7 @@ if (!fs.existsSync(mediaDir)) {
 app.set('trust proxy', 1);
 
 app.use(bodyParser.json({ limit: '10mb' })); // Increased limit to handle larger requests
-app.use('/admin', express.static(path.join(__dirname, 'admin')));
+// app.use('/admin', express.static(path.join(__dirname, 'admin'))); // REMOVED: Legacy UI
 app.use('/media', express.static(mediaDir)); // Serve uploaded media
 app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Increased limit for urlencoded data
 app.use(
@@ -742,24 +742,14 @@ app.use(session({
     }
 }));
 
-// FORCE ADMIN AUTH MIDDLEWARE (Simplified Mode)
-// app.use((req, res, next) => {
-//     if (!req.session) req.session = {};
-//     req.session.adminAuthed = true;
-//     req.session.userEmail = 'admin@localhost';
-//     req.session.userRole = 'admin';
-//     req.session.userId = 'system-admin';
-//     next();
-// });
-
-// Redirect root to admin login
+// API ONLY - Root returns status
 app.get('/', (req, res) => {
-    res.redirect('/admin/login.html');
-});
-
-// Serve API documentation
-app.get('/api-documentation', (req, res) => {
-    res.sendFile(path.join(__dirname, 'api_documentation.html'));
+    res.status(200).json({
+        service: 'WhatsApp Gateway Engine',
+        status: 'running',
+        version: '1.0.0 (Headless)',
+        timestamp: new Date().toISOString()
+    });
 });
 
 app.get('/healthz', async (req, res) => {
@@ -777,16 +767,9 @@ app.get('/healthz', async (req, res) => {
     });
 });
 
-// Redirect old URL to new one
-app.get('/api_documentation.md', (req, res) => {
-    res.redirect('/api-documentation');
-});
-
 // Admin login endpoint - supports both legacy password and new email/password
 app.post('/admin/login', express.json(), async (req, res) => {
     const { email, password } = req.body;
-    const ip = req.ip;
-    const userAgent = req.headers['user-agent'];
     
     // Legacy support: if only password is provided, try admin password
     if (!email && password === ADMIN_PASSWORD) {
@@ -818,12 +801,12 @@ app.post('/admin/login', express.json(), async (req, res) => {
     res.status(401).json({ success: false, message: 'Invalid credentials' });
 });
 
-// Middleware to protect admin dashboard
+// Middleware to protect admin dashboard (API ONLY MODE)
 function requireAdminAuth(req, res, next) {
     if (req.session && req.session.adminAuthed) {
         return next();
     }
-    res.redirect('/admin/login.html');
+    res.status(401).json({ error: 'Unauthorized', message: 'Please login via /admin/login' });
 }
 
 // Middleware to check if user is admin role
@@ -841,21 +824,10 @@ function getCurrentUser(req) {
     };
 }
 
-// Serve login page only if not authenticated
-app.get('/admin/login.html', (req, res) => {
-    if (req.session && req.session.adminAuthed) {
-        return res.redirect('/admin/dashboard.html');
-    }
-    res.sendFile(path.join(__dirname, 'admin', 'login.html'));
-});
-
-// Protect dashboard and /admin route
-app.get('/admin/dashboard.html', requireAdminAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin', 'dashboard.html'));
-});
-app.get('/admin', requireAdminAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin', 'dashboard.html'));
-});
+// Legacy UI Routes REMOVED
+// app.get('/admin/login.html', ...)
+// app.get('/admin/dashboard.html', ...)
+// app.get('/admin', ...)
 
 // Admin pages removed (users, activities, campaigns)
 
