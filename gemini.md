@@ -42,6 +42,7 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 ---
 
 ## 📝 Catatan Teknis
-- **Backend Port:** 3000
-- **Frontend Port:** 5173
-- **Login:** Gunakan Admin Agent / User Agent untuk demo.
+- **Backend Port:** Default 3000 (Dapat diubah via `.env` variabel `PORT`)
+- **Frontend Port:** Default 5173 (Dapat diubah via `vite.config.ts`)
+- **Login Demo:** Gunakan Admin Agent / User Agent untuk keperluan presentasi.
+- **Production URL:** Gunakan `VITE_API_URL` di Vercel untuk menghubungkan ke IP/Domain VPS.

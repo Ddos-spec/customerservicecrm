@@ -77,8 +77,31 @@ app.use(cors({
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// --- REDIS SETUP ---
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'; // Default to localhost if not set
+// --- SECURITY CHECKS ---
+const requiredEnvVars = [
+    'SESSION_SECRET',
+    'ENCRYPTION_KEY',
+    // 'ADMIN_DASHBOARD_PASSWORD' // Optional if using new auth
+];
+
+const missingVars = requiredEnvVars.filter(key => !process.env[key]);
+
+if (missingVars.length > 0) {
+    console.error('❌ FATAL SECURITY ERROR: Missing required environment variables:');
+    missingVars.forEach(key => console.error(`   - ${key}`));
+    console.error('\nPlease create a .env file in the backend directory with these values.');
+    console.error('Example: SESSION_SECRET=complex_random_string_here');
+    process.exit(1); // Force crash to prevent running with insecure defaults
+}
+
+// Validate Encryption Key Length
+if (process.env.ENCRYPTION_KEY.length !== 64) {
+    console.error('❌ FATAL SECURITY ERROR: ENCRYPTION_KEY must be exactly 64 characters (hex format).');
+    process.exit(1);
+}
+// -----------------------
+
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const redisClient = createClient({ url: REDIS_URL });
 const redisSessionClient = createClient({
     url: REDIS_URL,
@@ -135,7 +158,7 @@ const sessionLockIntervals = new Map(); // Map<sessionId, Interval>
 const callResponseTracker = new Map(); // Map<sessionId:callId, { rejectHandled, replyHandled, timer }>
 // ------------------------------------
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '0000000000000000000000000000000000000000000000000000000000000000';
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // Validated above
 const TOKENS_FILE = path.join(__dirname, 'session_tokens.json');
 const ENCRYPTED_TOKENS_FILE = path.join(__dirname, 'session_tokens.enc');
 
@@ -732,7 +755,7 @@ const sessionStore = new RedisStore({
 
 app.use(session({
     store: sessionStore,
-    secret: process.env.SESSION_SECRET || 'change_this_secret',
+    secret: process.env.SESSION_SECRET, // Validated at startup
     resave: false,
     saveUninitialized: false,
     cookie: { 
