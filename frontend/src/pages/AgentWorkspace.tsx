@@ -107,10 +107,10 @@ const AgentWorkspace = () => {
   );
 
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-white overflow-hidden">
+    <div className="flex h-[calc(100vh-64px)] bg-white dark:bg-slate-900 overflow-hidden transition-colors duration-300">
       {/* Left Sidebar - Chat List */}
-      <div className="w-80 border-r border-gray-100 flex flex-col shrink-0">
-        <div className="p-4 border-b border-gray-50">
+      <div className="w-80 border-r border-gray-100 dark:border-slate-800 flex flex-col shrink-0 bg-white dark:bg-slate-900">
+        <div className="p-4 border-b border-gray-50 dark:border-slate-800">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
@@ -118,29 +118,29 @@ const AgentWorkspace = () => {
               placeholder="Cari chat..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all"
+              className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+        <div className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-800">
           {filteredContacts.map((contact) => (
             <div
               key={contact.id}
               onClick={() => handleSelectContact(contact)}
-              className={`p-4 hover:bg-blue-50/50 cursor-pointer transition-colors flex items-center space-x-3 ${selectedContact.id === contact.id ? 'bg-blue-50' : ''}`}
+              className={`p-4 hover:bg-blue-50/50 dark:hover:bg-slate-800 cursor-pointer transition-colors flex items-center space-x-3 ${selectedContact.id === contact.id ? 'bg-blue-50 dark:bg-slate-800' : ''}`}
             >
               <div className="relative">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
+                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-xs">
                   {contact.name.split(' ').map(n => n[0]).join('')}
                 </div>
-                {contact.online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>}
+                {contact.online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full"></div>}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between">
-                  <h4 className="text-xs font-bold text-gray-900 truncate">{contact.name}</h4>
-                  <span className="text-[10px] text-gray-400">{contact.time}</span>
+                  <h4 className="text-xs font-bold text-gray-900 dark:text-white truncate">{contact.name}</h4>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">{contact.time}</span>
                 </div>
-                <p className="text-[10px] text-gray-500 truncate mt-0.5">{contact.lastMsg}</p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{contact.lastMsg}</p>
               </div>
               {contact.unread > 0 && (
                 <div className="bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
@@ -153,42 +153,42 @@ const AgentWorkspace = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-gray-50/50">
+      <div className="flex-1 flex flex-col bg-gray-50/50 dark:bg-slate-900/50">
         {/* Chat Header */}
-        <div className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between">
+        <div className="h-16 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
+            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-xs">
               {selectedContact.name.split(' ').map(n => n[0]).join('')}
             </div>
             <div>
-              <h3 className="text-sm font-bold text-gray-900">{selectedContact.name}</h3>
-              <p className={`text-[10px] font-medium ${selectedContact.online ? 'text-emerald-500' : 'text-gray-400'}`}>
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">{selectedContact.name}</h3>
+              <p className={`text-[10px] font-medium ${selectedContact.online ? 'text-emerald-500 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
                 {selectedContact.online ? 'Online • Typing...' : 'Offline'}
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-4 text-gray-400">
-            <button onClick={() => toast.info('Fitur telepon akan segera hadir')} className="hover:text-blue-600 transition-colors"><Phone size={18} /></button>
-            <button onClick={() => toast.info('Fitur video call akan segera hadir')} className="hover:text-blue-600 transition-colors"><Video size={18} /></button>
-            <button onClick={() => setIsInfoOpen(true)} className="hover:text-blue-600 transition-colors"><Info size={18} /></button>
-            <button onClick={() => toast.info('Menu lainnya')} className="hover:text-blue-600 transition-colors"><MoreVertical size={18} /></button>
+          <div className="flex items-center space-x-4 text-gray-400 dark:text-gray-500">
+            <button onClick={() => toast.info('Fitur telepon akan segera hadir')} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Phone size={18} /></button>
+            <button onClick={() => toast.info('Fitur video call akan segera hadir')} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Video size={18} /></button>
+            <button onClick={() => setIsInfoOpen(true)} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Info size={18} /></button>
+            <button onClick={() => toast.info('Menu lainnya')} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><MoreVertical size={18} /></button>
           </div>
         </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div className="flex justify-center mb-6">
-            <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full uppercase tracking-wider">Today</span>
+            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full uppercase tracking-wider">Today</span>
           </div>
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
-                msg.sender === 'agent' 
-                  ? 'bg-blue-600 text-white rounded-tr-none' 
-                  : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
+                msg.sender === 'agent'
+                  ? 'bg-blue-600 text-white rounded-tr-none'
+                  : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-white border border-gray-100 dark:border-slate-700 rounded-tl-none'
               }`}>
                 <p>{msg.text}</p>
-                <div className={`flex items-center justify-end mt-1 space-x-1 text-[9px] ${msg.sender === 'agent' ? 'text-blue-100' : 'text-gray-400'}`}>
+                <div className={`flex items-center justify-end mt-1 space-x-1 text-[9px] ${msg.sender === 'agent' ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'}`}>
                   <span>{msg.time}</span>
                   {msg.sender === 'agent' && (
                     msg.status === 'read' ? <CheckCheck size={10} /> : <Clock size={10} />
@@ -200,9 +200,9 @@ const AgentWorkspace = () => {
         </div>
 
         {/* Input Area */}
-        <div className="p-4 bg-white border-t border-gray-100">
+        <div className="p-4 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700">
           <div className="max-w-4xl mx-auto flex items-center space-x-4">
-            <button onClick={() => toast.info('Fitur lampiran akan segera hadir')} className="text-gray-400 hover:text-blue-600 transition-colors"><Paperclip size={20} /></button>
+            <button onClick={() => toast.info('Fitur lampiran akan segera hadir')} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Paperclip size={20} /></button>
             <div className="flex-1 relative">
               <input
                 type="text"
@@ -210,11 +210,11 @@ const AgentWorkspace = () => {
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                 placeholder="Ketik pesan balasan..."
-                className="w-full pl-4 pr-12 py-3 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all"
+                className="w-full pl-4 pr-12 py-3 bg-gray-50 dark:bg-slate-700 border-none rounded-2xl text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
               />
-              <button onClick={() => toast.info('Emoji picker akan segera hadir')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600"><Smile size={20} /></button>
+              <button onClick={() => toast.info('Emoji picker akan segera hadir')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"><Smile size={20} /></button>
             </div>
-            <button onClick={handleSendMessage} className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95">
+            <button onClick={handleSendMessage} className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-100 dark:shadow-blue-900/30 hover:bg-blue-700 transition-all active:scale-95">
               <Send size={20} />
             </button>
           </div>

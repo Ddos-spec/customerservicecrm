@@ -2,26 +2,45 @@
 
 /* Reset Default Vite/React Styles that break layouts */
 :root {
-  color-scheme: light !important; /* Force light mode for consistency */
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   padding: 0;
-  display: block !important; /* Overwrite Vite's flex-center */
-  place-items: unset !important; /* Overwrite Vite's place-items */
+  display: block !important;
+  place-items: unset !important;
   min-height: 100vh;
   background-color: #f8fafc;
   color: #1e293b;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  
-  /* Proteksi Anti-Copy */
   user-select: none;
   -webkit-user-select: none;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Dark mode body styles */
+.dark body,
+body:has(:root.dark) {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+html.dark {
+  background-color: #0f172a;
+}
+
+html.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
 }
 
 /* Allow interaction with inputs */
-input, textarea {
+input, textarea, select {
   user-select: text !important;
   -webkit-user-select: text !important;
 }

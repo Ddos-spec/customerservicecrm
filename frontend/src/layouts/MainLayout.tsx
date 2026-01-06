@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { 
-  Menu, X, LogOut, 
-  LayoutDashboard, Users, MessageSquare, 
+import { useThemeStore } from '../store/useThemeStore';
+import {
+  Menu, X, LogOut,
+  LayoutDashboard, Users, MessageSquare,
   ShieldCheck, Clock, ChevronDown
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const MainLayout = () => {
   const { user, logout } = useAuthStore();
+  const { isDarkMode } = useThemeStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -75,9 +77,11 @@ const MainLayout = () => {
         onClick={() => navigate(to)}
         className={clsx(
           "flex items-center space-x-2 px-5 py-2.5 rounded-full transition-all text-xs font-black uppercase tracking-widest",
-          isActive 
-            ? (isSuperAdmin ? "bg-green-50 text-green-700 ring-1 ring-green-100" : "bg-blue-50 text-blue-700 ring-1 ring-blue-100")
-            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+          isActive
+            ? (isSuperAdmin
+                ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-1 ring-green-100 dark:ring-green-800"
+                : "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-1 ring-blue-100 dark:ring-blue-800")
+            : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
         )}
       >
         <Icon size={16} />
@@ -87,16 +91,16 @@ const MainLayout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      
+    <div className="min-h-screen bg-white dark:bg-slate-900 flex flex-col transition-colors duration-300">
+
       {/* ================= DESKTOP NAVBAR ================= */}
-      <header className="hidden lg:flex bg-white/80 backdrop-blur-md border-b border-gray-100 h-20 sticky top-0 z-40">
+      <header className="hidden lg:flex bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-100 dark:border-slate-800 h-20 sticky top-0 z-40 transition-colors duration-300">
         <div className="max-w-7xl mx-auto w-full px-8 flex items-center justify-between">
           <div className="flex items-center space-x-12">
             {/* Logo */}
-            <div className={clsx("flex items-center space-x-2", isSuperAdmin ? "text-green-600" : "text-blue-600")}>
+            <div className={clsx("flex items-center space-x-2", isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400")}>
               <ShieldCheck size={32} />
-              <span className="text-xl font-black tracking-tighter text-gray-900 uppercase">CRM<span className={isSuperAdmin ? "text-green-600" : "text-blue-600"}>SaaS</span></span>
+              <span className="text-xl font-black tracking-tighter text-gray-900 dark:text-white uppercase">CRM<span className={isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}>SaaS</span></span>
             </div>
 
             {/* Desktop Navigation */}
@@ -109,27 +113,27 @@ const MainLayout = () => {
 
           {/* User Profile (Desktop) */}
           <div className="relative">
-            <button 
+            <button
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-              className="flex items-center space-x-3 p-1.5 pr-4 rounded-2xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-all"
+              className="flex items-center space-x-3 p-1.5 pr-4 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-800 border border-transparent hover:border-gray-100 dark:hover:border-slate-700 transition-all"
             >
-              <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black shadow-lg", isSuperAdmin ? "bg-green-600 shadow-green-100" : "bg-blue-600 shadow-blue-100")}>
+              <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black shadow-lg", isSuperAdmin ? "bg-green-600 shadow-green-100 dark:shadow-green-900/50" : "bg-blue-600 shadow-blue-100 dark:shadow-blue-900/50")}>
                 {user?.name.charAt(0)}
               </div>
               <div className="text-left hidden xl:block">
-                <p className="text-sm font-black text-gray-900 leading-none">{user?.name}</p>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pt-1">{user?.tenantName || user?.role}</p>
+                <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{user?.name}</p>
+                <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest pt-1">{user?.tenantName || user?.role}</p>
               </div>
-              <ChevronDown size={14} className="text-gray-300" />
+              <ChevronDown size={14} className="text-gray-300 dark:text-gray-600" />
             </button>
 
             {isProfileMenuOpen && (
-              <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-2xl border border-gray-50 py-3 animate-in fade-in zoom-in-95 duration-200">
-                <div className="px-5 py-3 border-b border-gray-50 mb-2">
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Akun Terhubung</p>
-                  <p className="text-sm font-bold text-gray-900 truncate mt-1">{user?.email}</p>
+              <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-50 dark:border-slate-700 py-3 animate-in fade-in zoom-in-95 duration-200">
+                <div className="px-5 py-3 border-b border-gray-50 dark:border-slate-700 mb-2">
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest">Akun Terhubung</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white truncate mt-1">{user?.email}</p>
                 </div>
-                <button onClick={handleLogout} className="w-full text-left px-5 py-3 text-sm text-red-500 hover:bg-red-50 font-bold flex items-center space-x-2 transition-colors">
+                <button onClick={handleLogout} className="w-full text-left px-5 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold flex items-center space-x-2 transition-colors">
                   <LogOut size={18} />
                   <span>Keluar Aplikasi</span>
                 </button>
@@ -196,7 +200,7 @@ const MainLayout = () => {
 
 
       {/* ================= MAIN CONTENT AREA ================= */}
-      <main className="flex-1 pt-24 lg:pt-0 overflow-x-hidden bg-gray-50/50">
+      <main className="flex-1 pt-24 lg:pt-0 overflow-x-hidden bg-gray-50/50 dark:bg-slate-900 transition-colors duration-300">
         <div className="max-w-7xl mx-auto p-6 lg:p-12 w-full">
           <Outlet />
         </div>
