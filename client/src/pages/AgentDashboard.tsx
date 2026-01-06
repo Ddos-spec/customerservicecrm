@@ -341,16 +341,6 @@ const AgentDashboard = () => {
   );
 };
 
-const HealthMetric = ({ label, status, value }: any) => (
-  <div className="flex items-center justify-between border-b border-indigo-100/30 pb-3 last:border-0 last:pb-0">
-     <div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</p>
-        <p className="text-sm font-bold text-gray-900">{status}</p>
-     </div>
-     <span className="text-xs font-mono bg-white px-2 py-1 rounded-lg border border-indigo-100 text-indigo-600 font-bold">{value}</span>
-  </div>
-);
-
 const StatCard = ({ title, value, subtitle, icon, color }: any) => (
   <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
     <div className="flex justify-between items-start mb-4">
