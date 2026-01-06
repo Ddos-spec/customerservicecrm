@@ -164,10 +164,15 @@ const AgentDashboard = () => {
               <QrCode size={120} />
             </div>
             <h4 className="font-bold mb-2">Punya Kendala?</h4>
-            <p className="text-xs text-blue-100 mb-4 leading-relaxed">Hubungkan nomor cadangan jika nomor utama mengalami kendala teknis.</p>
-            <button className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors">
+            <p className="text-xs text-blue-100 mb-4 leading-relaxed">Hubungi tim support kami untuk bantuan teknis.</p>
+            <a
+              href="https://wa.me/6285771518231?text=Halo,%20saya%20butuh%20bantuan%20teknis%20untuk%20CRM%20SaaS"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors"
+            >
               Pusat Bantuan
-            </button>
+            </a>
           </div>
         </div>
       </div>

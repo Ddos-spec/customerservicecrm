@@ -177,7 +177,7 @@ const Login = () => {
                     {agents.map((agent: any) => (
                       <button 
                         key={agent.id} 
-                        onClick={() => handleDemoLogin({ ...agent, role: 'user_agent' })}
+                        onClick={() => handleDemoLogin({ ...agent, role: 'agent' })}
                         className="w-full flex items-center space-x-3 p-2 rounded-md hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200 transition-all text-left"
                       >
                         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">

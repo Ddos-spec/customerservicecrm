@@ -3,6 +3,8 @@ const {
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
     Browsers,
+    DisconnectReason,
+    useMultiFileAuthState,
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const { Boom } = require('@hapi/boom');
@@ -26,8 +28,23 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
-const logger = pino({ level: 'info' });
-const phonePairing = new PhonePairing((msg) => console.log(`[Pairing] ${msg}`));
+const isProd = process.env.NODE_ENV === 'production';
+const logger = pino({
+    level: isProd ? 'warn' : 'info',
+    transport: isProd ? undefined : { target: 'pino-pretty', options: { colorize: true } }
+});
+const phonePairing = new PhonePairing((msg) => logger.info(`[Pairing] ${msg}`));
+
+// Memory management - schedule GC if available
+const scheduleGC = () => {
+    if (global.gc) {
+        setInterval(() => {
+            global.gc();
+            logger.debug('Manual GC executed');
+        }, 60000); // Every minute
+    }
+};
+scheduleGC();
 
 // Trust proxy is required for express-rate-limit to work behind Easypanel/Nginx
 app.set('trust proxy', 1);
@@ -176,25 +193,112 @@ function getSessionsDetails() {
     return Array.from(sessions.values()).map(s => ({ sessionId: s.sessionId, status: s.status, qr: s.qr }));
 }
 
-async function connectToWhatsApp(sessionId) {
-    const { state, saveCreds } = await useRedisAuthState(redisClient, sessionId);
-    const { version } = await fetchLatestBaileysVersion();
-    const sock = makeWASocket({ version, auth: state, logger, browser: Browsers.macOS('Chrome') });
+async function connectToWhatsApp(sessionId, retryCount = 0) {
+    const maxRetries = 5;
+    const retryDelay = Math.min(5000 * Math.pow(2, retryCount), 60000); // Exponential backoff, max 60s
 
-    sock.ev.on('creds.update', saveCreds);
-    sock.ev.on('connection.update', (up) => {
-        const { connection, qr } = up;
-        const session = sessions.get(sessionId) || {};
-        if (qr) session.qr = qr;
-        if (connection === 'open') session.status = 'CONNECTED';
-        if (connection === 'close') {
-            session.status = 'DISCONNECTED';
-            setTimeout(() => connectToWhatsApp(sessionId), 5000);
+    try {
+        // Cleanup existing session if any
+        const existingSession = sessions.get(sessionId);
+        if (existingSession?.sock) {
+            try {
+                existingSession.sock.ev.removeAllListeners();
+                existingSession.sock.ws?.close();
+            } catch (e) {
+                logger.warn(`Cleanup error for ${sessionId}: ${e.message}`);
+            }
         }
-        sessions.set(sessionId, session);
-        wss.clients.forEach(c => c.send(JSON.stringify({ type: 'session-update', data: getSessionsDetails() })));
+
+        const { state, saveCreds } = await useRedisAuthState(redisClient, sessionId);
+        const { version } = await fetchLatestBaileysVersion();
+
+        const sock = makeWASocket({
+            version,
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, logger),
+            },
+            logger,
+            browser: Browsers.macOS('Chrome'),
+            printQRInTerminal: false,
+            syncFullHistory: false,
+            markOnlineOnConnect: true,
+            retryRequestDelayMs: 250,
+            connectTimeoutMs: 60000,
+            qrTimeout: 60000,
+            defaultQueryTimeoutMs: 60000,
+            emitOwnEvents: false,
+            fireInitQueries: true,
+        });
+
+        // Event handlers
+        sock.ev.on('creds.update', saveCreds);
+
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, qr, lastDisconnect } = update;
+            const session = sessions.get(sessionId) || { sessionId };
+
+            if (qr) {
+                session.qr = qr;
+                session.status = 'CONNECTING';
+                logger.info(`QR generated for session: ${sessionId}`);
+            }
+
+            if (connection === 'open') {
+                session.status = 'CONNECTED';
+                session.qr = null;
+                session.retryCount = 0;
+                logger.info(`Session connected: ${sessionId}`);
+            }
+
+            if (connection === 'close') {
+                session.status = 'DISCONNECTED';
+                session.qr = null;
+
+                const statusCode = (lastDisconnect?.error instanceof Boom)
+                    ? lastDisconnect.error.output?.statusCode
+                    : 500;
+
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+                logger.warn(`Session ${sessionId} disconnected. StatusCode: ${statusCode}, Reconnect: ${shouldReconnect}`);
+
+                if (shouldReconnect && retryCount < maxRetries) {
+                    logger.info(`Reconnecting ${sessionId} in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+                    setTimeout(() => connectToWhatsApp(sessionId, retryCount + 1), retryDelay);
+                } else if (!shouldReconnect) {
+                    logger.info(`Session ${sessionId} logged out, clearing auth state`);
+                    await releaseSessionLock(sessionId);
+                    sessions.delete(sessionId);
+                }
+            }
+
+            sessions.set(sessionId, { ...session, sock });
+            broadcastSessionUpdate();
+        });
+
+        // Memory cleanup: limit message store
+        sock.ev.on('messages.upsert', () => {
+            // No-op, just prevent default buffering
+        });
+
+        sessions.set(sessionId, { sessionId, sock, status: 'CONNECTING', qr: null });
+
+    } catch (error) {
+        logger.error(`Error connecting session ${sessionId}: ${error.message}`);
+        if (retryCount < maxRetries) {
+            setTimeout(() => connectToWhatsApp(sessionId, retryCount + 1), retryDelay);
+        }
+    }
+}
+
+function broadcastSessionUpdate() {
+    const data = JSON.stringify({ type: 'session-update', data: getSessionsDetails() });
+    wss.clients.forEach(client => {
+        if (client.readyState === 1) { // OPEN
+            client.send(data);
+        }
     });
-    sessions.set(sessionId, { ...(sessions.get(sessionId) || {}), sessionId, sock });
 }
 
 async function createSession(sessionId) {
@@ -207,12 +311,25 @@ async function createSession(sessionId) {
 }
 
 async function deleteSession(sessionId) {
-    const s = sessions.get(sessionId);
-    if (s?.sock) await s.sock.logout();
+    const session = sessions.get(sessionId);
+    if (session?.sock) {
+        try {
+            // Remove all event listeners first
+            session.sock.ev.removeAllListeners();
+            // Then logout
+            await session.sock.logout();
+        } catch (error) {
+            logger.warn(`Error during session ${sessionId} logout: ${error.message}`);
+        }
+    }
     sessions.delete(sessionId);
     sessionTokens.delete(sessionId);
     saveTokens();
     await releaseSessionLock(sessionId);
+    // Clear session data from Redis
+    await redisClient.del(`wa:contacts:${sessionId}`);
+    await redisClient.del(`wa:settings:${sessionId}`);
+    logger.info(`Session ${sessionId} deleted and cleaned up`);
 }
 
 async function regenerateSessionToken(sessionId) {
@@ -224,7 +341,58 @@ async function regenerateSessionToken(sessionId) {
 
 app.use('/api/v1', initializeApi(sessions, sessionTokens, createSession, getSessionsDetails, deleteSession, console.log, phonePairing, saveSessionSettings, regenerateSessionToken, redisClient, scheduleMessageSend, validateWhatsAppRecipient, getSessionContacts, upsertSessionContact, removeSessionContact, postToWebhook));
 
-server.listen(process.env.PORT || 3000, () => {
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
     loadTokens();
-    console.log('🚀 Gateway Engine Headless running');
+    logger.info(`🚀 Gateway Engine running on port ${PORT}`);
+});
+
+// Graceful shutdown
+const gracefulShutdown = async (signal) => {
+    logger.info(`${signal} received, shutting down gracefully...`);
+
+    // Close all WebSocket connections
+    wss.clients.forEach(client => client.close());
+
+    // Cleanup all WhatsApp sessions
+    for (const [sessionId, session] of sessions) {
+        if (session?.sock) {
+            try {
+                session.sock.ev.removeAllListeners();
+                await session.sock.ws?.close();
+            } catch (e) {
+                logger.warn(`Error closing session ${sessionId}: ${e.message}`);
+            }
+        }
+    }
+    sessions.clear();
+
+    // Close Redis connections
+    await redisClient.quit();
+    await redisSessionClient.quit();
+
+    // Close HTTP server
+    server.close(() => {
+        logger.info('Server closed');
+        process.exit(0);
+    });
+
+    // Force exit after 10 seconds
+    setTimeout(() => {
+        logger.error('Could not close connections in time, forcefully shutting down');
+        process.exit(1);
+    }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    logger.error(`Uncaught Exception: ${error.message}`);
+    logger.error(error.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

@@ -4,21 +4,20 @@ import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
 
 const AgentManagement = () => {
-  // Mock Data - Wrapped in useMemo to be pure
-  const initialAgents = useMemo(() => Array.from({ length: 15 }, (_, i) => ({
-    id: i + 1,
-    name: i === 0 ? 'Budi Santoso' : i === 1 ? 'Siti Aminah' : `Agen Support ${i + 1}`,
-    email: `agen${i+1}@tokomaju.com`,
-    status: (i % 3 === 0) ? 'Online' : 'Offline', // Deterministic status based on index
-    role: i % 3 === 0 ? 'Support Shift Pagi' : i % 3 === 1 ? 'Support Shift Siang' : 'Support Shift Malam'
-  })), []);
+  // Mock Data - 4 slots: 1 Admin Agent + 3 User Agent
+  const initialAgents = useMemo(() => [
+    { id: 1, name: 'Admin Toko Maju', email: 'admin@tokomaju.com', status: 'Online', role: 'Admin Agent (Pemilik)' },
+    { id: 2, name: 'Siti Aminah', email: 'siti@tokomaju.com', status: 'Online', role: 'Support Shift Pagi' },
+    { id: 3, name: 'Budi Santoso', email: 'budi@tokomaju.com', status: 'Offline', role: 'Support Shift Siang' },
+    { id: 4, name: 'Dewi Lestari', email: 'dewi@tokomaju.com', status: 'Offline', role: 'Support Shift Malam' },
+  ], []);
 
   const [agents, setAgents] = useState(initialAgents);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6; // Grid 3 kolom x 2 baris
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const maxAgents = 50; // Naikkan limit untuk demo paginasi
+  const maxAgents = 4; // Limit: 1 Admin Agent + 3 User Agent
 
   const totalPages = Math.ceil(agents.length / itemsPerPage);
   const currentData = agents.slice(
