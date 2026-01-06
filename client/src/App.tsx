@@ -13,7 +13,7 @@ import AgentDashboard from './pages/AgentDashboard';
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Toaster position="top-right" expand={true} richColors />
       <Routes>
         <Route path="/login" element={<Login />} />
