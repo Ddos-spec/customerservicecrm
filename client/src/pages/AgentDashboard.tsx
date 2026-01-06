@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2, User, CheckCircle2, Clock3 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2, CheckCircle2, User, Clock3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from 'sonner';
+import Pagination from '../components/Pagination';
 
 const AgentDashboard = () => {
   const navigate = useNavigate();
@@ -16,14 +17,20 @@ const AgentDashboard = () => {
   const [qrUrl, setQrUrl] = useState('');
   const [pairingCode, setPairingCode] = useState('');
 
-  // Mock Chat Terbaru
-  const recentChats = [
-    { id: 1, name: 'Budi Santoso', message: 'Halo gan, stok iPhone 15 masih ada?', time: 'Baru saja', status: 'unread', avatar: 'bg-blue-100 text-blue-600' },
-    { id: 2, name: 'Siti Aminah', message: 'Terima kasih kak, barang sudah sampai.', time: '5 mnt lalu', status: 'read', avatar: 'bg-pink-100 text-pink-600' },
-    { id: 3, name: 'Rudi Hermawan', message: 'Bisa kirim via Gojek hari ini?', time: '12 mnt lalu', status: 'replied', avatar: 'bg-green-100 text-green-600' },
-    { id: 4, name: 'Dewi Lestari', message: 'Cara klaim garansinya gimana ya?', time: '30 mnt lalu', status: 'read', avatar: 'bg-purple-100 text-purple-600' },
-    { id: 5, name: 'Ahmad Dani', message: 'Siap ditunggu infonya.', time: '1 jam lalu', status: 'replied', avatar: 'bg-yellow-100 text-yellow-600' },
-  ];
+  // Generate 50 Mock Chats
+  const allRecentChats = useMemo(() => Array.from({ length: 50 }, (_, i) => ({
+    id: i + 1,
+    name: i === 0 ? 'Budi Santoso' : i === 1 ? 'Siti Aminah' : `Pelanggan ${i + 1}`,
+    message: i % 2 === 0 ? 'Halo, apakah produk ini ready?' : 'Terima kasih atas bantuannya!',
+    time: i === 0 ? 'Baru saja' : `${i * 5} mnt lalu`,
+    status: i % 3 === 0 ? 'unread' : i % 3 === 1 ? 'replied' : 'read',
+    avatar: i % 3 === 0 ? 'bg-blue-100 text-blue-600' : i % 3 === 1 ? 'bg-green-100 text-green-600' : 'bg-purple-100 text-purple-600'
+  })), []);
+
+  const [chatPage, setChatPage] = useState(1);
+  const chatsPerPage = 5;
+  const totalChatPages = Math.ceil(allRecentChats.length / chatsPerPage);
+  const currentChats = allRecentChats.slice((chatPage - 1) * chatsPerPage, chatPage * chatsPerPage);
 
   const openQrModal = (method: 'qr' | 'code' = 'qr') => {
     setPairingMethod(method);
@@ -68,7 +75,7 @@ const AgentDashboard = () => {
         </div>
         <button 
           onClick={() => navigate('chat')}
-          className="flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl transition-all shadow-lg shadow-indigo-100 transform active:scale-95"
+          className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl transition-all shadow-lg shadow-blue-100 transform active:scale-95"
         >
           <MessageCircle size={20} />
           <span className="font-bold">Buka Workspace Chat</span>
@@ -134,59 +141,32 @@ const AgentDashboard = () => {
 
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard 
-          title="Total Chat" 
-          value="24" 
-          subtitle="Hari Ini"
-          icon={<MessageCircle className="text-blue-600" />} 
-          color="bg-blue-100"
-        />
-        <StatCard 
-          title="Rata-rata Respon" 
-          value="1m 30d" 
-          subtitle="-15d vs kemarin"
-          icon={<Clock className="text-purple-600" />} 
-          color="bg-purple-100"
-        />
-        <StatCard 
-          title="Kepuasan Pelanggan" 
-          value="4.8/5" 
-          subtitle="Sangat Baik"
-          icon={<Star className="text-yellow-600" />} 
-          color="bg-yellow-100"
-        />
-        <StatCard 
-          title="Masalah Terselesaikan" 
-          value="92%" 
-          subtitle="Tingkat Sukses"
-          icon={<ThumbsUp className="text-green-600" />} 
-          color="bg-green-100"
-        />
+        <StatCard title="Total Chat" value="24" subtitle="Hari Ini" icon={<MessageCircle className="text-blue-600" />} color="bg-blue-100" />
+        <StatCard title="Rata-rata Respon" value="1m 30d" subtitle="-15d vs kemarin" icon={<Clock className="text-purple-600" />} color="bg-purple-100" />
+        <StatCard title="Kepuasan Pelanggan" value="4.8/5" subtitle="Sangat Baik" icon={<Star className="text-yellow-600" />} color="bg-yellow-100" />
+        <StatCard title="Masalah Terselesaikan" value="92%" subtitle="Tingkat Sukses" icon={<ThumbsUp className="text-green-600" />} color="bg-green-100" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* RECENT CHATS (Menggantikan Chart) */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
+        {/* RECENT CHATS */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-full">
            <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-gray-900 text-lg">Chat Terbaru</h3>
-              <button 
-                onClick={() => navigate('history')}
-                className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1"
-              >
+              <button onClick={() => navigate('history')} className="text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1">
                 <span>Lihat Semua</span>
                 <ArrowRight size={14} />
               </button>
            </div>
            
-           <div className="space-y-4">
-              {recentChats.map((chat) => (
+           <div className="space-y-4 flex-1">
+              {currentChats.map((chat) => (
                 <div key={chat.id} className="flex items-center p-4 hover:bg-gray-50 rounded-2xl border border-gray-50 transition-colors cursor-pointer group">
                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${chat.avatar} font-bold text-lg mr-4`}>
                       {chat.name.charAt(0)}
                    </div>
                    <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start mb-1">
-                         <h4 className="font-bold text-gray-900 text-sm group-hover:text-indigo-600 transition-colors">{chat.name}</h4>
+                         <h4 className="font-bold text-gray-900 text-sm group-hover:text-blue-600 transition-colors">{chat.name}</h4>
                          <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{chat.time}</span>
                       </div>
                       <p className="text-xs text-gray-500 truncate">{chat.message}</p>
@@ -198,9 +178,20 @@ const AgentDashboard = () => {
                 </div>
               ))}
            </div>
+
+           <div className="mt-6 pt-4 border-t border-gray-50">
+              <Pagination 
+                currentPage={chatPage} 
+                totalPages={totalChatPages} 
+                onPageChange={setChatPage} 
+                totalItems={allRecentChats.length}
+                itemsPerPage={chatsPerPage}
+                colorTheme="blue"
+              />
+           </div>
         </div>
 
-         {/* QUEUE STATUS (Menggantikan Shortcuts & Tips) */}
+         {/* QUEUE STATUS */}
          <div className="space-y-6">
            <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm h-full">
               <h3 className="font-bold text-gray-900 text-lg mb-6">Status Antrian</h3>
@@ -208,39 +199,22 @@ const AgentDashboard = () => {
               <div className="space-y-4">
                  <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                       <div className="p-2 bg-red-100 text-red-600 rounded-xl">
-                          <MessageCircle size={20} />
-                       </div>
-                       <div>
-                          <p className="text-xs font-bold text-red-800 uppercase tracking-wide">Menunggu Respon</p>
-                          <p className="text-[10px] text-red-600/70">Butuh perhatian segera</p>
-                       </div>
+                       <div className="p-2 bg-red-100 text-red-600 rounded-xl"><MessageCircle size={20} /></div>
+                       <div><p className="text-xs font-bold text-red-800 uppercase tracking-wide">Menunggu Respon</p><p className="text-[10px] text-red-600/70">Butuh perhatian segera</p></div>
                     </div>
                     <span className="text-2xl font-black text-red-600">5</span>
                  </div>
-
                  <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                       <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
-                          <User size={20} />
-                       </div>
-                       <div>
-                          <p className="text-xs font-bold text-blue-800 uppercase tracking-wide">Sedang Ditangani</p>
-                          <p className="text-[10px] text-blue-600/70">Chat aktif berlangsung</p>
-                       </div>
+                       <div className="p-2 bg-blue-100 text-blue-600 rounded-xl"><User size={20} /></div>
+                       <div><p className="text-xs font-bold text-blue-800 uppercase tracking-wide">Sedang Ditangani</p><p className="text-[10px] text-blue-600/70">Chat aktif berlangsung</p></div>
                     </div>
                     <span className="text-2xl font-black text-blue-600">8</span>
                  </div>
-
                  <div className="bg-green-50 p-4 rounded-2xl border border-green-100 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                       <div className="p-2 bg-green-100 text-green-600 rounded-xl">
-                          <CheckCircle2 size={20} />
-                       </div>
-                       <div>
-                          <p className="text-xs font-bold text-green-800 uppercase tracking-wide">Selesai Hari Ini</p>
-                          <p className="text-[10px] text-green-600/70">Tiket ditutup</p>
-                       </div>
+                       <div className="p-2 bg-green-100 text-green-600 rounded-xl"><CheckCircle2 size={20} /></div>
+                       <div><p className="text-xs font-bold text-green-800 uppercase tracking-wide">Selesai Hari Ini</p><p className="text-[10px] text-green-600/70">Tiket ditutup</p></div>
                     </div>
                     <span className="text-2xl font-black text-green-600">42</span>
                  </div>
@@ -251,13 +225,8 @@ const AgentDashboard = () => {
                     <span>Rata-rata Waktu Tunggu</span>
                     <span className="font-bold text-gray-900">4m 12d</span>
                  </div>
-                 <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div className="bg-orange-400 h-2 rounded-full" style={{ width: '35%' }}></div>
-                 </div>
-                 <p className="text-[10px] text-orange-500 mt-2 flex items-center">
-                    <Clock3 size={12} className="mr-1" /> 
-                    Sedikit lebih lambat dari biasanya
-                 </p>
+                 <div className="w-full bg-gray-100 rounded-full h-2"><div className="bg-orange-400 h-2 rounded-full" style={{ width: '35%' }}></div></div>
+                 <p className="text-[10px] text-orange-500 mt-2 flex items-center"><Clock3 size={12} className="mr-1" /> Sedikit lebih lambat dari biasanya</p>
               </div>
            </div>
          </div>
