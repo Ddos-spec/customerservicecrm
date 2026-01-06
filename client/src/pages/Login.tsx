@@ -2,17 +2,20 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import type { User } from '../store/useAuthStore';
-import { Sparkles, Mail, Lock, ChevronDown, ChevronUp, User as UserIcon } from 'lucide-react';
+import { Sparkles, Mail, Lock, ChevronDown, ChevronUp, User as UserIcon, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { toast } from 'sonner';
 
 const Login = () => {
-  const login = useAuthStore((state) => state.login);
+  const { setSession, loginReal, isLoading } = useAuthStore();
   const navigate = useNavigate();
   const [showAgents, setShowAgents] = useState(false);
+  
+  // Real Login State
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   // --- HARDCODED DATA (Simulasi Database) ---
-  
   const superAdminUser: User = {
     id: 'sa-1', name: 'Super Admin', role: 'super_admin', email: 'owner@myaicustom.com'
   };
@@ -27,27 +30,47 @@ const Login = () => {
     { id: 'ag-3', name: 'Rudi (Shift Malam)', role: 'agent', email: 'rudi@tokomaju.com', tenantName: 'Toko Maju Jaya' },
   ];
 
-  const handleLogin = (user: User) => {
-    login(user);
-    toast.success(`Selamat datang kembali, ${user.name}!`);
-    
-    if (user.role === 'super_admin') navigate('/super-admin');
-    else if (user.role === 'admin_agent') navigate('/admin');
-    else if (user.role === 'agent') navigate('/agent');
+  // Handle DEMO Login (Bypass)
+  const handleDemoLogin = (user: User) => {
+    setSession(user);
+    toast.success(`(Demo) Selamat datang, ${user.name}!`);
+    redirectUser(user.role);
+  };
+
+  // Handle REAL Backend Login
+  const handleRealLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+        toast.error('Mohon isi email dan kata sandi');
+        return;
+    }
+
+    const success = await loginReal(email, password);
+    if (success) {
+        // Karena backend saat ini hanya me-return role 'admin', kita asumsi dia Super Admin atau Admin Agent
+        // Untuk sekarang, default ke Super Admin jika email mengandung 'admin'
+        // Logic ini akan diperbaiki saat backend User Management sudah matang
+        const role = email.includes('admin') ? 'super_admin' : 'admin_agent';
+        redirectUser(role);
+    }
+  };
+
+  const redirectUser = (role: string | null) => {
+    if (role === 'super_admin') navigate('/super-admin');
+    else if (role === 'admin_agent') navigate('/admin');
+    else if (role === 'agent') navigate('/agent');
   };
 
   return (
     <div className="min-h-screen bg-white flex">
       {/* Left Side - Visual & Branding with Image Overlay */}
       <div className="hidden lg:flex w-5/12 relative overflow-hidden flex-col justify-between p-12 text-white">
-        {/* Background Image & Overlay */}
         <div className="absolute inset-0 z-0">
             <img 
                 src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2670&auto=format&fit=crop" 
                 alt="Technology Background" 
                 className="w-full h-full object-cover"
             />
-            {/* Blue Overlay */}
             <div className="absolute inset-0 bg-blue-900/85 mix-blend-multiply"></div>
             <div className="absolute inset-0 bg-gradient-to-b from-blue-900/50 to-blue-950/90"></div>
         </div>
@@ -65,8 +88,7 @@ const Login = () => {
             </span>
           </h1>
           <p className="text-blue-100 text-lg leading-relaxed max-w-sm">
-            Contoh Skenario:<br/>
-            <span className="text-white font-bold">"Toko Maju Jaya"</span> menggunakan platform ini. Pemilik toko mengelola 3 agen CS untuk melayani pelanggan bersama bantuan AI.
+            Platform Customer Service terintegrasi WhatsApp Gateway dengan dukungan Multi-Tenant dan AI Automation.
           </p>
         </div>
 
@@ -83,17 +105,35 @@ const Login = () => {
             <p className="text-gray-500 text-sm mt-2">Akses Dashboard CRM Anda</p>
           </div>
 
-          <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-            {/* Fake Inputs */}
+          <form className="space-y-4" onSubmit={handleRealLogin}>
             <div className="relative group">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
-              <input type="email" placeholder="Email" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
+              <input 
+                type="email" 
+                placeholder="Email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" 
+              />
             </div>
             <div className="relative group">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
-              <input type="password" placeholder="Kata Sandi" className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" />
+              <input 
+                type="password" 
+                placeholder="Kata Sandi" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" 
+              />
             </div>
-            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm shadow-lg shadow-blue-200 transition-all active:scale-95">Masuk</button>
+            <button 
+                type="submit" 
+                disabled={isLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center justify-center space-x-2"
+            >
+                {isLoading && <Loader2 className="animate-spin" size={16} />}
+                <span>{isLoading ? 'Memproses...' : 'Masuk'}</span>
+            </button>
           </form>
 
           {/* HIERARCHY DEMO SECTION */}
@@ -105,7 +145,7 @@ const Login = () => {
 
             <div className="mt-6 space-y-3">
               {/* 1. Super Admin */}
-              <button onClick={() => handleLogin(superAdminUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-green-500 bg-white group transition-all">
+              <button onClick={() => handleDemoLogin(superAdminUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-green-500 bg-white group transition-all">
                 <span className="text-xs font-bold text-gray-800">1. Super Admin (Pemilik Platform)</span>
                 <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded group-hover:bg-green-100 group-hover:text-green-700">Login</span>
               </button>
@@ -114,7 +154,7 @@ const Login = () => {
               <div className="flex justify-center -my-2"><div className="h-4 w-px bg-gray-300"></div></div>
 
               {/* 2. Admin Agent */}
-              <button onClick={() => handleLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-blue-500 bg-white group transition-all">
+              <button onClick={() => handleDemoLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-blue-500 bg-white group transition-all">
                 <div className="text-left">
                   <span className="block text-xs font-bold text-gray-800">2. Admin Agen (Pemilik Toko)</span>
                   <span className="text-[10px] text-gray-400">Toko Maju Jaya</span>
@@ -143,7 +183,7 @@ const Login = () => {
                   {agentUsers.map((agent) => (
                     <button 
                       key={agent.id}
-                      onClick={() => handleLogin(agent)}
+                      onClick={() => handleDemoLogin(agent)}
                       className="w-full flex items-center space-x-3 p-3 hover:bg-sky-50 transition-colors text-left border-b border-gray-50 last:border-0"
                     >
                       <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600">
