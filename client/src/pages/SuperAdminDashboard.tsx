@@ -38,19 +38,68 @@ const SuperAdminDashboard = () => {
           color="bg-blue-100"
         />
         <StatCard 
-          title="Total Messages (AI)" 
+          title="Total Messages (WA)" 
           value="854k" 
           trend="+24%" 
           icon={<Server className="text-purple-600" />} 
           color="bg-purple-100"
         />
         <StatCard 
-          title="System Uptime" 
+          title="Gateway Uptime" 
           value="99.9%" 
           trend="Stable" 
           icon={<Activity className="text-orange-600" />} 
           color="bg-orange-100"
         />
+      </div>
+
+      {/* WhatsApp Infrastructure Section */}
+      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="font-bold text-gray-900 text-lg">WhatsApp Infrastructure</h3>
+            <p className="text-gray-500 text-sm">Real-time gateway status across all tenants.</p>
+          </div>
+          <div className="flex space-x-2">
+            <span className="flex items-center space-x-1.5 bg-green-50 px-3 py-1 rounded-lg border border-green-100">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-[10px] font-black text-green-700 uppercase tracking-wider">Redis: Connected</span>
+            </span>
+            <span className="flex items-center space-x-1.5 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">
+              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+              <span className="text-[10px] font-black text-blue-700 uppercase tracking-wider">Engine: Baileys v6.7</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <p className="text-xs font-bold text-gray-400 uppercase mb-1">Active Sessions</p>
+            <div className="flex items-end space-x-2">
+              <span className="text-2xl font-black text-gray-900">42</span>
+              <span className="text-xs font-medium text-gray-500 mb-1">/ 50 limit</span>
+            </div>
+            <div className="mt-3 w-full bg-gray-200 rounded-full h-1.5">
+              <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: '84%' }}></div>
+            </div>
+          </div>
+          
+          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <p className="text-xs font-bold text-gray-400 uppercase mb-1">Messages Sent (24h)</p>
+            <div className="flex items-end space-x-2">
+              <span className="text-2xl font-black text-gray-900">12,842</span>
+              <span className="text-xs font-medium text-green-600 mb-1">+14% vs yesterday</span>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <p className="text-xs font-bold text-gray-400 uppercase mb-1">Avg. Webhook Latency</p>
+            <div className="flex items-end space-x-2">
+              <span className="text-2xl font-black text-gray-900">145ms</span>
+              <span className="text-xs font-medium text-blue-600 mb-1">Optimized</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
