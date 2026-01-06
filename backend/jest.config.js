@@ -1,8 +1,8 @@
 module.exports = {
   transform: {
-    "^.+\\.js$": "babel-jest",
+    '^.+\\.js$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    "/node_modules/(?!@whiskeysockets/baileys)/"
+    '/node_modules/(?!@whiskeysockets/baileys)/'
   ],
 };

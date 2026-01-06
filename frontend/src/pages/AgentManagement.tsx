@@ -4,11 +4,12 @@ import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
 
 const AgentManagement = () => {
-  const initialAgents = useMemo(() => Array.from({ length: 24 }, (_, i) => ({
+  // Mock Data - Wrapped in useMemo to be pure
+  const initialAgents = useMemo(() => Array.from({ length: 15 }, (_, i) => ({
     id: i + 1,
     name: i === 0 ? 'Budi Santoso' : i === 1 ? 'Siti Aminah' : `Agen Support ${i + 1}`,
     email: `agen${i+1}@tokomaju.com`,
-    status: Math.random() > 0.3 ? 'Online' : 'Offline',
+    status: (i % 3 === 0) ? 'Online' : 'Offline', // Deterministic status based on index
     role: i % 3 === 0 ? 'Support Shift Pagi' : i % 3 === 1 ? 'Support Shift Siang' : 'Support Shift Malam'
   })), []);
 

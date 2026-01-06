@@ -4,13 +4,13 @@ import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
 
 const TenantManagement = () => {
-  // Generate 50 Mock Tenants
-  const initialTenants = useMemo(() => Array.from({ length: 50 }, (_, i) => ({
+  // Mock Data
+  const initialTenants = useMemo(() => Array.from({ length: 12 }, (_, i) => ({
     id: i + 1,
     name: i === 0 ? 'Toko Maju Jaya' : i === 1 ? 'Batik Sejahtera' : `Perusahaan Demo ${i + 1}`,
     adminEmail: `admin${i+1}@demo.com`,
-    agents: Math.floor(Math.random() * 4), // 0-3 agents
-    status: Math.random() > 0.8 ? 'Ditangguhkan' : 'Aktif'
+    agents: (i % 4) + 1, // Deterministic agents count
+    status: (i % 5 === 0) ? 'Ditangguhkan' : 'Aktif' // Deterministic status
   })), []);
 
   const [tenants, setTenants] = useState(initialTenants);

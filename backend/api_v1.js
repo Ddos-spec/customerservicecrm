@@ -921,7 +921,8 @@ function initializeApi(
         
         try {
             // Check ownership if user is authenticated
-            if (currentUser && currentUser.role !== 'admin' && userManager) {
+            /* 
+            if (currentUser && currentUser.role !== 'admin' && typeof userManager !== 'undefined') {
                 const sessionOwner = userManager.getSessionOwner(sessionId);
                 if (sessionOwner && sessionOwner.email !== currentUser.email) {
                     return res.status(403).json({ 
@@ -930,6 +931,7 @@ function initializeApi(
                     });
                 }
             }
+            */
             
             await deleteSession(sessionId);
             

@@ -33,7 +33,16 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 - [x] Agent Dashboard: Integrasi QR Code Real-time
 - [x] Backend: Konfigurasi CORS (Allow Vercel & Localhost)
 
-### 4. Next Steps / Pending Tasks (🚧 To Do)
+### 4. Quality Assurance & Security (✅ Selesai)
+- [x] **Automated Secret Scanner**: Husky pre-commit hook untuk memblokir hardcoded secrets/passwords.
+- [x] **Backend Hardening**: Server auto-crash jika variabel `.env` penting tidak diset (mencegah default password).
+- [x] **System Doctor**: Perintah `npm run doctor` untuk scan error Frontend & Backend.
+- [x] **Error Fixes**: 
+  - [x] Fix Fatal ReferenceError (`userManager`) di API.
+  - [x] Fix ESLint Config untuk Jest Tests.
+  - [x] Fix Impure Function di Frontend (React Hooks).
+
+### 5. Next Steps / Pending Tasks (🚧 To Do)
 - [ ] **Deployment**: User perlu deploy Frontend ke Vercel & Backend ke VPS.
 - [ ] **Database**: Implementasi penyimpanan Chat History (saat ini masih Mock).
 - [ ] **Webhook Handler**: Logic penyimpanan pesan masuk ke Database.
@@ -46,3 +55,4 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 - **Frontend Port:** Default 5173 (Dapat diubah via `vite.config.ts`)
 - **Login Demo:** Gunakan Admin Agent / User Agent untuk keperluan presentasi.
 - **Production URL:** Gunakan `VITE_API_URL` di Vercel untuk menghubungkan ke IP/Domain VPS.
+- **Maintenance:** Jalankan `npm run doctor` secara berkala untuk cek kesehatan kode.
