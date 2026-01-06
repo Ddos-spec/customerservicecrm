@@ -7,11 +7,7 @@
     "start": "node --expose-gc index.js",
     "dev": "nodemon index.js",
     "test": "jest",
-    "install:smart": "node install-dependencies.js",
-    "start-production": "npm run startprod",
-    "startprod:unix": "bash start-production.sh",
-    "startprod:windows": "start-production.bat",
-    "startprod": "node -r dotenv/config index.js"
+    "install:smart": "node install-dependencies.js"
   },
   "author": "Alucard0x1",
   "license": "MIT",
