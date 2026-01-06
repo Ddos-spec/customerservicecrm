@@ -1,15 +1,33 @@
-import { TrendingUp, Users, Server, Activity, DollarSign, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { TrendingUp, Users, Server, Activity, DollarSign, ArrowRight, Smartphone, Terminal, Settings, Trash2, RefreshCw, ShieldCheck, QrCode } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'sessions' | 'logs' | 'config'>('sessions');
+
+  // Mock Sessions Data
+  const [sessions, setSessions] = useState([
+    { id: 'TokoMaju_Main', status: 'connected', phone: '+62 812-3456-7890', uptime: '3d 12h' },
+    { id: 'CS_Support_1', status: 'disconnected', phone: '-', uptime: '-' },
+    { id: 'Sales_Bot_Auto', status: 'connected', phone: '+62 899-1122-3344', uptime: '12h 45m' },
+  ]);
+
+  // Mock Logs Data
+  const [logs] = useState([
+    { time: '10:45:22', type: 'INFO', msg: 'New message received from +62812345...' },
+    { time: '10:45:20', type: 'SYS', msg: 'Webhook delivery successful (200 OK)' },
+    { time: '10:42:15', type: 'WARN', msg: 'Rate limit warning: 45 msgs/min' },
+    { time: '10:40:01', type: 'INFO', msg: 'Session "TokoMaju_Main" refreshed keys' },
+  ]);
 
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Platform Overview</h1>
-          <p className="text-gray-500">Welcome back, Super Admin. Here's what's happening today.</p>
+          <p className="text-gray-500">Welcome back, Super Admin. System status is healthy.</p>
         </div>
         <button 
           onClick={() => navigate('/super-admin/tenants')}
@@ -21,7 +39,7 @@ const SuperAdminDashboard = () => {
         </button>
       </div>
 
-      {/* Stats Grid */}
+      {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard 
           title="Total Revenue" 
@@ -53,52 +71,167 @@ const SuperAdminDashboard = () => {
         />
       </div>
 
-      {/* WhatsApp Infrastructure Section */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="font-bold text-gray-900 text-lg">WhatsApp Infrastructure</h3>
-            <p className="text-gray-500 text-sm">Real-time gateway status across all tenants.</p>
-          </div>
-          <div className="flex space-x-2">
-            <span className="flex items-center space-x-1.5 bg-green-50 px-3 py-1 rounded-lg border border-green-100">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="text-[10px] font-black text-green-700 uppercase tracking-wider">Redis: Connected</span>
-            </span>
-            <span className="flex items-center space-x-1.5 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">
-              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-              <span className="text-[10px] font-black text-blue-700 uppercase tracking-wider">Engine: Baileys v6.7</span>
-            </span>
-          </div>
+      {/* GATEWAY CONTROL CENTER */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-8">
+        <div className="bg-slate-900 p-4 px-6 flex items-center justify-between">
+           <div className="flex items-center space-x-3">
+              <div className="p-2 bg-green-500/20 rounded-lg text-green-400">
+                 <ShieldCheck size={20} />
+              </div>
+              <div>
+                 <h3 className="text-white font-bold">WhatsApp Gateway Engine</h3>
+                 <div className="flex items-center space-x-2 text-xs text-slate-400">
+                    <span className="flex items-center space-x-1">
+                       <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                       <span>Core: Online</span>
+                    </span>
+                    <span>•</span>
+                    <span>Redis: Connected</span>
+                    <span>•</span>
+                    <span>Ver: 3.0.4</span>
+                 </div>
+              </div>
+           </div>
+           <div className="flex bg-slate-800 p-1 rounded-lg">
+              <TabButton active={activeTab === 'sessions'} onClick={() => setActiveTab('sessions')} icon={<Smartphone size={14} />} label="Sessions" />
+              <TabButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon={<Terminal size={14} />} label="System Logs" />
+              <TabButton active={activeTab === 'config'} onClick={() => setActiveTab('config')} icon={<Settings size={14} />} label="Global Config" />
+           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-            <p className="text-xs font-bold text-gray-400 uppercase mb-1">Active Sessions</p>
-            <div className="flex items-end space-x-2">
-              <span className="text-2xl font-black text-gray-900">42</span>
-              <span className="text-xs font-medium text-gray-500 mb-1">/ 50 limit</span>
-            </div>
-            <div className="mt-3 w-full bg-gray-200 rounded-full h-1.5">
-              <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: '84%' }}></div>
-            </div>
-          </div>
-          
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-            <p className="text-xs font-bold text-gray-400 uppercase mb-1">Messages Sent (24h)</p>
-            <div className="flex items-end space-x-2">
-              <span className="text-2xl font-black text-gray-900">12,842</span>
-              <span className="text-xs font-medium text-green-600 mb-1">+14% vs yesterday</span>
-            </div>
-          </div>
+        <div className="p-6">
+           {/* SESSIONS TAB */}
+           {activeTab === 'sessions' && (
+              <div className="space-y-4">
+                 <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-gray-700">Active Sessions Management</h4>
+                    <button className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1">
+                       <RefreshCw size={12} />
+                       <span>Refresh List</span>
+                    </button>
+                 </div>
+                 
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* Add New Session Card */}
+                    <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-300 hover:bg-indigo-50/30 transition-all cursor-pointer group">
+                       <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                          <QrCode size={24} />
+                       </div>
+                       <h5 className="font-bold text-gray-900">New Session</h5>
+                       <p className="text-xs text-gray-500 mt-1">Scan QR or use Pairing Code</p>
+                    </div>
 
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-            <p className="text-xs font-bold text-gray-400 uppercase mb-1">Avg. Webhook Latency</p>
-            <div className="flex items-end space-x-2">
-              <span className="text-2xl font-black text-gray-900">145ms</span>
-              <span className="text-xs font-medium text-blue-600 mb-1">Optimized</span>
-            </div>
-          </div>
+                    {/* Session Cards */}
+                    {sessions.map((session) => (
+                       <div key={session.id} className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+                          <div className={`absolute top-0 right-0 p-1.5 rounded-bl-xl text-[10px] font-bold uppercase tracking-wider ${session.status === 'connected' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                             {session.status}
+                          </div>
+                          
+                          <div className="flex items-center space-x-3 mb-4">
+                             <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${session.status === 'connected' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                                <Smartphone size={20} />
+                             </div>
+                             <div>
+                                <h5 className="font-bold text-gray-900 text-sm">{session.id}</h5>
+                                <p className="text-xs text-gray-500 font-mono">{session.phone}</p>
+                             </div>
+                          </div>
+
+                          <div className="space-y-2 text-xs text-gray-600 mb-4">
+                             <div className="flex justify-between">
+                                <span>Uptime:</span>
+                                <span className="font-medium">{session.uptime}</span>
+                             </div>
+                             <div className="flex justify-between">
+                                <span>Memory:</span>
+                                <span className="font-medium">45 MB</span>
+                             </div>
+                          </div>
+
+                          <div className="flex space-x-2">
+                             <button className="flex-1 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-700 transition-colors">
+                                Details
+                             </button>
+                             <button 
+                               onClick={() => {
+                                  if(confirm('Delete this session?')) {
+                                     setSessions(sessions.filter(s => s.id !== session.id));
+                                     toast.success('Session deleted');
+                                  }
+                               }}
+                               className="p-2 border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                             >
+                                <Trash2 size={16} />
+                             </button>
+                          </div>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+           )}
+
+           {/* LOGS TAB */}
+           {activeTab === 'logs' && (
+              <div className="bg-slate-950 rounded-xl p-4 font-mono text-xs h-[400px] overflow-y-auto shadow-inner border border-slate-800">
+                 {logs.map((log, idx) => (
+                    <div key={idx} className="mb-1.5 flex space-x-3 hover:bg-white/5 p-0.5 rounded px-2">
+                       <span className="text-slate-500 select-none">[{log.time}]</span>
+                       <span className={`font-bold w-10 ${log.type === 'INFO' ? 'text-blue-400' : log.type === 'WARN' ? 'text-yellow-400' : log.type === 'SYS' ? 'text-purple-400' : 'text-slate-300'}`}>
+                          {log.type}
+                       </span>
+                       <span className="text-slate-300">{log.msg}</span>
+                    </div>
+                 ))}
+                 <div className="mt-2 text-green-500 animate-pulse">_ listening for events...</div>
+              </div>
+           )}
+
+           {/* CONFIG TAB */}
+           {activeTab === 'config' && (
+              <div className="max-w-3xl">
+                 <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-6 flex items-start space-x-3">
+                    <div className="p-1.5 bg-orange-100 rounded-lg text-orange-600 mt-0.5">
+                       <Settings size={16} />
+                    </div>
+                    <div>
+                       <h5 className="text-sm font-bold text-orange-800">Global Configuration</h5>
+                       <p className="text-xs text-orange-700/80 mt-1">Changes here will affect all tenants using the default gateway settings. Proceed with caution.</p>
+                    </div>
+                 </div>
+
+                 <div className="space-y-6">
+                    <div>
+                       <label className="block text-sm font-bold text-gray-700 mb-2">Master Webhook URL</label>
+                       <div className="flex space-x-2">
+                          <input type="text" defaultValue="https://api.customerservice.com/webhooks/whatsapp" className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono text-gray-600 focus:outline-none focus:border-indigo-500" />
+                          <button className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100">Save</button>
+                       </div>
+                       <p className="text-xs text-gray-400 mt-2">All incoming messages will be forwarded to this URL unless a session has a specific override.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       <div>
+                          <label className="block text-sm font-bold text-gray-700 mb-2">Max Session Limit</label>
+                          <input type="number" defaultValue={50} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500" />
+                       </div>
+                       <div>
+                          <label className="block text-sm font-bold text-gray-700 mb-2">Reconnect Interval (ms)</label>
+                          <input type="number" defaultValue={5000} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500" />
+                       </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-100">
+                       <h5 className="text-sm font-bold text-gray-900 mb-4">Feature Flags</h5>
+                       <div className="space-y-3">
+                          <ToggleItem label="Enable Auto-Reject Calls" desc="Automatically reject incoming voice/video calls to prevent disruptions." active={true} />
+                          <ToggleItem label="Enable Message Archive" desc="Store all messages in local database for compliance." active={false} />
+                          <ToggleItem label="Allow Legacy API" desc="Enable backward compatibility for v1 API endpoints." active={true} />
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           )}
         </div>
       </div>
 
@@ -151,6 +284,28 @@ const SuperAdminDashboard = () => {
     </div>
   );
 };
+
+const TabButton = ({ active, onClick, icon, label }: any) => (
+  <button 
+    onClick={onClick}
+    className={`flex items-center space-x-2 px-4 py-2 rounded-md text-xs font-bold transition-all ${active ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+  >
+    {icon}
+    <span>{label}</span>
+  </button>
+);
+
+const ToggleItem = ({ label, desc, active }: any) => (
+  <div className="flex items-center justify-between">
+     <div>
+        <p className="text-sm font-bold text-gray-700">{label}</p>
+        <p className="text-xs text-gray-500">{desc}</p>
+     </div>
+     <div className={`w-10 h-6 rounded-full relative transition-colors cursor-pointer ${active ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${active ? 'left-5' : 'left-1'}`} />
+     </div>
+  </div>
+);
 
 const StatCard = ({ title, value, trend, icon, color }: any) => (
   <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex items-start justify-between">
