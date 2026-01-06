@@ -29,6 +29,9 @@ const app = express();
 const logger = pino({ level: 'info' });
 const phonePairing = new PhonePairing((msg) => console.log(`[Pairing] ${msg}`));
 
+// Trust proxy is required for express-rate-limit to work behind Easypanel/Nginx
+app.set('trust proxy', 1);
+
 // --- SECURITY ---
 const requiredEnvVars = ['SESSION_SECRET', 'ENCRYPTION_KEY'];
 if (requiredEnvVars.some(k => !process.env[k])) {
@@ -150,6 +153,12 @@ function loadTokens() {
 
 app.use(bodyParser.json());
 app.use(helmet());
+app.use(rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per window
+    standardHeaders: true,
+    legacyHeaders: false,
+}));
 app.use(session({ store: new RedisStore({ client: redisSessionClient }), secret: process.env.SESSION_SECRET, resave: false, saveUninitialized: false }));
 
 app.get('/', (req, res) => res.json({ status: 'online', message: 'WA Gateway Engine is running', version: '1.0.0' }));
