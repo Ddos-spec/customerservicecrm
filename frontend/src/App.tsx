@@ -9,10 +9,12 @@ import AgentManagement from './pages/AgentManagement';
 import AgentWorkspace from './pages/AgentWorkspace';
 import ChatHistory from './pages/ChatHistory';
 import { Toaster } from 'sonner';
+import { useThemeStore } from './store/useThemeStore';
 
 import AgentDashboard from './pages/AgentDashboard';
 
 function App() {
+  const isDarkMode = useThemeStore((state) => state.isDarkMode);
   
   // --- CONTENT PROTECTION LOGIC ---
   useEffect(() => {
@@ -52,6 +54,10 @@ function App() {
       document.removeEventListener('dragstart', handleDragStart);
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+  }, [isDarkMode]);
 
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>

@@ -222,26 +222,26 @@ const AgentWorkspace = () => {
       </div>
 
       {/* Right Sidebar - Contact Info */}
-      <div className="hidden xl:flex w-64 border-l border-gray-100 flex-col p-6 bg-white">
-          <h3 className="font-bold text-gray-900 mb-6">Customer Info</h3>
+      <div className="hidden xl:flex w-64 border-l border-gray-100 dark:border-slate-800 flex-col p-6 bg-white dark:bg-slate-900">
+          <h3 className="font-bold text-gray-900 dark:text-white mb-6">Customer Info</h3>
           <div className="space-y-6">
               <div className="text-center">
-                  <div className="w-20 h-20 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center mb-3">
+                  <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center mb-3">
                       <User size={40} />
                   </div>
-                  <h4 className="font-bold text-gray-900">{selectedContact.name}</h4>
-                  <p className="text-xs text-gray-400">{selectedContact.phone}</p>
+                  <h4 className="font-bold text-gray-900 dark:text-white">{selectedContact.name}</h4>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{selectedContact.phone}</p>
               </div>
               <div className="space-y-4">
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                      <p className="text-[10px] text-gray-400 uppercase font-bold mb-1">Status Pelanggan</p>
-                      <p className={`text-xs font-bold ${selectedContact.status === 'Premium Member' ? 'text-emerald-600' : selectedContact.status === 'New Customer' ? 'text-blue-600' : 'text-gray-600'}`}>
+                  <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl">
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1">Status Pelanggan</p>
+                      <p className={`text-xs font-bold ${selectedContact.status === 'Premium Member' ? 'text-emerald-600 dark:text-emerald-400' : selectedContact.status === 'New Customer' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'}`}>
                         {selectedContact.status}
                       </p>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                      <p className="text-[10px] text-gray-400 uppercase font-bold mb-1">Total Belanja</p>
-                      <p className="text-xs font-bold text-gray-900">{selectedContact.totalSpend}</p>
+                  <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl">
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1">Total Belanja</p>
+                      <p className="text-xs font-bold text-gray-900 dark:text-white">{selectedContact.totalSpend}</p>
                   </div>
               </div>
           </div>
@@ -250,34 +250,34 @@ const AgentWorkspace = () => {
       {/* Customer Info Modal (for mobile/tablet) */}
       {isInfoOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm xl:hidden">
-          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-6 flex justify-between items-center border-b border-gray-100">
-              <h3 className="font-bold text-gray-900">Info Pelanggan</h3>
-              <button onClick={() => setIsInfoOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                <X size={20} className="text-gray-400" />
+          <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 flex justify-between items-center border-b border-gray-100 dark:border-slate-700">
+              <h3 className="font-bold text-gray-900 dark:text-white">Info Pelanggan</h3>
+              <button onClick={() => setIsInfoOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                <X size={20} className="text-gray-400 dark:text-gray-500" />
               </button>
             </div>
             <div className="p-6 space-y-6">
               <div className="text-center">
-                <div className="w-20 h-20 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center mb-3">
+                <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center mb-3">
                   <User size={40} />
                 </div>
-                <h4 className="font-bold text-gray-900 text-lg">{selectedContact.name}</h4>
-                <p className="text-sm text-gray-400">{selectedContact.phone}</p>
-                <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold ${selectedContact.online ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                <h4 className="font-bold text-gray-900 dark:text-white text-lg">{selectedContact.name}</h4>
+                <p className="text-sm text-gray-400 dark:text-gray-500">{selectedContact.phone}</p>
+                <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold ${selectedContact.online ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400'}`}>
                   {selectedContact.online ? 'Online' : 'Offline'}
                 </span>
               </div>
               <div className="space-y-3">
-                <div className="p-4 bg-gray-50 rounded-xl">
-                  <p className="text-[10px] text-gray-400 uppercase font-bold mb-1">Status Pelanggan</p>
-                  <p className={`text-sm font-bold ${selectedContact.status === 'Premium Member' ? 'text-emerald-600' : selectedContact.status === 'New Customer' ? 'text-blue-600' : 'text-gray-600'}`}>
+                <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl">
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1">Status Pelanggan</p>
+                  <p className={`text-sm font-bold ${selectedContact.status === 'Premium Member' ? 'text-emerald-600 dark:text-emerald-400' : selectedContact.status === 'New Customer' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'}`}>
                     {selectedContact.status}
                   </p>
                 </div>
-                <div className="p-4 bg-gray-50 rounded-xl">
-                  <p className="text-[10px] text-gray-400 uppercase font-bold mb-1">Total Belanja</p>
-                  <p className="text-sm font-bold text-gray-900">{selectedContact.totalSpend}</p>
+                <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl">
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1">Total Belanja</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">{selectedContact.totalSpend}</p>
                 </div>
               </div>
             </div>

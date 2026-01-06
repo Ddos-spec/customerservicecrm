@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Clock, Star, QrCode, Wifi, X, RefreshCw, Activity, Settings,
+  Clock, Star, Wifi, X, RefreshCw, Activity, Settings,
   CheckCircle2, MessageSquare, Bell, Moon, Globe, Shield, LogOut, Send, MessageCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';

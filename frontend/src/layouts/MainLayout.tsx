@@ -1,17 +1,15 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { useThemeStore } from '../store/useThemeStore';
 import {
   Menu, X, LogOut,
   LayoutDashboard, Users, MessageSquare,
-  ShieldCheck, Clock, ChevronDown
+  Clock, ChevronDown
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const MainLayout = () => {
   const { user, logout } = useAuthStore();
-  const { isDarkMode } = useThemeStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -98,9 +96,11 @@ const MainLayout = () => {
         <div className="max-w-7xl mx-auto w-full px-8 flex items-center justify-between">
           <div className="flex items-center space-x-12">
             {/* Logo */}
-            <div className={clsx("flex items-center space-x-2", isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400")}>
-              <ShieldCheck size={32} />
-              <span className="text-xl font-black tracking-tighter text-gray-900 dark:text-white uppercase">CRM<span className={isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}>SaaS</span></span>
+            <div className="flex items-center space-x-3">
+              <img src="/logo.png" alt="CRM SaaS" className="h-9 w-9 rounded-xl object-contain" />
+              <span className="text-xl font-black tracking-tighter text-gray-900 dark:text-white uppercase">
+                CRM<span className={isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}>SaaS</span>
+              </span>
             </div>
 
             {/* Desktop Navigation */}
@@ -147,7 +147,7 @@ const MainLayout = () => {
       {/* ================= MOBILE HEADER ================= */}
       <div className={clsx("lg:hidden fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center shadow-lg", isSuperAdmin ? "bg-green-900" : "bg-blue-900")}>
         <div className="font-black text-lg flex items-center space-x-2 text-white uppercase tracking-tighter">
-          <ShieldCheck className={isSuperAdmin ? "text-green-400" : "text-blue-400"} />
+          <img src="/logo.png" alt="CRM SaaS" className="h-8 w-8 rounded-lg object-contain" />
           <span>CRM SaaS</span>
         </div>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 bg-white/10 rounded-xl text-white">
