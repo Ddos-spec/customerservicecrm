@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Settings, Terminal, Activity, ShieldCheck, Link2 } from 'lucide-react';
+import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from 'sonner';
@@ -10,18 +10,11 @@ const AgentDashboard = () => {
   
   // State untuk status WA (Simulasi)
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
-  const [activeTab, setActiveTab] = useState<'status' | 'settings' | 'logs'>('status');
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [pairingMethod, setPairingMethod] = useState<'qr' | 'code'>('qr');
   const [qrState, setQrState] = useState<'generating' | 'ready' | 'scanned'>('generating');
   const [qrUrl, setQrUrl] = useState('');
   const [pairingCode, setPairingCode] = useState('');
-  
-  const [logs, setLogs] = useState<{timestamp: string, message: string, type: 'info' | 'error' | 'success'}[]>([
-    { timestamp: new Date().toLocaleTimeString(), message: 'Gateway initialized successfully', type: 'info' },
-    { timestamp: new Date().toLocaleTimeString(), message: 'Session "TokoMaju_Main" restored from Redis', type: 'success' },
-    { timestamp: new Date().toLocaleTimeString(), message: 'Waiting for incoming messages...', type: 'info' },
-  ]);
 
   const openQrModal = (method: 'qr' | 'code' = 'qr') => {
     setPairingMethod(method);
@@ -50,17 +43,11 @@ const AgentDashboard = () => {
 
   const handleSimulateScan = () => {
     setQrState('scanned');
-    addLog('Device scanned, authenticating...', 'info');
     setTimeout(() => {
       setWaStatus('connected');
       setIsQrModalOpen(false);
-      addLog('Connection established with +62 812-XXXX-XXXX', 'success');
       toast.success('WhatsApp Gateway connected successfully!');
     }, 2000); 
-  };
-
-  const addLog = (message: string, type: 'info' | 'error' | 'success' = 'info') => {
-    setLogs(prev => [{ timestamp: new Date().toLocaleTimeString(), message, type }, ...prev].slice(0, 50));
   };
 
   return (
@@ -81,7 +68,7 @@ const AgentDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        {/* GATEWAY CONTROL CENTER (Khusus Admin Agent) */}
+        {/* GATEWAY STATUS WIDGET (Simplified for Admin Agent) */}
         {user?.role === 'admin_agent' && (
           <div className="lg:col-span-3">
              <div className="bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
@@ -92,7 +79,7 @@ const AgentDashboard = () => {
                          {waStatus === 'connected' ? <ShieldCheck size={32} /> : <Activity size={32} className={waStatus === 'connecting' ? 'animate-pulse' : ''} />}
                       </div>
                       <div>
-                         <h3 className="font-black text-xl tracking-tight">WhatsApp Gateway <span className="text-indigo-400 font-medium text-sm ml-2">v3.0.4</span></h3>
+                         <h3 className="font-black text-xl tracking-tight">WhatsApp Connection</h3>
                          <div className="flex items-center space-x-3 mt-1.5 text-sm">
                             <span className={`flex items-center space-x-1.5 ${waStatus === 'connected' ? 'text-green-400' : waStatus === 'connecting' ? 'text-yellow-400' : 'text-red-400'}`}>
                                <Wifi size={14} className={waStatus === 'connected' ? 'animate-pulse' : ''} />
@@ -107,10 +94,10 @@ const AgentDashboard = () => {
                    <div className="flex items-center space-x-3">
                       {waStatus === 'connected' ? (
                          <button 
-                           onClick={() => { setWaStatus('disconnected'); addLog('Gateway disconnected by user', 'error'); toast.warning('Gateway disconnected'); }}
+                           onClick={() => { setWaStatus('disconnected'); toast.warning('Gateway disconnected'); }}
                            className="px-5 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-50 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-red-500/20"
                          >
-                           Terminate Session
+                           Disconnect
                          </button>
                       ) : (
                          <div className="flex space-x-2">
@@ -133,82 +120,39 @@ const AgentDashboard = () => {
                    </div>
                 </div>
 
-                {/* Tabs Navigation */}
-                <div className="bg-slate-50 border-b border-gray-100 flex items-center px-6">
-                   <TabButton active={activeTab === 'status'} onClick={() => setActiveTab('status')} icon={<Smartphone size={16} />} label="Session Status" />
-                   <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={16} />} label="Gateway Config" />
-                   <TabButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon={<Terminal size={16} />} label="Live Activity" badge={logs.length} />
-                </div>
-
-                {/* Tab Content */}
-                <div className="p-8 min-h-[300px]">
-                   {activeTab === 'status' && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                         <div className="space-y-6">
-                            <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100/50">
-                               <h4 className="font-bold text-gray-900 mb-4 flex items-center space-x-2">
-                                  <Activity size={18} className="text-indigo-600" />
-                                  <span>Engine Health</span>
-                               </h4>
-                               <div className="space-y-4">
-                                  <HealthMetric label="Socket Connection" status="Stable" value="12ms" />
-                                  <HealthMetric label="Redis Sync" status="Active" value="OK" />
-                                  <HealthMetric label="Auth Persistence" status="Encrypted" value="Ready" />
-                               </div>
+                {/* Status Content Only (No Tabs) */}
+                <div className="p-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-6">
+                        <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100/50">
+                            <h4 className="font-bold text-gray-900 mb-4 flex items-center space-x-2">
+                              <Activity size={18} className="text-indigo-600" />
+                              <span>Connection Health</span>
+                            </h4>
+                            <div className="space-y-4">
+                              <HealthMetric label="Service Status" status={waStatus === 'connected' ? 'Operational' : 'Action Required'} value={waStatus === 'connected' ? '100%' : '0%'} />
+                              <HealthMetric label="Last Sync" status="Just now" value="OK" />
                             </div>
-                         </div>
-                         <div className="bg-slate-50 rounded-2xl p-6 border border-gray-100 flex flex-col justify-center items-center text-center">
-                            {waStatus === 'connected' ? (
-                               <>
-                                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-4 border-4 border-white shadow-xl">
-                                     <ShieldCheck size={40} />
-                                  </div>
-                                  <h4 className="font-black text-gray-900 text-lg">Gateway Protected</h4>
-                                  <p className="text-gray-500 text-sm max-w-[240px] mt-2">Your WhatsApp session is active and encrypted with AES-256-CBC.</p>
-                               </>
-                            ) : (
-                               <>
-                                  <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-slate-400 mb-4 border-4 border-white shadow-xl italic font-black text-2xl">?</div>
-                                  <h4 className="font-black text-gray-400 text-lg">No Active Session</h4>
-                                  <p className="text-gray-400 text-sm max-w-[240px] mt-2 italic text-balance">Please connect your device to start using the gateway.</p>
-                               </>
-                            )}
-                         </div>
+                        </div>
                       </div>
-                   )}
-
-                   {activeTab === 'settings' && (
-                      <div className="max-w-2xl animate-in fade-in slide-in-from-bottom-2 duration-300">
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <ToggleSetting label="Webhook Individual" desc="Forward private messages" active={true} />
-                            <ToggleSetting label="Webhook Groups" desc="Forward group messages" active={false} />
-                            <ToggleSetting label="Auto-Reject Calls" desc="Reject incoming voice calls" active={true} />
-                            <ToggleSetting label="Auto-Reply Call" desc="Send text after rejecting" active={true} />
-                         </div>
-                         <div className="mt-8 pt-6 border-t border-gray-100">
-                            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Target Webhook URL</label>
-                            <div className="flex space-x-2">
-                               <input type="text" readOnly value="https://crm-backend.internal/webhooks/whatsapp" className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono text-indigo-600" />
-                               <button className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-colors">Change</button>
-                            </div>
-                         </div>
+                      <div className="bg-slate-50 rounded-2xl p-6 border border-gray-100 flex flex-col justify-center items-center text-center">
+                        {waStatus === 'connected' ? (
+                            <>
+                              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-4 border-4 border-white shadow-xl">
+                                  <ShieldCheck size={40} />
+                              </div>
+                              <h4 className="font-black text-gray-900 text-lg">Connected & Secure</h4>
+                              <p className="text-gray-500 text-sm max-w-[240px] mt-2">Your WhatsApp number is paired and ready to receive messages.</p>
+                            </>
+                        ) : (
+                            <>
+                              <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-slate-400 mb-4 border-4 border-white shadow-xl italic font-black text-2xl">?</div>
+                              <h4 className="font-black text-gray-400 text-lg">No Active Connection</h4>
+                              <p className="text-gray-400 text-sm max-w-[240px] mt-2 italic text-balance">Please scan the QR code to reconnect your WhatsApp number.</p>
+                            </>
+                        )}
                       </div>
-                   )}
-
-                   {activeTab === 'logs' && (
-                      <div className="bg-slate-900 rounded-2xl p-6 font-mono text-[11px] h-[300px] overflow-y-auto shadow-inner animate-in fade-in slide-in-from-bottom-2 duration-300">
-                         <div className="space-y-2">
-                            {logs.map((log, i) => (
-                               <div key={i} className={`flex space-x-3 ${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : 'text-indigo-300'}`}>
-                                  <span className="text-slate-600">[{log.timestamp}]</span>
-                                  <span className="font-bold">[{log.type.toUpperCase()}]</span>
-                                  <span className="text-slate-200">{log.message}</span>
-                               </div>
-                            ))}
-                            <div className="text-indigo-500/50 animate-pulse mt-4">_ listening for gateway events...</div>
-                         </div>
-                      </div>
-                   )}
+                  </div>
                 </div>
              </div>
           </div>
@@ -217,6 +161,7 @@ const AgentDashboard = () => {
 
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+
         <StatCard 
           title="Total Chats" 
           value="24" 
@@ -337,22 +282,6 @@ const AgentDashboard = () => {
   );
 };
 
-const TabButton = ({ active, onClick, icon, label, badge }: any) => (
-  <button 
-    onClick={onClick}
-    className={`flex items-center space-x-2 px-6 py-4 text-xs font-black uppercase tracking-widest transition-all relative ${active ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
-  >
-    {icon}
-    <span>{label}</span>
-    {badge !== undefined && (
-       <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[9px] ${active ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
-          {badge}
-       </span>
-    )}
-    {active && <div className="absolute bottom-0 left-0 right-0 h-1 bg-indigo-600 rounded-t-full" />}
-  </button>
-);
-
 const HealthMetric = ({ label, status, value }: any) => (
   <div className="flex items-center justify-between border-b border-indigo-100/30 pb-3 last:border-0 last:pb-0">
      <div>
@@ -360,18 +289,6 @@ const HealthMetric = ({ label, status, value }: any) => (
         <p className="text-sm font-bold text-gray-900">{status}</p>
      </div>
      <span className="text-xs font-mono bg-white px-2 py-1 rounded-lg border border-indigo-100 text-indigo-600 font-bold">{value}</span>
-  </div>
-);
-
-const ToggleSetting = ({ label, desc, active }: any) => (
-  <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50 flex items-center justify-between group hover:border-indigo-100 transition-all">
-     <div>
-        <p className="text-sm font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{label}</p>
-        <p className="text-[10px] text-gray-500 font-medium">{desc}</p>
-     </div>
-     <div className={`w-10 h-6 rounded-full relative transition-colors ${active ? 'bg-indigo-600' : 'bg-gray-300'}`}>
-        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${active ? 'left-5' : 'left-1'}`} />
-     </div>
   </div>
 );
 
