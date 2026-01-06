@@ -6,33 +6,28 @@ import { toast } from 'sonner';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login, isLoading: authLoading } = useAuthStore();
+  const { login, loginDemo, isLoading: authLoading } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showAgents, setShowAgents] = useState(false);
 
-  const adminAgentUser = { 
-    email: 'admin@tokomaju.com', 
-    role: 'admin_agent' as const, 
-    id: 'tenant-admin', 
-    name: 'Admin Toko Maju' 
+  const adminAgentUser = {
+    email: 'admin@tokomaju.com',
+    role: 'admin_agent' as const,
+    id: 'tenant-admin',
+    name: 'Admin Toko Maju',
+    tenant_name: 'Toko Maju Jaya'
   };
-  
+
   const agents = [
-    { email: 'siti@tokomaju.com', name: 'Siti Aminah', id: 'agent-1' },
-    { email: 'budi@tokomaju.com', name: 'Budi Santoso', id: 'agent-2' },
-    { email: 'dewi@tokomaju.com', name: 'Dewi Lestari', id: 'agent-3' },
+    { email: 'siti@tokomaju.com', name: 'Siti Aminah', id: 'agent-1', tenant_name: 'Toko Maju Jaya' },
+    { email: 'budi@tokomaju.com', name: 'Budi Santoso', id: 'agent-2', tenant_name: 'Toko Maju Jaya' },
+    { email: 'dewi@tokomaju.com', name: 'Dewi Lestari', id: 'agent-3', tenant_name: 'Toko Maju Jaya' },
   ];
 
   const handleDemoLogin = (user: any) => {
-    // Manually set the auth state for demo purposes
-    useAuthStore.setState({
-      user: { ...user, isDemo: true },
-      isAuthenticated: true,
-      token: 'demo-token-' + Math.random().toString(36).substring(7)
-    });
-
-    toast.success(`Selamat datang (Demo), ${user.name}!`);
+    // Use the loginDemo function from the store
+    loginDemo(user);
 
     // Navigate based on role
     if (user.role === 'super_admin') navigate('/super-admin');
@@ -50,9 +45,11 @@ const Login = () => {
     try {
         const success = await login(email, password);
         if (success) {
-            const role = email.includes('admin') ? 'super_admin' : 'admin_agent';
-            if (role === 'super_admin') navigate('/super-admin');
-            else navigate('/admin');
+            // Get the user from store after successful login
+            const user = useAuthStore.getState().user;
+            if (user?.role === 'super_admin') navigate('/super-admin');
+            else if (user?.role === 'admin_agent') navigate('/admin');
+            else navigate('/agent');
         }
     } catch (error: any) {
         toast.error(error.message || 'Gagal masuk');
