@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2 } from 'lucide-react';
+import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2, User, CheckCircle2, Clock3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from 'sonner';
@@ -15,6 +15,15 @@ const AgentDashboard = () => {
   const [qrState, setQrState] = useState<'generating' | 'ready' | 'scanned'>('generating');
   const [qrUrl, setQrUrl] = useState('');
   const [pairingCode, setPairingCode] = useState('');
+
+  // Mock Chat Terbaru
+  const recentChats = [
+    { id: 1, name: 'Budi Santoso', message: 'Halo gan, stok iPhone 15 masih ada?', time: 'Baru saja', status: 'unread', avatar: 'bg-blue-100 text-blue-600' },
+    { id: 2, name: 'Siti Aminah', message: 'Terima kasih kak, barang sudah sampai.', time: '5 mnt lalu', status: 'read', avatar: 'bg-pink-100 text-pink-600' },
+    { id: 3, name: 'Rudi Hermawan', message: 'Bisa kirim via Gojek hari ini?', time: '12 mnt lalu', status: 'replied', avatar: 'bg-green-100 text-green-600' },
+    { id: 4, name: 'Dewi Lestari', message: 'Cara klaim garansinya gimana ya?', time: '30 mnt lalu', status: 'read', avatar: 'bg-purple-100 text-purple-600' },
+    { id: 5, name: 'Ahmad Dani', message: 'Siap ditunggu infonya.', time: '1 jam lalu', status: 'replied', avatar: 'bg-yellow-100 text-yellow-600' },
+  ];
 
   const openQrModal = (method: 'qr' | 'code' = 'qr') => {
     setPairingMethod(method);
@@ -68,11 +77,10 @@ const AgentDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        {/* GATEWAY STATUS WIDGET (Simplified for Admin Agent) */}
+        {/* GATEWAY STATUS WIDGET */}
         {user?.role === 'admin_agent' && (
           <div className="lg:col-span-3">
              <div className="bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
-                {/* Header Control Center */}
                 <div className="bg-slate-900 p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                    <div className="flex items-center space-x-5 text-white">
                       <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${waStatus === 'connected' ? 'bg-green-500/20 text-green-400' : waStatus === 'connecting' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'} border border-white/10 backdrop-blur-md`}>
@@ -119,41 +127,6 @@ const AgentDashboard = () => {
                       )}
                    </div>
                 </div>
-
-                {/* Status Content Only (No Tabs) */}
-                <div className="p-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="space-y-6">
-                        <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100/50">
-                            <h4 className="font-bold text-gray-900 mb-4 flex items-center space-x-2">
-                              <Activity size={18} className="text-indigo-600" />
-                              <span>Kesehatan Koneksi</span>
-                            </h4>
-                            <div className="space-y-4">
-                              <HealthMetric label="Status Layanan" status={waStatus === 'connected' ? 'Operasional' : 'Perlu Tindakan'} value={waStatus === 'connected' ? '100%' : '0%'} />
-                              <HealthMetric label="Sinkronisasi Terakhir" status="Baru saja" value="OK" />
-                            </div>
-                        </div>
-                      </div>
-                      <div className="bg-slate-50 rounded-2xl p-6 border border-gray-100 flex flex-col justify-center items-center text-center">
-                        {waStatus === 'connected' ? (
-                            <>
-                              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-4 border-4 border-white shadow-xl">
-                                  <ShieldCheck size={40} />
-                              </div>
-                              <h4 className="font-black text-gray-900 text-lg">Terhubung & Aman</h4>
-                              <p className="text-gray-500 text-sm max-w-[240px] mt-2">Nomor WhatsApp Anda telah terhubung dan siap menerima pesan.</p>
-                            </>
-                        ) : (
-                            <>
-                              <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-slate-400 mb-4 border-4 border-white shadow-xl italic font-black text-2xl">?</div>
-                              <h4 className="font-black text-gray-400 text-lg">Tidak Ada Koneksi Aktif</h4>
-                              <p className="text-gray-400 text-sm max-w-[240px] mt-2 italic text-balance">Silakan scan kode QR untuk menghubungkan kembali nomor WhatsApp Anda.</p>
-                            </>
-                        )}
-                      </div>
-                  </div>
-                </div>
              </div>
           </div>
         )}
@@ -191,15 +164,102 @@ const AgentDashboard = () => {
         />
       </div>
 
-      {/* Charts & Shortcuts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-           {/* Placeholder for chart to match existing structure */}
-           <div className="h-64 flex items-center justify-center text-gray-400">Area Visualisasi Grafik</div>
+        {/* RECENT CHATS (Menggantikan Chart) */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
+           <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold text-gray-900 text-lg">Chat Terbaru</h3>
+              <button 
+                onClick={() => navigate('history')}
+                className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors flex items-center space-x-1"
+              >
+                <span>Lihat Semua</span>
+                <ArrowRight size={14} />
+              </button>
+           </div>
+           
+           <div className="space-y-4">
+              {recentChats.map((chat) => (
+                <div key={chat.id} className="flex items-center p-4 hover:bg-gray-50 rounded-2xl border border-gray-50 transition-colors cursor-pointer group">
+                   <div className={`w-12 h-12 rounded-full flex items-center justify-center ${chat.avatar} font-bold text-lg mr-4`}>
+                      {chat.name.charAt(0)}
+                   </div>
+                   <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start mb-1">
+                         <h4 className="font-bold text-gray-900 text-sm group-hover:text-indigo-600 transition-colors">{chat.name}</h4>
+                         <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{chat.time}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{chat.message}</p>
+                   </div>
+                   <div className="ml-4">
+                      {chat.status === 'unread' && <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></div>}
+                      {chat.status === 'replied' && <CheckCircle2 size={16} className="text-green-500" />}
+                   </div>
+                </div>
+              ))}
+           </div>
         </div>
+
+         {/* QUEUE STATUS (Menggantikan Shortcuts & Tips) */}
          <div className="space-y-6">
-           {/* Placeholder for sidebar widgets */}
-           <div className="bg-white p-6 rounded-2xl h-full border border-gray-100">Pintasan & Tips</div>
+           <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm h-full">
+              <h3 className="font-bold text-gray-900 text-lg mb-6">Status Antrian</h3>
+              
+              <div className="space-y-4">
+                 <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                       <div className="p-2 bg-red-100 text-red-600 rounded-xl">
+                          <MessageCircle size={20} />
+                       </div>
+                       <div>
+                          <p className="text-xs font-bold text-red-800 uppercase tracking-wide">Menunggu Respon</p>
+                          <p className="text-[10px] text-red-600/70">Butuh perhatian segera</p>
+                       </div>
+                    </div>
+                    <span className="text-2xl font-black text-red-600">5</span>
+                 </div>
+
+                 <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                       <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+                          <User size={20} />
+                       </div>
+                       <div>
+                          <p className="text-xs font-bold text-blue-800 uppercase tracking-wide">Sedang Ditangani</p>
+                          <p className="text-[10px] text-blue-600/70">Chat aktif berlangsung</p>
+                       </div>
+                    </div>
+                    <span className="text-2xl font-black text-blue-600">8</span>
+                 </div>
+
+                 <div className="bg-green-50 p-4 rounded-2xl border border-green-100 flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                       <div className="p-2 bg-green-100 text-green-600 rounded-xl">
+                          <CheckCircle2 size={20} />
+                       </div>
+                       <div>
+                          <p className="text-xs font-bold text-green-800 uppercase tracking-wide">Selesai Hari Ini</p>
+                          <p className="text-[10px] text-green-600/70">Tiket ditutup</p>
+                       </div>
+                    </div>
+                    <span className="text-2xl font-black text-green-600">42</span>
+                 </div>
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-gray-100">
+                 <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                    <span>Rata-rata Waktu Tunggu</span>
+                    <span className="font-bold text-gray-900">4m 12d</span>
+                 </div>
+                 <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div className="bg-orange-400 h-2 rounded-full" style={{ width: '35%' }}></div>
+                 </div>
+                 <p className="text-[10px] text-orange-500 mt-2 flex items-center">
+                    <Clock3 size={12} className="mr-1" /> 
+                    Sedikit lebih lambat dari biasanya
+                 </p>
+              </div>
+           </div>
          </div>
       </div>
 
