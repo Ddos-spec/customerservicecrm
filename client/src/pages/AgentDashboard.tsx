@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2, CheckCircle2, User, Clock3 } from 'lucide-react';
+import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Activity, ShieldCheck, Link2, CheckCircle2, User, Clock3, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from 'sonner';
@@ -12,10 +12,15 @@ const AgentDashboard = () => {
   // State untuk status WA (Simulasi)
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connected');
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [pairingMethod, setPairingMethod] = useState<'qr' | 'code'>('qr');
   const [qrState, setQrState] = useState<'generating' | 'ready' | 'scanned'>('generating');
   const [qrUrl, setQrUrl] = useState('');
   const [pairingCode, setPairingCode] = useState('');
+
+  // State Pengaturan Panggilan
+  const [autoReject, setAutoReject] = useState(true);
+  const [autoReplyMessage, setAutoReplyMessage] = useState('Maaf, saat ini kami tidak dapat menerima panggilan. Silakan hubungi kami melalui chat teks di sini. Terima kasih.');
 
   // Generate 50 Mock Chats
   const allRecentChats = useMemo(() => Array.from({ length: 50 }, (_, i) => ({
@@ -107,6 +112,16 @@ const AgentDashboard = () => {
                    </div>
 
                    <div className="flex items-center space-x-3">
+                      {waStatus === 'connected' && (
+                        <button 
+                          onClick={() => setIsSettingsModalOpen(true)}
+                          className="p-3 bg-white/10 text-white hover:bg-white/20 rounded-2xl transition-all border border-white/10 active:scale-90"
+                          title="Pengaturan Balasan"
+                        >
+                          <Settings size={20} />
+                        </button>
+                      )}
+                      
                       {waStatus === 'connected' ? (
                          <button 
                            onClick={() => { setWaStatus('disconnected'); toast.warning('Gateway terputus'); }}
@@ -133,6 +148,43 @@ const AgentDashboard = () => {
                          </div>
                       )}
                    </div>
+                </div>
+
+                {/* Status Content */}
+                <div className="p-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-6">
+                        <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100/50">
+                            <h4 className="font-bold text-gray-900 mb-4 flex items-center space-x-2">
+                              <Activity size={18} className="text-blue-600" />
+                              <span>Kesehatan Koneksi</span>
+                            </h4>
+                            <div className="space-y-4">
+                              <HealthMetric label="Status Layanan" status={waStatus === 'connected' ? 'Operasional' : 'Perlu Tindakan'} value={waStatus === 'connected' ? '100%' : '0%'} />
+                              <HealthMetric label="Sinkronisasi Terakhir" status="Baru saja" value="OK" />
+                            </div>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl p-6 border border-gray-100 flex flex-col justify-center items-center text-center">
+                        {waStatus === 'connected' ? (
+                            <>
+                              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-4 border-4 border-white shadow-xl">
+                                  <ShieldCheck size={40} />
+                              </div>
+                              <h4 className="font-black text-gray-900 text-lg">Terhubung & Aman</h4>
+                              <p className="text-gray-500 text-sm max-w-[240px] mt-2 text-balance">
+                                Panggilan suara otomatis {autoReject ? 'ditolak' : 'diterima'} sesuai pengaturan Anda.
+                              </p>
+                            </>
+                        ) : (
+                            <>
+                              <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-slate-400 mb-4 border-4 border-white shadow-xl italic font-black text-2xl">?</div>
+                              <h4 className="font-black text-gray-400 text-lg">Tidak Ada Koneksi Aktif</h4>
+                              <p className="text-gray-400 text-sm max-w-[240px] mt-2 italic text-balance">Silakan scan kode QR untuk menghubungkan kembali nomor WhatsApp Anda.</p>
+                            </>
+                        )}
+                      </div>
+                  </div>
                 </div>
              </div>
           </div>
@@ -232,6 +284,64 @@ const AgentDashboard = () => {
          </div>
       </div>
 
+      {/* MODAL: Pengaturan Balasan Otomatis */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
+           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl p-10 relative animate-in zoom-in-95 duration-200 border border-white/20">
+              <button onClick={() => setIsSettingsModalOpen(false)} className="absolute top-8 right-8 text-gray-400 hover:text-gray-600 transition-transform active:scale-90"><X size={28} /></button>
+              
+              <div className="mb-10">
+                 <div className="inline-flex p-3 bg-blue-50 text-blue-600 rounded-2xl mb-4">
+                    <Settings size={32} />
+                 </div>
+                 <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase leading-none">Fitur Balas Panggilan</h2>
+                 <p className="text-gray-500 text-sm mt-2 font-medium leading-relaxed">
+                    Atur kebijakan otomatis saat ada panggilan WhatsApp masuk ke nomor Anda.
+                 </p>
+              </div>
+
+              <div className="space-y-8">
+                 {/* Toggle Reject */}
+                 <div className="flex items-center justify-between p-6 bg-gray-50 rounded-[2rem] border border-gray-100 group hover:border-blue-100 transition-all">
+                    <div>
+                       <p className="text-sm font-black text-gray-900 uppercase tracking-tight group-hover:text-blue-600 transition-colors">Tolak Otomatis</p>
+                       <p className="text-[10px] text-gray-500 font-medium mt-0.5">Segera matikan telepon masuk</p>
+                    </div>
+                    <button 
+                      onClick={() => setAutoReject(!autoReject)}
+                      className={`w-12 h-7 rounded-full relative transition-colors ${autoReject ? 'bg-blue-600' : 'bg-gray-300'}`}
+                    >
+                       <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-md transition-all ${autoReject ? 'left-6' : 'left-1'}`} />
+                    </button>
+                 </div>
+
+                 {/* Message Input */}
+                 <div className="group">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Pesan Balasan Teks</label>
+                    <textarea 
+                      value={autoReplyMessage}
+                      onChange={(e) => setAutoReplyMessage(e.target.value)}
+                      placeholder="Tulis pesan balasan di sini..."
+                      rows={4}
+                      className="w-full p-6 bg-gray-50 border-2 border-gray-100 rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 text-sm font-medium leading-relaxed transition-all shadow-inner resize-none"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-3 italic">* Pesan ini akan otomatis terkirim setelah panggilan ditolak.</p>
+                 </div>
+
+                 <button 
+                   onClick={() => {
+                      toast.success('Pengaturan balasan berhasil disimpan!');
+                      setIsSettingsModalOpen(false);
+                   }}
+                   className="w-full py-4 bg-slate-900 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-xl shadow-slate-200 hover:bg-blue-600 transition-all active:scale-95"
+                 >
+                   Simpan Perubahan
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* QR Code / Pairing Modal (REALISTIC) */}
       {isQrModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
@@ -309,6 +419,16 @@ const AgentDashboard = () => {
     </div>
   );
 };
+
+const HealthMetric = ({ label, status, value }: any) => (
+  <div className="flex items-center justify-between border-b border-blue-100/30 pb-3 last:border-0 last:pb-0">
+     <div>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</p>
+        <p className="text-sm font-bold text-gray-900">{status}</p>
+     </div>
+     <span className="text-xs font-mono bg-white px-2 py-1 rounded-lg border border-blue-100 text-blue-600 font-bold">{value}</span>
+  </div>
+);
 
 const StatCard = ({ title, value, subtitle, icon, color }: any) => (
   <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
