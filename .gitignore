@@ -1,10 +1,10 @@
 # Node modules
 node_modules/
-client/node_modules/
-wagateway/node_modules/
+frontend/node_modules/
+backend/node_modules/
 
 # Build outputs
-client/dist/
+frontend/dist/
 dist/
 
 # Environment variables
@@ -13,9 +13,9 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
-client/.env
-client/.env.local
-wagateway/.env
+frontend/.env
+frontend/.env.local
+backend/.env
 
 # OS Files
 .DS_Store
@@ -28,12 +28,11 @@ Thumbs.db
 *.swo
 
 # WhatsApp Gateway Specific
-wagateway/auth_info_baileys/
-wagateway/media/
-wagateway/*.log
-wagateway/*.enc
-wagateway/session_tokens.json
-wagateway/auth_info_baileys/
+backend/auth_info_baileys/
+backend/media/
+backend/*.log
+backend/*.enc
+backend/session_tokens.json
 
 # Logs
 logs
