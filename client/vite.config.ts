@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/customerservicecrm/', // Tetap simpan untuk GitHub Pages
+  // base dihapus untuk Vercel (Root domain)
   plugins: [
     react(),
     tailwindcss(),
@@ -12,23 +12,17 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Proxy API requests to Backend
+      // Proxy tetap ada untuk local development
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
       },
-      // Proxy Admin Auth requests
       '/admin': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
       },
-      // Proxy WebSocket for real-time logs/QR
-      '/socket.io': { // Jika pakai socket.io (opsional, jaga-jaga)
-        target: 'ws://localhost:3000',
-        ws: true,
-      }
     }
   }
 })
