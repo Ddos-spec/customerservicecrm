@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, WifiOff, X, RefreshCw, Settings, Terminal, Activity, ShieldCheck, Link2 } from 'lucide-react';
+import { useState } from 'react';
+import { MessageCircle, Clock, Star, ThumbsUp, ArrowRight, Smartphone, QrCode, Wifi, X, RefreshCw, Settings, Terminal, Activity, ShieldCheck, Link2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from 'sonner';
@@ -108,7 +108,7 @@ const AgentDashboard = () => {
                       {waStatus === 'connected' ? (
                          <button 
                            onClick={() => { setWaStatus('disconnected'); addLog('Gateway disconnected by user', 'error'); toast.warning('Gateway disconnected'); }}
-                           className="px-5 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-red-500/20"
+                           className="px-5 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-50 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-red-500/20"
                          >
                            Terminate Session
                          </button>
@@ -247,7 +247,7 @@ const AgentDashboard = () => {
         />
       </div>
 
-      {/* ... (Existing rest of the file) ... */}
+      {/* Charts & Shortcuts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
            {/* Placeholder for chart to match existing structure */}
@@ -390,27 +390,6 @@ const StatCard = ({ title, value, subtitle, icon, color }: any) => (
       )}
     </div>
     <h3 className="text-3xl font-bold text-gray-900 mb-1 leading-tight tracking-tighter">{value}</h3>
-    <p className="text-gray-500 text-sm font-medium">{title}</p>
-  </div>
-);
-
-export default AgentDashboard;
-
-const StatCard = ({ title, value, subtitle, icon, color }: any) => (
-  <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex justify-between items-start mb-4">
-      <div className={`p-3 rounded-xl ${color}`}>
-        {icon}
-      </div>
-      {subtitle.includes('+') ? (
-        <span className="text-green-600 bg-green-50 px-2 py-1 rounded-lg text-xs font-bold">{subtitle}</span>
-      ) : subtitle.includes('-') ? (
-         <span className="text-green-600 bg-green-50 px-2 py-1 rounded-lg text-xs font-bold">{subtitle}</span>
-      ) : (
-         <span className="text-gray-500 bg-gray-50 px-2 py-1 rounded-lg text-xs font-bold">{subtitle}</span>
-      )}
-    </div>
-    <h3 className="text-3xl font-bold text-gray-900 mb-1">{value}</h3>
     <p className="text-gray-500 text-sm font-medium">{title}</p>
   </div>
 );
