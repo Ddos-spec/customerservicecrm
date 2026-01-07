@@ -187,7 +187,13 @@ function loadTokens() {
 }
 
 app.use(bodyParser.json());
-app.use(helmet());
+
+// Helmet dengan config untuk CORS
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+}));
+
 app.use(rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // Limit each IP to 100 requests per window
@@ -208,7 +214,10 @@ app.use(session({
     }
 }));
 
+// Health check endpoints (no auth required)
 app.get('/', (req, res) => res.json({ status: 'online', message: 'WA Gateway Engine is running', version: '1.0.0' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/api/v1/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 async function saveSessionSettings(sessionId, settings) {
     await redisClient.set(`wa:settings:${sessionId}`, JSON.stringify(settings));
@@ -386,10 +395,10 @@ server.listen(PORT, async () => {
     try {
         await ensureSuperAdmin();
     } catch (err) {
-        logger.warn('Super admin check failed:', err.message);
+        console.error('❌ Super admin check failed:', err.message);
     }
 
-    logger.info(`🚀 Gateway Engine running on port ${PORT}`);
+    console.log(`🚀 Gateway Engine running on port ${PORT}`);
 });
 
 // Graceful shutdown
