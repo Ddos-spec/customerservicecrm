@@ -58,6 +58,15 @@ function requireTenantAccess(req, res, next) {
     next();
 }
 
+function isValidHttpUrl(value) {
+    try {
+        const parsed = new URL(value);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
 // ===== SUPER ADMIN AUTO-CREATION =====
 
 /**
@@ -301,6 +310,116 @@ router.patch('/tenants/:id/status', requireRole('super_admin'), async (req, res)
     } catch (error) {
         console.error('Error updating tenant:', error);
         res.status(500).json({ success: false, error: 'Failed to update tenant' });
+    }
+});
+
+/**
+ * PATCH /api/v1/admin/tenants/:id/session
+ * Set session_id for tenant (1 tenant = 1 session)
+ */
+router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const rawSessionId = req.body?.session_id;
+        const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+        const normalized = sessionId === '' ? null : sessionId;
+
+        const tenant = await db.setTenantSessionId(id, normalized);
+        if (!tenant) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
+
+        res.json({ success: true, tenant });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ success: false, error: 'Session ID already assigned to another tenant' });
+        }
+        console.error('Error updating tenant session:', error);
+        res.status(500).json({ success: false, error: 'Failed to update tenant session' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/tenants/:id/webhooks
+ * List webhooks for a tenant
+ */
+router.get('/tenants/:id/webhooks', requireRole('super_admin'), async (req, res) => {
+    try {
+        const tenantId = parseInt(req.params.id, 10);
+        if (!tenantId) {
+            return res.status(400).json({ success: false, error: 'Tenant ID is required' });
+        }
+
+        const tenant = await db.getTenantById(tenantId);
+        if (!tenant) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
+
+        const webhooks = await db.getTenantWebhooks(tenantId);
+        res.json({ success: true, webhooks });
+    } catch (error) {
+        console.error('Error fetching tenant webhooks:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch tenant webhooks' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/tenants/:id/webhooks
+ * Create webhook for a tenant
+ */
+router.post('/tenants/:id/webhooks', requireRole('super_admin'), async (req, res) => {
+    try {
+        const tenantId = parseInt(req.params.id, 10);
+        const url = (req.body?.url || '').trim();
+
+        if (!tenantId) {
+            return res.status(400).json({ success: false, error: 'Tenant ID is required' });
+        }
+        if (!url) {
+            return res.status(400).json({ success: false, error: 'Webhook URL is required' });
+        }
+        if (!isValidHttpUrl(url)) {
+            return res.status(400).json({ success: false, error: 'Webhook URL must be valid http/https' });
+        }
+
+        const tenant = await db.getTenantById(tenantId);
+        if (!tenant) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
+
+        const webhook = await db.createTenantWebhook(tenantId, url);
+        res.status(201).json({ success: true, webhook });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ success: false, error: 'Webhook URL already exists for this tenant' });
+        }
+        console.error('Error creating tenant webhook:', error);
+        res.status(500).json({ success: false, error: 'Failed to create tenant webhook' });
+    }
+});
+
+/**
+ * DELETE /api/v1/admin/tenants/:id/webhooks/:webhookId
+ * Delete webhook for a tenant
+ */
+router.delete('/tenants/:id/webhooks/:webhookId', requireRole('super_admin'), async (req, res) => {
+    try {
+        const tenantId = parseInt(req.params.id, 10);
+        const webhookId = parseInt(req.params.webhookId, 10);
+
+        if (!tenantId || !webhookId) {
+            return res.status(400).json({ success: false, error: 'Tenant ID and webhook ID are required' });
+        }
+
+        const deleted = await db.deleteTenantWebhook(tenantId, webhookId);
+        if (!deleted) {
+            return res.status(404).json({ success: false, error: 'Webhook not found' });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting tenant webhook:', error);
+        res.status(500).json({ success: false, error: 'Failed to delete tenant webhook' });
     }
 });
 

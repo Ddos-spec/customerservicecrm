@@ -19,6 +19,7 @@ const { createClient } = require('redis');
 const useRedisAuthState = require('./redis-auth');
 const { initializeApi, getWebhookUrl } = require('./api_v1');
 const { router: authRouter, ensureSuperAdmin } = require('./auth');
+const db = require('./db');
 const n8nRouter = require('./n8n-api');
 require('dotenv').config();
 const session = require('express-session');
@@ -228,6 +229,23 @@ async function postToWebhook(data) {
     if (url) axios.post(url, data).catch(() => {});
 }
 
+async function postToTenantWebhooks(data) {
+    try {
+        if (!data || !data.sessionId) return;
+        const tenant = await db.getTenantBySessionId(data.sessionId);
+        if (!tenant) return;
+        const webhooks = await db.getTenantWebhooks(tenant.id);
+        if (!webhooks.length) return;
+
+        const payload = { ...data, tenant_id: tenant.id, tenant_name: tenant.company_name };
+        await Promise.allSettled(
+            webhooks.map((wh) => axios.post(wh.url, payload, { timeout: 5000 }))
+        );
+    } catch (error) {
+        logger.warn(`Webhook dispatch failed: ${error.message}`);
+    }
+}
+
 function getSessionsDetails() {
     return Array.from(sessions.values()).map(s => ({ sessionId: s.sessionId, status: s.status, qr: s.qr }));
 }
@@ -317,8 +335,13 @@ async function connectToWhatsApp(sessionId, retryCount = 0) {
         });
 
         // Memory cleanup: limit message store
-        sock.ev.on('messages.upsert', () => {
+        sock.ev.on('messages.upsert', (upsert) => {
             // No-op, just prevent default buffering
+            void postToTenantWebhooks({
+                event: 'messages.upsert',
+                sessionId,
+                data: upsert
+            });
         });
 
         sessions.set(sessionId, { sessionId, sock, status: 'CONNECTING', qr: null });
@@ -390,6 +413,13 @@ app.use('/api/v1', initializeApi(sessions, sessionTokens, createSession, getSess
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, async () => {
     loadTokens();
+
+    try {
+        await db.ensureTenantWebhooksTable();
+        await db.ensureTenantSessionColumn();
+    } catch (err) {
+        console.error('Webhook table check failed:', err.message);
+    }
 
     // Ensure super admin exists (from ENV)
     try {
