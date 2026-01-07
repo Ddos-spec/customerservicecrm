@@ -4,6 +4,7 @@
  */
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const db = require('./db');
 
 const router = express.Router();
@@ -65,6 +66,12 @@ function isValidHttpUrl(value) {
     } catch {
         return false;
     }
+}
+
+function isInviteExpired(invite) {
+    if (!invite?.expires_at) return false;
+    const expiresAt = new Date(invite.expires_at).getTime();
+    return Number.isFinite(expiresAt) && Date.now() > expiresAt;
 }
 
 // ===== SUPER ADMIN AUTO-CREATION =====
@@ -180,7 +187,8 @@ router.post('/login', async (req, res) => {
             name: user.name,
             email: user.email,
             role: user.role,
-            tenant_name: user.tenant_name
+            tenant_name: user.tenant_name,
+            tenant_session_id: user.tenant_session_id || null
         };
 
         // Save session explicitly
@@ -198,7 +206,8 @@ router.post('/login', async (req, res) => {
                     email: user.email,
                     role: user.role,
                     tenant_id: user.tenant_id,
-                    tenant_name: user.tenant_name
+                    tenant_name: user.tenant_name,
+                    tenant_session_id: user.tenant_session_id || null
                 }
             });
         });
@@ -275,13 +284,66 @@ router.get('/tenants', requireRole('super_admin'), async (req, res) => {
  */
 router.post('/tenants', requireRole('super_admin'), async (req, res) => {
     try {
-        const { company_name } = req.body;
-        if (!company_name) {
+        const companyName = (req.body?.company_name || '').trim();
+        const adminName = (req.body?.admin_name || '').trim();
+        const adminEmail = (req.body?.admin_email || '').trim();
+        const adminPassword = req.body?.admin_password || '';
+        const sessionIdRaw = req.body?.session_id;
+        const sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : '';
+        const normalizedSessionId = sessionId === '' ? null : sessionId;
+
+        if (!companyName) {
             return res.status(400).json({ success: false, error: 'Company name is required' });
         }
+        if (!adminName || !adminEmail || !adminPassword) {
+            return res.status(400).json({ success: false, error: 'Admin name, email, and password are required' });
+        }
+        if (adminPassword.length < 6) {
+            return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+        }
 
-        const tenant = await db.createTenant({ company_name });
-        res.status(201).json({ success: true, tenant });
+        const existing = await db.findUserByEmail(adminEmail);
+        if (existing) {
+            return res.status(409).json({ success: false, error: 'Email already exists' });
+        }
+
+        const client = await db.getClient();
+        try {
+            await client.query('BEGIN');
+            const tenantResult = await client.query(
+                `INSERT INTO tenants (company_name, status, session_id)
+                 VALUES ($1, 'active', $2)
+                 RETURNING id, company_name, status, created_at, session_id`,
+                [companyName, normalizedSessionId]
+            );
+            const tenant = tenantResult.rows[0];
+
+            const password_hash = await bcrypt.hash(adminPassword, 12);
+            const adminResult = await client.query(
+                `INSERT INTO users (tenant_id, name, email, password_hash, role, status)
+                 VALUES ($1, $2, $3, $4, 'admin_agent', 'active')
+                 RETURNING id, tenant_id, name, email, role, status, created_at`,
+                [tenant.id, adminName, adminEmail, password_hash]
+            );
+
+            await client.query('COMMIT');
+            res.status(201).json({ success: true, tenant, admin: adminResult.rows[0] });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            if (error.code === '23505') {
+                if (error.constraint === 'users_email_key') {
+                    return res.status(409).json({ success: false, error: 'Email already exists' });
+                }
+                if (error.constraint === 'tenants_session_id_idx') {
+                    return res.status(409).json({ success: false, error: 'Session ID already assigned to another tenant' });
+                }
+                return res.status(409).json({ success: false, error: 'Duplicate entry' });
+            }
+            console.error('Error creating tenant:', error);
+            return res.status(500).json({ success: false, error: 'Failed to create tenant' });
+        } finally {
+            client.release();
+        }
     } catch (error) {
         console.error('Error creating tenant:', error);
         res.status(500).json({ success: false, error: 'Failed to create tenant' });
@@ -336,6 +398,32 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         }
         console.error('Error updating tenant session:', error);
         res.status(500).json({ success: false, error: 'Failed to update tenant session' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/tenant-admin
+ * Get admin agent info for tenant
+ */
+router.get('/tenant-admin', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        let tenantId;
+        if (user.role === 'super_admin') {
+            tenantId = req.query.tenant_id ? parseInt(req.query.tenant_id, 10) : null;
+        } else {
+            tenantId = user.tenant_id;
+        }
+
+        if (!tenantId) {
+            return res.status(400).json({ success: false, error: 'Tenant ID required' });
+        }
+
+        const adminUser = await db.getTenantAdmin(tenantId);
+        res.json({ success: true, admin: adminUser });
+    } catch (error) {
+        console.error('Error fetching tenant admin:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch tenant admin' });
     }
 });
 
@@ -460,7 +548,7 @@ router.get('/users', requireAuth, async (req, res) => {
  * POST /api/v1/admin/users
  * Create new user (admin_agent or agent)
  */
-router.post('/users', requireRole('super_admin', 'admin_agent'), async (req, res) => {
+router.post('/users', requireRole('super_admin'), async (req, res) => {
     try {
         const { tenant_id, name, email, password, role } = req.body;
         const currentUser = req.session.user;
@@ -475,20 +563,12 @@ router.post('/users', requireRole('super_admin', 'admin_agent'), async (req, res
             return res.status(400).json({ success: false, error: 'Invalid role' });
         }
 
-        // Tenant validation
+        // Tenant validation (super admin only)
         let targetTenantId;
-        if (currentUser.role === 'super_admin') {
-            if (!tenant_id) {
-                return res.status(400).json({ success: false, error: 'Tenant ID required for super admin' });
-            }
-            targetTenantId = tenant_id;
-        } else {
-            // Admin agent can only create for their own tenant
-            targetTenantId = currentUser.tenant_id;
-            if (role === 'admin_agent') {
-                return res.status(403).json({ success: false, error: 'Cannot create another admin agent' });
-            }
+        if (!tenant_id) {
+            return res.status(400).json({ success: false, error: 'Tenant ID required for super admin' });
         }
+        targetTenantId = tenant_id;
 
         // Check if email already exists
         const existing = await db.findUserByEmail(email);
@@ -516,6 +596,131 @@ router.post('/users', requireRole('super_admin', 'admin_agent'), async (req, res
     } catch (error) {
         console.error('Error creating user:', error);
         res.status(500).json({ success: false, error: 'Failed to create user' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/invites
+ * Create invite for user agent
+ */
+router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, res) => {
+    try {
+        const { tenant_id, name, email } = req.body;
+        const currentUser = req.session.user;
+
+        if (!name || !email) {
+            return res.status(400).json({ success: false, error: 'Name and email are required' });
+        }
+
+        let targetTenantId;
+        if (currentUser.role === 'super_admin') {
+            if (!tenant_id) {
+                return res.status(400).json({ success: false, error: 'Tenant ID required for super admin' });
+            }
+            targetTenantId = tenant_id;
+        } else {
+            targetTenantId = currentUser.tenant_id;
+        }
+
+        const existing = await db.findUserByEmail(email);
+        if (existing) {
+            return res.status(409).json({ success: false, error: 'Email already exists' });
+        }
+
+        const existingUsers = await db.getUsersByTenant(targetTenantId);
+        const pendingInvites = await db.countPendingInvites(targetTenantId);
+        if (existingUsers.length + pendingInvites >= 4) {
+            return res.status(400).json({ success: false, error: 'Agent slot limit reached (max 4)' });
+        }
+
+        const token = crypto.randomBytes(24).toString('hex');
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const invite = await db.createUserInvite({
+            tenant_id: targetTenantId,
+            name,
+            email,
+            role: 'agent',
+            token,
+            created_by: currentUser.id,
+            expires_at: expiresAt
+        });
+
+        res.status(201).json({ success: true, invite });
+    } catch (error) {
+        console.error('Error creating invite:', error);
+        res.status(500).json({ success: false, error: 'Failed to create invite' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/invites/:token
+ * Get invite details (public)
+ */
+router.get('/invites/:token', async (req, res) => {
+    try {
+        const { token } = req.params;
+        const invite = await db.getInviteByToken(token);
+        if (!invite || invite.status !== 'pending' || isInviteExpired(invite)) {
+            return res.status(404).json({ success: false, error: 'Invite not found or expired' });
+        }
+        res.json({
+            success: true,
+            invite: {
+                name: invite.name,
+                email: invite.email,
+                tenant_name: invite.tenant_name,
+                expires_at: invite.expires_at
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching invite:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch invite' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/invites/:token/accept
+ * Accept invite and create user (public)
+ */
+router.post('/invites/:token/accept', async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { password } = req.body;
+
+        if (!password || password.length < 6) {
+            return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+        }
+
+        const invite = await db.getInviteByToken(token);
+        if (!invite || invite.status !== 'pending' || isInviteExpired(invite)) {
+            return res.status(404).json({ success: false, error: 'Invite not found or expired' });
+        }
+
+        const existing = await db.findUserByEmail(invite.email);
+        if (existing) {
+            return res.status(409).json({ success: false, error: 'Email already exists' });
+        }
+
+        const existingUsers = await db.getUsersByTenant(invite.tenant_id);
+        const pendingInvites = await db.countPendingInvites(invite.tenant_id);
+        if (existingUsers.length + pendingInvites > 4) {
+            return res.status(400).json({ success: false, error: 'Agent slot limit reached (max 4)' });
+        }
+
+        const password_hash = await bcrypt.hash(password, 12);
+        const user = await db.createUser({
+            tenant_id: invite.tenant_id,
+            name: invite.name,
+            email: invite.email,
+            password_hash,
+            role: invite.role || 'agent'
+        });
+
+        await db.acceptInvite(token);
+        res.json({ success: true, user: { id: user.id, email: user.email, name: user.name } });
+    } catch (error) {
+        console.error('Error accepting invite:', error);
+        res.status(500).json({ success: false, error: 'Failed to accept invite' });
     }
 });
 
@@ -581,6 +786,110 @@ router.delete('/users/:id', requireRole('super_admin', 'admin_agent'), async (re
     } catch (error) {
         console.error('Error deleting user:', error);
         res.status(500).json({ success: false, error: 'Failed to delete user' });
+    }
+});
+
+// ===== TICKET & MESSAGE DATA (Tenant Scoped) =====
+
+/**
+ * GET /api/v1/admin/tickets
+ * List tickets for tenant
+ */
+router.get('/tickets', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+        const offset = parseInt(req.query.offset || '0', 10);
+        const statusFilter = (req.query.status || '').toString();
+
+        let tenantId;
+        if (user.role === 'super_admin') {
+            tenantId = req.query.tenant_id ? parseInt(req.query.tenant_id, 10) : null;
+        } else {
+            tenantId = user.tenant_id;
+        }
+
+        if (!tenantId) {
+            return res.status(400).json({ success: false, error: 'Tenant ID required' });
+        }
+
+        let tickets = await db.getTicketsByTenant(tenantId, limit, offset);
+        if (statusFilter) {
+            tickets = tickets.filter((t) => t.status === statusFilter);
+        }
+
+        res.json({ success: true, tickets });
+    } catch (error) {
+        console.error('Error fetching tickets:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch tickets' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/tickets/:id/messages
+ * Get messages for ticket
+ */
+router.get('/tickets/:id/messages', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const ticketId = parseInt(req.params.id, 10);
+        if (!ticketId) {
+            return res.status(400).json({ success: false, error: 'Ticket ID required' });
+        }
+
+        const ticketResult = await db.query('SELECT * FROM tickets WHERE id = $1', [ticketId]);
+        const ticket = ticketResult.rows[0];
+        if (!ticket) {
+            return res.status(404).json({ success: false, error: 'Ticket not found' });
+        }
+        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+            return res.status(403).json({ success: false, error: 'Forbidden' });
+        }
+
+        const messages = await db.getMessagesByTicket(ticketId);
+        res.json({ success: true, messages });
+    } catch (error) {
+        console.error('Error fetching messages:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch messages' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/tickets/:id/messages
+ * Log agent message for ticket
+ */
+router.post('/tickets/:id/messages', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const ticketId = parseInt(req.params.id, 10);
+        const messageText = (req.body?.message_text || '').trim();
+
+        if (!ticketId) {
+            return res.status(400).json({ success: false, error: 'Ticket ID required' });
+        }
+        if (!messageText) {
+            return res.status(400).json({ success: false, error: 'Message text required' });
+        }
+
+        const ticketResult = await db.query('SELECT * FROM tickets WHERE id = $1', [ticketId]);
+        const ticket = ticketResult.rows[0];
+        if (!ticket) {
+            return res.status(404).json({ success: false, error: 'Ticket not found' });
+        }
+        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+            return res.status(403).json({ success: false, error: 'Forbidden' });
+        }
+
+        const message = await db.logMessage({
+            ticket_id: ticketId,
+            sender_type: 'agent',
+            message_text: messageText
+        });
+
+        res.status(201).json({ success: true, message });
+    } catch (error) {
+        console.error('Error logging message:', error);
+        res.status(500).json({ success: false, error: 'Failed to log message' });
     }
 });
 

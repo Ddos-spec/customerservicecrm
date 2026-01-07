@@ -9,6 +9,7 @@ const rateLimit = require('express-rate-limit');
 // const csurf = require('csurf'); // Not used - CSRF disabled
 const validator = require('validator');
 const { formatPhoneNumber, toWhatsAppFormat, isValidPhoneNumber } = require('./phone-utils');
+const db = require('./db');
 // Remove: const { log } = require('./index');
 
 const router = express.Router();
@@ -286,6 +287,85 @@ function initializeApi(
         } else {
             // For API access without authentication, show all sessions (backward compatibility)
             res.status(200).json(getSessionsDetails());
+        }
+    });
+
+    router.post('/internal/messages', async (req, res) => {
+        const user = req.session?.user;
+        if (!user) {
+            return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
+        if (!['admin_agent', 'agent'].includes(user.role)) {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+
+        const rawPhone = (req.body?.phone || req.body?.to || '').toString().trim();
+        const messageText = (req.body?.message_text || req.body?.text || '').toString().trim();
+
+        if (!rawPhone) {
+            return res.status(400).json({ status: 'error', message: 'Nomor tujuan wajib diisi' });
+        }
+        if (!messageText) {
+            return res.status(400).json({ status: 'error', message: 'Pesan tidak boleh kosong' });
+        }
+        if (!isValidPhoneNumber(rawPhone)) {
+            return res.status(400).json({ status: 'error', message: 'Format nomor tidak valid' });
+        }
+        if (messageText.length > 4096) {
+            return res.status(400).json({ status: 'error', message: 'Pesan terlalu panjang' });
+        }
+
+        let sessionId = user.tenant_session_id || null;
+        if (user.tenant_id) {
+            try {
+                const tenant = await db.getTenantById(user.tenant_id);
+                if (tenant?.session_id) {
+                    sessionId = tenant.session_id;
+                }
+            } catch (error) {
+                console.error('Failed to fetch tenant session:', error);
+            }
+        }
+
+        if (!sessionId) {
+            return res.status(400).json({ status: 'error', message: 'Session WA belum diatur' });
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session || !session.sock || session.status !== 'CONNECTED') {
+            return res.status(409).json({ status: 'error', message: 'Session WhatsApp belum tersambung' });
+        }
+
+        const formatted = formatPhoneNumber(rawPhone);
+        const destination = toWhatsAppFormat(formatted);
+
+        try {
+            await validateWhatsAppRecipient(session.sock, destination, sessionId);
+        } catch (error) {
+            return res.status(400).json({ status: 'error', message: 'Nomor tidak terdaftar di WhatsApp' });
+        }
+
+        try {
+            const result = await scheduleMessageSend(sessionId, async () => {
+                const activeSession = sessions.get(sessionId);
+                if (!activeSession || !activeSession.sock || activeSession.status !== 'CONNECTED') {
+                    throw new Error('Session tidak tersedia');
+                }
+                await activeSession.sock.sendPresenceUpdate('composing', destination);
+                const typingDelay = Math.floor(Math.random() * 1000) + 500;
+                await new Promise((resolve) => setTimeout(resolve, typingDelay));
+                const sendResult = await sendMessage(activeSession.sock, destination, { text: messageText });
+                await activeSession.sock.sendPresenceUpdate('paused', destination);
+                return sendResult;
+            });
+
+            if (!result || result.status !== 'success') {
+                return res.status(502).json({ status: 'error', message: result?.message || 'Gagal mengirim pesan' });
+            }
+
+            return res.status(200).json({ status: 'success', messageId: result.messageId });
+        } catch (error) {
+            return res.status(503).json({ status: 'error', message: error.message || 'Gagal mengirim pesan' });
         }
     });
 

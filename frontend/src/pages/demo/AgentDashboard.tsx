@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Clock, Star, Wifi, X, RefreshCw, Activity, Settings,
   CheckCircle2, MessageSquare, Bell, Moon, Globe, Shield, LogOut, Send, MessageCircle
@@ -9,15 +9,40 @@ import { useThemeStore } from '../../store/useThemeStore';
 import api from '../../lib/api';
 import { toast } from 'sonner';
 
+const formatRelativeTime = (value?: string) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffMinutes < 1) return 'baru saja';
+  if (diffMinutes < 60) return `${diffMinutes}m lalu`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}j lalu`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}h lalu`;
+};
+
+const toNumber = (value: any) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const AgentDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { isDarkMode, toggleDarkMode } = useThemeStore();
 
-  // Real State for WA Connection - Default to 'connected' for demo mode
-  const [, setSessionData] = useState<any>(null);
-  const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>(user?.isDemo ? 'connected' : 'disconnected');
+  const isDemo = user?.isDemo;
+  const canManageSession = user?.role === 'admin_agent';
+  const sessionId = user?.tenant_session_id || '';
+
+  const [stats, setStats] = useState<any>(null);
+  const [recentTickets, setRecentTickets] = useState<any[]>([]);
+
+  const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>(isDemo ? 'connected' : 'disconnected');
   const [qrUrl, setQrUrl] = useState('');
+  const [adminContact, setAdminContact] = useState<{ name: string; email: string } | null>(null);
 
   // UI States
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -36,60 +61,175 @@ const AgentDashboard = () => {
     message: ''
   });
 
-  // --- MOCK DATA FOR DEMO 1:1 ---
-  const stats = [
-    { label: 'Total Chat Hari Ini', value: '142', icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Waktu Respon Rata-rata', value: '1.5 mnt', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Kepuasan Pelanggan', value: '4.9/5', icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Chat Terselesaikan', value: '128', icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50' },
+  const fetchDashboard = useCallback(async () => {
+    if (isDemo) return;
+    try {
+      const [statsRes, ticketsRes] = await Promise.all([
+        api.get('/admin/stats'),
+        api.get('/admin/tickets?limit=6&offset=0')
+      ]);
+
+      if (statsRes.data?.success) {
+        setStats(statsRes.data.stats);
+      }
+      if (ticketsRes.data?.success) {
+        setRecentTickets(ticketsRes.data.tickets || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
+    } finally {
+      // no-op
+    }
+  }, [isDemo]);
+
+  const fetchAdminContact = useCallback(async () => {
+    if (isDemo) return;
+    try {
+      const res = await api.get('/admin/tenant-admin');
+      if (res.data.success && res.data.admin) {
+        setAdminContact({ name: res.data.admin.name, email: res.data.admin.email });
+      }
+    } catch (error) {
+      console.error('Failed to fetch admin contact:', error);
+    }
+  }, [isDemo]);
+
+  const fetchSessionStatus = useCallback(async () => {
+    if (isDemo) return;
+    if (!sessionId) {
+      setWaStatus('disconnected');
+      setQrUrl('');
+      return;
+    }
+
+    try {
+      const { data } = await api.get('/sessions');
+      if (Array.isArray(data)) {
+        const mySession = data.find((s: any) => s.sessionId === sessionId);
+        if (mySession) {
+          setWaStatus(mySession.status === 'CONNECTED' ? 'connected' : mySession.status === 'CONNECTING' ? 'connecting' : 'disconnected');
+          if (mySession.qr) {
+            setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(mySession.qr)}`);
+          } else {
+            setQrUrl('');
+          }
+        } else {
+          setWaStatus('disconnected');
+          setQrUrl('');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch session:', error);
+    }
+  }, [isDemo, sessionId]);
+
+  const handleRequestQr = async () => {
+    if (!canManageSession) {
+      toast.error('Hanya Admin Agent yang bisa menghubungkan nomor');
+      return;
+    }
+    if (!sessionId) {
+      toast.error('Session WA belum diatur oleh Super Admin');
+      return;
+    }
+    try {
+      await api.get(`/sessions/${sessionId}/qr`);
+      setIsSettingsOpen(false);
+      setIsQrModalOpen(true);
+      setTimeout(() => {
+        void fetchSessionStatus();
+      }, 1500);
+    } catch (error) {
+      console.error('Failed to request QR:', error);
+      toast.error('Gagal meminta QR. Coba lagi.');
+    }
+  };
+
+  const handleNotifyAdmin = () => {
+    if (!adminContact?.email) {
+      toast.error('Kontak admin belum tersedia');
+      return;
+    }
+    const subject = encodeURIComponent('Koneksi WhatsApp Offline');
+    const body = encodeURIComponent(`Halo ${adminContact.name || ''},\n\nStatus WhatsApp saat ini: ${waStatus}.\nMohon cek dan scan QR jika diperlukan.\n\nTerima kasih.`);
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(adminContact.email)}&su=${subject}&body=${body}`, '_blank');
+  };
+
+  useEffect(() => {
+    void fetchDashboard();
+  }, [fetchDashboard]);
+
+  useEffect(() => {
+    void fetchAdminContact();
+  }, [fetchAdminContact]);
+
+  useEffect(() => {
+    if (isDemo) return;
+    void fetchSessionStatus();
+    const interval = setInterval(fetchSessionStatus, 5000);
+    return () => clearInterval(interval);
+  }, [isDemo, fetchSessionStatus]);
+
+  const demoStats = [
+    { label: 'Total Chat Hari Ini', value: '142', icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', trend: '+12%' },
+    { label: 'Waktu Respon Rata-rata', value: '1.5 mnt', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', trend: 'Target 2m' },
+    { label: 'Kepuasan Pelanggan', value: '4.9/5', icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: 'CSAT' },
+    { label: 'Chat Terselesaikan', value: '128', icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50', trend: 'Hari ini' },
   ];
 
-  const recentChats = [
+  const totalTickets = toNumber(stats?.tickets?.total_tickets);
+  const openTickets = toNumber(stats?.tickets?.open_tickets);
+  const pendingTickets = toNumber(stats?.tickets?.pending_tickets);
+  const closedTickets = toNumber(stats?.tickets?.closed_tickets);
+  const todayTickets = toNumber(stats?.tickets?.today_tickets);
+  const avgResponseMinutes = Number(stats?.tickets?.avg_response_minutes);
+  const avgResponseLabel = Number.isFinite(avgResponseMinutes) ? `${avgResponseMinutes.toFixed(1)} mnt` : '-';
+  const satisfactionScore = totalTickets > 0 ? ((closedTickets / totalTickets) * 5).toFixed(1) : '0.0';
+
+  const statCards = useMemo(() => (
+    isDemo ? demoStats : [
+      { label: 'Total Chat Hari Ini', value: String(todayTickets), icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', trend: `${totalTickets} Total` },
+      { label: 'Waktu Respon Rata-rata', value: avgResponseLabel, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', trend: `${openTickets} Open` },
+      { label: 'Kepuasan Pelanggan', value: `${satisfactionScore}/5`, icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: `${closedTickets} Closed` },
+      { label: 'Chat Terselesaikan', value: String(closedTickets), icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50', trend: `${pendingTickets} Pending` },
+    ]
+  ), [isDemo, todayTickets, totalTickets, avgResponseLabel, openTickets, satisfactionScore, closedTickets, pendingTickets]);
+
+  const demoRecentChats = [
     { id: 1, name: 'Budi Santoso', message: 'Tanya stok batik kencana ungu kak...', time: '2 menit lalu', status: 'unread', avatar: 'BS' },
     { id: 2, name: 'Siti Aminah', message: 'Terima kasih barang sudah sampai!', time: '15 menit lalu', status: 'read', avatar: 'SA' },
     { id: 3, name: 'Dewi Lestari', message: 'Bisa minta list harga terupdate?', time: '1 jam lalu', status: 'read', avatar: 'DL' },
     { id: 4, name: 'Agus Prayogo', message: 'Pesanan saya dengan kode #123 kok belum dikirim?', time: '3 jam lalu', status: 'unread', avatar: 'AP' },
   ];
 
-  const teamActivity = [
+  const recentChats = useMemo(() => (
+    isDemo ? demoRecentChats : recentTickets.slice(0, 4).map((t) => {
+      const name = t.customer_name || t.customer_contact || `Customer #${t.id}`;
+      const initials = name.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase();
+      return {
+        id: t.id,
+        name,
+        message: t.last_message || 'Belum ada pesan',
+        time: formatRelativeTime(t.last_message_at || t.updated_at || t.created_at),
+        status: t.last_sender_type === 'customer' ? 'unread' : 'read',
+        avatar: initials
+      };
+    })
+  ), [isDemo, recentTickets]);
+
+  const demoActivity = [
     { user: 'Siti Aminah', action: 'Membalas chat dari Andi', time: 'Just now' },
     { user: 'Budi Santoso', action: 'Mengubah status pesanan #992', time: '5m ago' },
     { user: 'System AI', action: 'Menjawab otomatis tanya jam operasional', time: '12m ago' },
   ];
 
-  // Fetch Session Data (skip for demo mode)
-  const fetchSessionStatus = useCallback(async () => {
-    if (user?.isDemo) return; // Skip API calls for demo mode
-
-    try {
-        const { data } = await api.get('/api/v1/sessions');
-        const mySession = data[0];
-        if (mySession) {
-            setSessionData(mySession);
-            setWaStatus(mySession.status === 'CONNECTED' ? 'connected' : mySession.status === 'CONNECTING' ? 'connecting' : 'disconnected');
-            if (mySession.qr) {
-                setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(mySession.qr)}`);
-            }
-        }
-    } catch (error) {
-        console.error('Failed to fetch session:', error);
-    }
-  }, [user?.isDemo]);
-
-  useEffect(() => {
-      if (user?.isDemo) return; // Skip for demo mode
-
-      const interval = setInterval(() => {
-        void fetchSessionStatus();
-      }, 5000);
-      const timeout = setTimeout(() => {
-        void fetchSessionStatus();
-      }, 0);
-      return () => {
-        clearInterval(interval);
-        clearTimeout(timeout);
-      };
-  }, [user?.isDemo, fetchSessionStatus]);
+  const teamActivity = useMemo(() => (
+    isDemo ? demoActivity : recentTickets.slice(0, 3).map((t) => ({
+      user: t.agent_name || 'Unassigned',
+      action: t.status === 'closed' ? `Menutup tiket #${t.id}` : `Update tiket #${t.id}`,
+      time: formatRelativeTime(t.updated_at || t.created_at)
+    }))
+  ), [isDemo, recentTickets]);
 
   // Handle help form submit
   const handleHelpSubmit = () => {
@@ -141,14 +281,28 @@ const AgentDashboard = () => {
       </div>
 
       {/* Stats Grid */}
+      {!canManageSession && waStatus !== 'connected' && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Koneksi WhatsApp sedang offline.</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">Beritahu Admin Agent untuk scan QR.</p>
+          </div>
+          <button
+            onClick={handleNotifyAdmin}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl"
+          >
+            Hubungi Admin
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((item, idx) => (
+        {statCards.map((item, idx) => (
           <div key={idx} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-md transition-all">
             <div className="flex items-center justify-between mb-4">
               <div className={`p-3 rounded-xl ${item.bg} dark:bg-opacity-20 ${item.color}`}>
                 <item.icon size={24} />
               </div>
-              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-full">+12%</span>
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-full">{item.trend}</span>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">{item.label}</p>
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{item.value}</h3>
@@ -167,10 +321,10 @@ const AgentDashboard = () => {
             <button onClick={() => navigate(user?.role === 'admin_agent' ? '/admin/chat' : '/agent/chat')} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="divide-y divide-gray-50 dark:divide-slate-700">
-            {recentChats.map((chat) => (
+            {recentChats.length > 0 ? recentChats.map((chat) => (
               <div
                 key={chat.id}
-                onClick={() => navigate(user?.role === 'admin_agent' ? '/admin/chat' : '/agent/chat', { state: { selectedChat: chat } })}
+                onClick={() => navigate(user?.role === 'admin_agent' ? '/admin/chat' : '/agent/chat', { state: { selectedChat: { id: chat.id, name: chat.name } } })}
                 className="p-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer flex items-center space-x-4"
               >
                 <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold shrink-0">
@@ -185,7 +339,9 @@ const AgentDashboard = () => {
                 </div>
                 {chat.status === 'unread' && <div className="w-2 h-2 bg-blue-600 dark:bg-blue-400 rounded-full"></div>}
               </div>
-            ))}
+            )) : (
+              <div className="p-8 text-center text-gray-400 dark:text-gray-500">Belum ada chat terbaru.</div>
+            )}
           </div>
         </div>
 
@@ -197,7 +353,7 @@ const AgentDashboard = () => {
               Aktivitas Tim
             </h3>
             <div className="space-y-6">
-              {teamActivity.map((act, i) => (
+              {teamActivity.length > 0 ? teamActivity.map((act, i) => (
                 <div key={i} className="flex space-x-3">
                   <div className="w-1 h-10 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden shrink-0">
                     <div className={`w-full h-1/2 ${i === 0 ? 'bg-blue-500' : 'bg-emerald-500'}`}></div>
@@ -208,7 +364,9 @@ const AgentDashboard = () => {
                     <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1">{act.time}</p>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div className="text-xs text-gray-400 dark:text-gray-500">Belum ada aktivitas.</div>
+              )}
             </div>
           </div>
 
@@ -285,13 +443,17 @@ const AgentDashboard = () => {
                     <div>
                       <h4 className="font-bold text-gray-900 dark:text-white text-sm">Koneksi WhatsApp</h4>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Status: <span className={waStatus === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}>{waStatus}</span></p>
+                      {!sessionId && (
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Session belum diatur oleh Super Admin.</p>
+                      )}
                     </div>
                   </div>
                   <button
-                    onClick={() => { setIsSettingsOpen(false); setIsQrModalOpen(true); }}
-                    className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors"
+                    onClick={handleRequestQr}
+                    disabled={!canManageSession || !sessionId}
+                    className="px-4 py-2 bg-blue-600 disabled:bg-gray-200 disabled:text-gray-500 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors"
                   >
-                    {waStatus === 'connected' ? 'Reconnect' : 'Connect'}
+                    {canManageSession ? (waStatus === 'connected' ? 'Reconnect' : 'Connect') : 'Hanya Admin'}
                   </button>
                 </div>
               </div>

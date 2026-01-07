@@ -8,6 +8,7 @@ import TenantManagement from './pages/TenantManagement';
 import AgentManagement from './pages/AgentManagement';
 import AgentWorkspace from './pages/AgentWorkspace';
 import ChatHistory from './pages/ChatHistory';
+import InviteAccept from './pages/InviteAccept';
 import { Toaster } from 'sonner';
 import { useThemeStore } from './store/useThemeStore';
 
@@ -64,6 +65,7 @@ function App() {
       <Toaster position="top-right" expand={true} richColors />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/invite/:token" element={<InviteAccept />} />
         
         {/* Super Admin Routes */}
         <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>

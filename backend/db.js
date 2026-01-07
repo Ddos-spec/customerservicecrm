@@ -82,6 +82,38 @@ async function ensureTenantSessionColumn() {
     );
 }
 
+/**
+ * Ensure user invites table exists
+ */
+async function ensureUserInvitesTable() {
+    await query(
+        `CREATE TABLE IF NOT EXISTS user_invites (
+            id SERIAL PRIMARY KEY,
+            tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            role VARCHAR(20) NOT NULL DEFAULT 'agent',
+            token TEXT NOT NULL UNIQUE,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            created_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NULL
+        )`
+    );
+    await query(
+        `CREATE INDEX IF NOT EXISTS user_invites_tenant_id_idx
+         ON user_invites (tenant_id)`
+    );
+    await query(
+        `CREATE INDEX IF NOT EXISTS user_invites_email_idx
+         ON user_invites (email)`
+    );
+    await query(
+        `CREATE INDEX IF NOT EXISTS user_invites_status_idx
+         ON user_invites (status)`
+    );
+}
+
 // ===== USER QUERIES =====
 
 /**
@@ -92,7 +124,8 @@ async function ensureTenantSessionColumn() {
 async function findUserByEmail(email) {
     const result = await query(
         `SELECT u.id, u.tenant_id, u.name, u.email, u.password_hash, u.role, u.status, u.created_at,
-                t.company_name as tenant_name
+                t.company_name as tenant_name,
+                t.session_id as tenant_session_id
          FROM users u
          LEFT JOIN tenants t ON u.tenant_id = t.id
          WHERE u.email = $1`,
@@ -109,7 +142,8 @@ async function findUserByEmail(email) {
 async function findUserById(id) {
     const result = await query(
         `SELECT u.id, u.tenant_id, u.name, u.email, u.role, u.status, u.created_at,
-                t.company_name as tenant_name
+                t.company_name as tenant_name,
+                t.session_id as tenant_session_id
          FROM users u
          LEFT JOIN tenants t ON u.tenant_id = t.id
          WHERE u.id = $1`,
@@ -183,12 +217,12 @@ async function deleteUser(userId) {
  * @param {Object} tenantData - Tenant data
  * @returns {Promise<Object>} Created tenant
  */
-async function createTenant({ company_name, status = 'active' }) {
+async function createTenant({ company_name, status = 'active', session_id = null }) {
     const result = await query(
-        `INSERT INTO tenants (company_name, status)
-         VALUES ($1, $2)
-         RETURNING id, company_name, status, created_at`,
-        [company_name, status]
+        `INSERT INTO tenants (company_name, status, session_id)
+         VALUES ($1, $2, $3)
+         RETURNING id, company_name, status, created_at, session_id`,
+        [company_name, status, session_id]
     );
     return result.rows[0];
 }
@@ -261,6 +295,87 @@ async function getTenantBySessionId(sessionId) {
         [sessionId]
     );
     return result.rows[0] || null;
+}
+
+/**
+ * Get tenant admin agent contact
+ * @param {number} tenantId - Tenant ID
+ * @returns {Promise<Object|null>} Admin agent user or null
+ */
+async function getTenantAdmin(tenantId) {
+    const result = await query(
+        `SELECT id, tenant_id, name, email, role, status, created_at
+         FROM users
+         WHERE tenant_id = $1 AND role = 'admin_agent'
+         ORDER BY created_at ASC
+         LIMIT 1`,
+        [tenantId]
+    );
+    return result.rows[0] || null;
+}
+
+// ===== USER INVITES =====
+
+/**
+ * Create invite for user
+ * @param {Object} inviteData - Invite data
+ * @returns {Promise<Object>} Created invite
+ */
+async function createUserInvite({ tenant_id, name, email, role = 'agent', token, created_by, expires_at }) {
+    const result = await query(
+        `INSERT INTO user_invites (tenant_id, name, email, role, token, created_by, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, tenant_id, name, email, role, token, status, created_at, expires_at`,
+        [tenant_id, name, email, role, token, created_by || null, expires_at || null]
+    );
+    return result.rows[0];
+}
+
+/**
+ * Get invite by token
+ * @param {string} token - Invite token
+ * @returns {Promise<Object|null>} Invite or null
+ */
+async function getInviteByToken(token) {
+    const result = await query(
+        `SELECT i.*, t.company_name as tenant_name
+         FROM user_invites i
+         LEFT JOIN tenants t ON i.tenant_id = t.id
+         WHERE i.token = $1`,
+        [token]
+    );
+    return result.rows[0] || null;
+}
+
+/**
+ * Mark invite accepted
+ * @param {string} token - Invite token
+ * @returns {Promise<Object|null>} Updated invite
+ */
+async function acceptInvite(token) {
+    const result = await query(
+        `UPDATE user_invites
+         SET status = 'accepted'
+         WHERE token = $1
+         RETURNING *`,
+        [token]
+    );
+    return result.rows[0] || null;
+}
+
+/**
+ * Count pending invites for a tenant
+ * @param {number} tenantId - Tenant ID
+ * @returns {Promise<number>} Count
+ */
+async function countPendingInvites(tenantId) {
+    const result = await query(
+        `SELECT COUNT(*) as total
+         FROM user_invites
+         WHERE tenant_id = $1 AND status = 'pending'`,
+        [tenantId]
+    );
+    return parseInt(result.rows[0]?.total || '0', 10);
 }
 
 // ===== TENANT WEBHOOKS =====
@@ -379,7 +494,10 @@ async function getMessagesByTicket(ticketId) {
 async function getTicketsByTenant(tenantId, limit = 50, offset = 0) {
     const result = await query(
         `SELECT t.*, u.name as agent_name,
-                (SELECT message_text FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message
+                (SELECT message_text FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message,
+                (SELECT sender_type FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_sender_type,
+                (SELECT created_at FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message_at,
+                (SELECT COUNT(*) FROM messages WHERE ticket_id = t.id) as message_count
          FROM tickets t
          LEFT JOIN users u ON t.assigned_agent_id = u.id
          WHERE t.tenant_id = $1
@@ -466,7 +584,7 @@ async function getDashboardStats(tenantId = null) {
     const tenantFilter = tenantId ? 'WHERE tenant_id = $1' : '';
     const params = tenantId ? [tenantId] : [];
 
-    const [ticketStats, userStats] = await Promise.all([
+    const [ticketStats, userStats, todayStats, avgResponse] = await Promise.all([
         query(
             `SELECT
                 COUNT(*) FILTER (WHERE status = 'open') as open_tickets,
@@ -484,11 +602,34 @@ async function getDashboardStats(tenantId = null) {
                 COUNT(*) as total_users
              FROM users ${tenantFilter}`,
             params
-        )
+        ),
+        tenantId ? query(
+            `SELECT COUNT(*) as today_tickets
+             FROM tickets
+             WHERE tenant_id = $1 AND created_at >= CURRENT_DATE`,
+            params
+        ) : Promise.resolve({ rows: [{ today_tickets: 0 }] }),
+        tenantId ? query(
+            `SELECT AVG(EXTRACT(EPOCH FROM (m.created_at - t.created_at)) / 60) as avg_response_minutes
+             FROM tickets t
+             JOIN LATERAL (
+                 SELECT created_at
+                 FROM messages
+                 WHERE ticket_id = t.id AND sender_type = 'agent'
+                 ORDER BY created_at ASC
+                 LIMIT 1
+             ) m ON true
+             WHERE t.tenant_id = $1`,
+            params
+        ) : Promise.resolve({ rows: [{ avg_response_minutes: null }] })
     ]);
 
     return {
-        tickets: ticketStats.rows[0],
+        tickets: {
+            ...ticketStats.rows[0],
+            today_tickets: todayStats.rows[0]?.today_tickets || 0,
+            avg_response_minutes: avgResponse.rows[0]?.avg_response_minutes
+        },
         users: userStats.rows[0]
     };
 }
@@ -517,6 +658,7 @@ module.exports = {
     pool,
     ensureTenantWebhooksTable,
     ensureTenantSessionColumn,
+    ensureUserInvitesTable,
     // Users
     findUserByEmail,
     findUserById,
@@ -531,6 +673,12 @@ module.exports = {
     updateTenantStatus,
     setTenantSessionId,
     getTenantBySessionId,
+    getTenantAdmin,
+    // Invites
+    createUserInvite,
+    getInviteByToken,
+    acceptInvite,
+    countPendingInvites,
     // Tenant webhooks
     getTenantWebhooks,
     createTenantWebhook,
