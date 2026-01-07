@@ -106,6 +106,7 @@ async function ensureSuperAdmin() {
         return user;
     } catch (error) {
         console.error('❌ Error ensuring super admin:', error.message);
+        console.error('   Stack:', error.stack);
         return null;
     }
 }
