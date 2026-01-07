@@ -45,6 +45,43 @@ async function getClient() {
     return pool.connect();
 }
 
+/**
+ * Ensure tenant webhooks table exists
+ * This keeps setup minimal without a migration tool.
+ */
+async function ensureTenantWebhooksTable() {
+    await query(
+        `CREATE TABLE IF NOT EXISTS tenant_webhooks (
+            id SERIAL PRIMARY KEY,
+            tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            url TEXT NOT NULL,
+            created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+        )`
+    );
+    await query(
+        `CREATE INDEX IF NOT EXISTS tenant_webhooks_tenant_id_idx
+         ON tenant_webhooks (tenant_id)`
+    );
+    await query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS tenant_webhooks_tenant_url_idx
+         ON tenant_webhooks (tenant_id, url)`
+    );
+}
+
+/**
+ * Ensure tenants.session_id exists for tenant -> session mapping
+ */
+async function ensureTenantSessionColumn() {
+    await query(
+        `ALTER TABLE tenants
+         ADD COLUMN IF NOT EXISTS session_id TEXT`
+    );
+    await query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS tenants_session_id_idx
+         ON tenants (session_id)`
+    );
+}
+
 // ===== USER QUERIES =====
 
 /**
@@ -162,7 +199,7 @@ async function createTenant({ company_name, status = 'active' }) {
  */
 async function getAllTenants() {
     const result = await query(
-        `SELECT t.id, t.company_name, t.status, t.created_at,
+        `SELECT t.id, t.company_name, t.status, t.created_at, t.session_id,
                 COUNT(u.id) as user_count
          FROM tenants t
          LEFT JOIN users u ON t.id = u.tenant_id
@@ -197,6 +234,81 @@ async function updateTenantStatus(tenantId, status) {
         [status, tenantId]
     );
     return result.rows[0];
+}
+
+/**
+ * Set tenant session id
+ * @param {number} tenantId - Tenant ID
+ * @param {string|null} sessionId - Session ID
+ * @returns {Promise<Object>} Updated tenant
+ */
+async function setTenantSessionId(tenantId, sessionId) {
+    const result = await query(
+        'UPDATE tenants SET session_id = $1 WHERE id = $2 RETURNING *',
+        [sessionId, tenantId]
+    );
+    return result.rows[0];
+}
+
+/**
+ * Get tenant by session id
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<Object|null>} Tenant object or null
+ */
+async function getTenantBySessionId(sessionId) {
+    const result = await query(
+        'SELECT * FROM tenants WHERE session_id = $1',
+        [sessionId]
+    );
+    return result.rows[0] || null;
+}
+
+// ===== TENANT WEBHOOKS =====
+
+/**
+ * List webhooks for a tenant
+ * @param {number} tenantId - Tenant ID
+ * @returns {Promise<Array>} List of webhooks
+ */
+async function getTenantWebhooks(tenantId) {
+    const result = await query(
+        `SELECT id, tenant_id, url, created_at
+         FROM tenant_webhooks
+         WHERE tenant_id = $1
+         ORDER BY created_at DESC`,
+        [tenantId]
+    );
+    return result.rows;
+}
+
+/**
+ * Create webhook for a tenant
+ * @param {number} tenantId - Tenant ID
+ * @param {string} url - Webhook URL
+ * @returns {Promise<Object>} Created webhook
+ */
+async function createTenantWebhook(tenantId, url) {
+    const result = await query(
+        `INSERT INTO tenant_webhooks (tenant_id, url)
+         VALUES ($1, $2)
+         RETURNING id, tenant_id, url, created_at`,
+        [tenantId, url]
+    );
+    return result.rows[0];
+}
+
+/**
+ * Delete webhook for a tenant
+ * @param {number} tenantId - Tenant ID
+ * @param {number} webhookId - Webhook ID
+ * @returns {Promise<boolean>} Success status
+ */
+async function deleteTenantWebhook(tenantId, webhookId) {
+    const result = await query(
+        'DELETE FROM tenant_webhooks WHERE tenant_id = $1 AND id = $2',
+        [tenantId, webhookId]
+    );
+    return result.rowCount > 0;
 }
 
 // ===== MESSAGE/CHAT QUERIES (for n8n) =====
@@ -403,6 +515,8 @@ module.exports = {
     query,
     getClient,
     pool,
+    ensureTenantWebhooksTable,
+    ensureTenantSessionColumn,
     // Users
     findUserByEmail,
     findUserById,
@@ -415,6 +529,12 @@ module.exports = {
     getAllTenants,
     getTenantById,
     updateTenantStatus,
+    setTenantSessionId,
+    getTenantBySessionId,
+    // Tenant webhooks
+    getTenantWebhooks,
+    createTenantWebhook,
+    deleteTenantWebhook,
     // Messages & Tickets
     logMessage,
     getOrCreateTicket,
