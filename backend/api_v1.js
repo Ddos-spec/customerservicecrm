@@ -14,6 +14,10 @@ const db = require('./db');
 
 const router = express.Router();
 const MAX_MESSAGES_PER_BATCH = parseInt(process.env.MAX_MESSAGES_PER_BATCH || '50', 10);
+const INTERNAL_RATE_LIMIT_PER_HOUR = parseInt(process.env.INTERNAL_RATE_LIMIT_PER_HOUR || '100', 10);
+const INTERNAL_REPLY_WINDOW_HOURS = parseInt(process.env.INTERNAL_REPLY_WINDOW_HOURS || '24', 10);
+const DISABLE_PUBLIC_MESSAGES = process.env.DISABLE_PUBLIC_MESSAGES === 'true'
+    || (process.env.NODE_ENV === 'production' && process.env.ALLOW_PUBLIC_MESSAGES !== 'true');
 
 // Webhook URLs will be stored in Redis by default
 let redisClient = null;
@@ -301,6 +305,7 @@ function initializeApi(
 
         const rawPhone = (req.body?.phone || req.body?.to || '').toString().trim();
         const messageText = (req.body?.message_text || req.body?.text || '').toString().trim();
+        const ticketId = parseInt(req.body?.ticket_id || req.body?.ticketId, 10);
 
         if (!rawPhone) {
             return res.status(400).json({ status: 'error', message: 'Nomor tujuan wajib diisi' });
@@ -308,11 +313,50 @@ function initializeApi(
         if (!messageText) {
             return res.status(400).json({ status: 'error', message: 'Pesan tidak boleh kosong' });
         }
+        if (!ticketId) {
+            return res.status(400).json({ status: 'error', message: 'ticket_id wajib diisi' });
+        }
         if (!isValidPhoneNumber(rawPhone)) {
             return res.status(400).json({ status: 'error', message: 'Format nomor tidak valid' });
         }
         if (messageText.length > 4096) {
             return res.status(400).json({ status: 'error', message: 'Pesan terlalu panjang' });
+        }
+
+        const formattedPhone = formatPhoneNumber(rawPhone);
+
+        const ticket = await db.getTicketWithLastCustomerMessage(ticketId);
+        if (!ticket) {
+            return res.status(404).json({ status: 'error', message: 'Tiket tidak ditemukan' });
+        }
+        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+            return res.status(403).json({ status: 'error', message: 'Tidak boleh mengirim pesan untuk tenant lain' });
+        }
+
+        const formattedTicketNumber = formatPhoneNumber(ticket.customer_contact || '');
+        if (!formattedTicketNumber || formattedTicketNumber !== formattedPhone) {
+            return res.status(400).json({ status: 'error', message: 'Nomor tujuan harus sesuai dengan kontak tiket' });
+        }
+
+        if (INTERNAL_REPLY_WINDOW_HOURS > 0) {
+            const lastCustomerAt = ticket.last_customer_message_at ? new Date(ticket.last_customer_message_at) : null;
+            const tooOld = !lastCustomerAt || Number.isNaN(lastCustomerAt.getTime()) || (Date.now() - lastCustomerAt.getTime()) > INTERNAL_REPLY_WINDOW_HOURS * 60 * 60 * 1000;
+            if (tooOld) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: `Di luar window ${INTERNAL_REPLY_WINDOW_HOURS} jam sejak pesan customer. Minta pelanggan kirim pesan lagi.`
+                });
+            }
+        }
+
+        if (INTERNAL_RATE_LIMIT_PER_HOUR > 0 && ticket.tenant_id) {
+            const sentCount = await db.countTenantMessagesSince(ticket.tenant_id, 60, 'agent');
+            if (sentCount >= INTERNAL_RATE_LIMIT_PER_HOUR) {
+                return res.status(429).json({
+                    status: 'error',
+                    message: `Rate limit ${INTERNAL_RATE_LIMIT_PER_HOUR} pesan/jam tercapai untuk tenant ini`
+                });
+            }
         }
 
         let sessionId = user.tenant_session_id || null;
@@ -336,8 +380,7 @@ function initializeApi(
             return res.status(409).json({ status: 'error', message: 'Session WhatsApp belum tersambung' });
         }
 
-        const formatted = formatPhoneNumber(rawPhone);
-        const destination = toWhatsAppFormat(formatted);
+        const destination = toWhatsAppFormat(formattedPhone);
 
         try {
             await validateWhatsAppRecipient(session.sock, destination, sessionId);
@@ -1114,6 +1157,13 @@ function initializeApi(
     // Main message sending endpoint handler
     const handleSendMessage = async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, query: req.query });
+
+        if (DISABLE_PUBLIC_MESSAGES) {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Endpoint /api/v1/messages dinonaktifkan. Gunakan /internal/messages via dashboard.'
+            });
+        }
 
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
         if (!sessionId) {

@@ -1,3 +1,18 @@
+jest.mock('@whiskeysockets/baileys', () => ({
+  BufferJSON: {
+    replacer: () => null,
+    reviver: () => null
+  },
+  initAuthCreds: () => ({}),
+  proto: { Message: { AppStateSyncKeyData: { fromObject: (o) => o } } },
+  default: jest.fn(),
+  fetchLatestBaileysVersion: jest.fn(async () => ({ version: [0, 0, 0] })),
+  makeCacheableSignalKeyStore: jest.fn(() => ({})),
+  Browsers: { macOS: () => ['Test', 'Test', '1.0.0'] },
+  DisconnectReason: { loggedOut: 401 },
+  useMultiFileAuthState: jest.fn(async () => ({ state: { creds: {}, keys: {} }, saveCreds: jest.fn() }))
+}), { virtual: true });
+
 const http = require('http');
 const { app } = require('../index'); // Only import app
 
