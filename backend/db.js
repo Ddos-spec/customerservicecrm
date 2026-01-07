@@ -413,6 +413,55 @@ async function createTenantWebhook(tenantId, url) {
 }
 
 /**
+ * Get ticket by ID with last customer message timestamp (for guard)
+ * @param {number} ticketId - Ticket ID
+ * @returns {Promise<Object|null>} Ticket with last_customer_message_at
+ */
+async function getTicketWithLastCustomerMessage(ticketId) {
+    const result = await query(
+        `SELECT t.*,
+                (
+                    SELECT created_at
+                    FROM messages m
+                    WHERE m.ticket_id = t.id AND m.sender_type = 'customer'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ) AS last_customer_message_at
+         FROM tickets t
+         WHERE t.id = $1`,
+        [ticketId]
+    );
+    return result.rows[0] || null;
+}
+
+/**
+ * Count messages for a tenant within a time window
+ * @param {number} tenantId - Tenant ID
+ * @param {number} minutes - Lookback window in minutes
+ * @param {string|null} senderType - Optional sender_type filter
+ * @returns {Promise<number>} Count of messages
+ */
+async function countTenantMessagesSince(tenantId, minutes = 60, senderType = null) {
+    const lookbackMinutes = Math.max(1, parseInt(minutes, 10) || 60);
+    const params = [tenantId, lookbackMinutes];
+    const senderClause = senderType ? 'AND m.sender_type = $3' : '';
+    if (senderType) {
+        params.push(senderType);
+    }
+
+    const result = await query(
+        `SELECT COUNT(*) AS total
+         FROM messages m
+         JOIN tickets t ON m.ticket_id = t.id
+         WHERE t.tenant_id = $1
+           AND m.created_at >= NOW() - ($2 * INTERVAL '1 minute')
+           ${senderClause}`,
+        params
+    );
+    return parseInt(result.rows[0]?.total || '0', 10);
+}
+
+/**
  * Delete webhook for a tenant
  * @param {number} tenantId - Tenant ID
  * @param {number} webhookId - Webhook ID
@@ -684,6 +733,8 @@ module.exports = {
     createTenantWebhook,
     deleteTenantWebhook,
     // Messages & Tickets
+    getTicketWithLastCustomerMessage,
+    countTenantMessagesSince,
     logMessage,
     getOrCreateTicket,
     getMessagesByTicket,
