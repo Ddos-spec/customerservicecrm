@@ -378,14 +378,14 @@ async function regenerateSessionToken(sessionId) {
     return token;
 }
 
-// WhatsApp API routes
-app.use('/api/v1', initializeApi(sessions, sessionTokens, createSession, getSessionsDetails, deleteSession, console.log, phonePairing, saveSessionSettings, regenerateSessionToken, redisClient, scheduleMessageSend, validateWhatsAppRecipient, getSessionContacts, upsertSessionContact, removeSessionContact, postToWebhook));
-
-// Admin authentication routes
+// Admin authentication routes (MUST be before WhatsApp API to avoid token validation)
 app.use('/api/v1/admin', authRouter);
 
 // n8n integration routes
 app.use('/api/v1/n8n', n8nRouter);
+
+// WhatsApp API routes (has validateToken middleware)
+app.use('/api/v1', initializeApi(sessions, sessionTokens, createSession, getSessionsDetails, deleteSession, console.log, phonePairing, saveSessionSettings, regenerateSessionToken, redisClient, scheduleMessageSend, validateWhatsAppRecipient, getSessionContacts, upsertSessionContact, removeSessionContact, postToWebhook));
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, async () => {

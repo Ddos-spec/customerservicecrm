@@ -79,8 +79,11 @@ async function ensureSuperAdmin() {
     }
 
     try {
+        console.log('   Checking if super admin exists in database...');
         // Check if super admin already exists
         const existing = await db.findUserByEmail(email);
+        console.log(`   findUserByEmail result: ${existing ? 'FOUND (id=' + existing.id + ')' : 'NOT FOUND'}`);
+
         if (existing) {
             // Update password if changed in ENV
             const passwordMatch = await bcrypt.compare(password, existing.password_hash);
@@ -91,11 +94,14 @@ async function ensureSuperAdmin() {
                     [newHash, existing.id]
                 );
                 console.log('✅ Super admin password updated from ENV');
+            } else {
+                console.log('✅ Super admin already exists, password matches');
             }
             return existing;
         }
 
         // Create super admin
+        console.log('   Creating new super admin...');
         const password_hash = await bcrypt.hash(password, 12);
         const user = await db.createUser({
             tenant_id: null, // Super admin has no tenant
