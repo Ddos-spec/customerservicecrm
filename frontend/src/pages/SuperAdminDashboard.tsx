@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Users, Server, Smartphone,
   Terminal, Trash2, RefreshCw,
-  Globe, MessageSquare, Database, Building2
+  Globe, MessageSquare, Database, Building2, Plus
 } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '../lib/api';
 
 interface Stats {
@@ -21,11 +23,27 @@ interface Tenant {
 }
 
 const SuperAdminDashboard = () => {
+  const navigate = useNavigate();
+
   // Real States
   const [sessions, setSessions] = useState<any[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Delete WhatsApp session
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!confirm(`Hapus session ${sessionId}? Session akan logout dari WhatsApp.`)) return;
+
+    try {
+      await api.delete(`/sessions/${sessionId}`);
+      setSessions(sessions.filter(s => s.sessionId !== sessionId));
+      toast.success(`Session ${sessionId} berhasil dihapus`);
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      toast.error('Gagal menghapus session');
+    }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -108,8 +126,12 @@ const SuperAdminDashboard = () => {
             <button onClick={fetchData} className="p-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-600 dark:text-gray-300 transition-all">
                 <RefreshCw size={20} className={isLoading ? 'animate-spin' : ''} />
             </button>
-            <button className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 dark:shadow-blue-900/30 hover:bg-blue-700 transition-all">
-                Tambah Tenant Baru
+            <button
+                onClick={() => navigate('/super-admin/tenants')}
+                className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 dark:shadow-blue-900/30 hover:bg-blue-700 transition-all"
+            >
+                <Plus size={18} />
+                <span>Tambah Tenant Baru</span>
             </button>
         </div>
       </div>
@@ -166,7 +188,13 @@ const SuperAdminDashboard = () => {
                                         }`}>{s.status}</span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <button className="text-gray-400 dark:text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"><Trash2 size={16} /></button>
+                                        <button
+                                            onClick={() => handleDeleteSession(s.sessionId)}
+                                            className="text-gray-400 dark:text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                                            title="Hapus session"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
                                     </td>
                                 </tr>
                             )) : (
@@ -183,7 +211,15 @@ const SuperAdminDashboard = () => {
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-gray-50 dark:border-slate-700 flex items-center justify-between">
                     <h3 className="font-bold text-gray-900 dark:text-white">Registered Tenants</h3>
-                    <span className="text-xs font-bold bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full">{tenants.length} Tenants</span>
+                    <div className="flex items-center space-x-3">
+                        <span className="text-xs font-bold bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full">{tenants.length} Tenants</span>
+                        <button
+                            onClick={() => navigate('/super-admin/tenants')}
+                            className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                            Lihat Semua →
+                        </button>
+                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
                     {tenants.length > 0 ? tenants.slice(0, 6).map((t) => (
