@@ -1,43 +1,58 @@
 import { useState, useEffect } from 'react';
-import { 
-  Users, Server, Activity, Smartphone, 
-  Terminal, Trash2, RefreshCw, 
-  Globe, MessageSquare, Database
+import {
+  Users, Server, Smartphone,
+  Terminal, Trash2, RefreshCw,
+  Globe, MessageSquare, Database, Building2
 } from 'lucide-react';
 import api from '../lib/api';
+
+interface Stats {
+  tenants: { total: string; active: string };
+  users: { total: string };
+  tickets: { total: string; open: string };
+}
+
+interface Tenant {
+  id: number;
+  company_name: string;
+  status: string;
+  user_count: string;
+  created_at: string;
+}
 
 const SuperAdminDashboard = () => {
   // Real States
   const [sessions, setSessions] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  // --- MOCK DATA FOR "BUSY SYSTEM" DEMO ---
-  const globalStats = [
-    { label: 'Total Pesan (30 Hari)', value: '1,284,592', icon: MessageSquare, color: 'text-blue-600', trend: '+14.2%' },
-    { label: 'Total Perusahaan (Tenants)', value: '142', icon: Users, color: 'text-purple-600', trend: '+5.1%' },
-    { label: 'Uptime Server', value: '99.99%', icon: Activity, color: 'text-emerald-600', trend: 'Stable' },
-    { label: 'Penyimpanan Database', value: '12.4 GB', icon: Database, color: 'text-amber-600', trend: 'Healthy' },
-  ];
-
-  const tenantActivity = [
-    { name: 'Toko Maju Jaya', plan: 'Enterprise', messages: '12k', status: 'Active' },
-    { name: 'Batik Sejahtera', plan: 'Pro', messages: '5k', status: 'Active' },
-    { name: 'Kopi Kenangan Demo', plan: 'Trial', messages: '241', status: 'Active' },
-    { name: 'Otomotif Part ID', plan: 'Pro', messages: '8k', status: 'Expired' },
-  ];
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-        const [sessionRes, logRes] = await Promise.all([
-            api.get('/api/v1/sessions'),
-            api.get('/api/v1/logs')
+        const [statsRes, tenantsRes] = await Promise.all([
+            api.get('/admin/stats'),
+            api.get('/admin/tenants')
         ]);
-        setSessions(sessionRes.data);
-        setLogs(logRes.data);
-    } catch {
-        // Fallback for demo if backend is offline
+
+        if (statsRes.data.success) {
+            setStats(statsRes.data.stats);
+        }
+        if (tenantsRes.data.success) {
+            setTenants(tenantsRes.data.tenants);
+        }
+
+        // Try to fetch sessions (may fail if no WhatsApp API token)
+        try {
+            const sessionRes = await api.get('/sessions');
+            if (Array.isArray(sessionRes.data)) {
+                setSessions(sessionRes.data);
+            }
+        } catch {
+            // WhatsApp sessions require API token, skip if unauthorized
+        }
+    } catch (error) {
+        console.error('Failed to fetch dashboard data:', error);
     } finally {
         setIsLoading(false);
     }
@@ -45,9 +60,41 @@ const SuperAdminDashboard = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    const interval = setInterval(fetchData, 30000); // Refresh every 30s
     return () => clearInterval(interval);
   }, []);
+
+  // Build stats from real data
+  const globalStats = [
+    {
+      label: 'Total Tickets',
+      value: stats?.tickets?.total || '0',
+      icon: MessageSquare,
+      color: 'text-blue-600',
+      trend: `${stats?.tickets?.open || '0'} Open`
+    },
+    {
+      label: 'Total Perusahaan (Tenants)',
+      value: stats?.tenants?.total || '0',
+      icon: Building2,
+      color: 'text-purple-600',
+      trend: `${stats?.tenants?.active || '0'} Active`
+    },
+    {
+      label: 'Total Users',
+      value: stats?.users?.total || '0',
+      icon: Users,
+      color: 'text-emerald-600',
+      trend: 'All Roles'
+    },
+    {
+      label: 'WhatsApp Sessions',
+      value: String(sessions.length),
+      icon: Smartphone,
+      color: 'text-amber-600',
+      trend: sessions.filter(s => s.status === 'CONNECTED').length + ' Connected'
+    },
+  ];
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-10">
@@ -132,29 +179,37 @@ const SuperAdminDashboard = () => {
                 </div>
             </div>
 
-            {/* Tenant Overview */}
+            {/* Tenant Overview - Real Data */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-gray-50 dark:border-slate-700">
-                    <h3 className="font-bold text-gray-900 dark:text-white">Recent Tenants Activity</h3>
+                <div className="p-6 border-b border-gray-50 dark:border-slate-700 flex items-center justify-between">
+                    <h3 className="font-bold text-gray-900 dark:text-white">Registered Tenants</h3>
+                    <span className="text-xs font-bold bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full">{tenants.length} Tenants</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6">
-                    {tenantActivity.map((t, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl border border-gray-100 dark:border-slate-700">
+                    {tenants.length > 0 ? tenants.slice(0, 6).map((t) => (
+                        <div key={t.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl border border-gray-100 dark:border-slate-700">
                             <div className="flex items-center space-x-3">
                                 <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 flex items-center justify-center text-xs font-bold text-gray-400 dark:text-gray-500">
-                                    {t.name.charAt(0)}
+                                    {t.company_name.charAt(0)}
                                 </div>
                                 <div>
-                                    <p className="text-sm font-bold text-gray-900 dark:text-white">{t.name}</p>
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400">{t.plan} Plan</p>
+                                    <p className="text-sm font-bold text-gray-900 dark:text-white">{t.company_name}</p>
+                                    <p className="text-[10px] text-gray-500 dark:text-gray-400">{t.user_count} Users</p>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="text-xs font-bold text-blue-600 dark:text-blue-400">{t.messages}</p>
-                                <p className="text-[9px] text-gray-400 dark:text-gray-500">Messages</p>
+                                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                                    t.status === 'active'
+                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                        : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
+                                }`}>{t.status}</span>
                             </div>
                         </div>
-                    ))}
+                    )) : (
+                        <div className="col-span-2 text-center py-8 text-gray-400 dark:text-gray-500 text-sm">
+                            No tenants registered yet. Click "Tambah Tenant Baru" to create one.
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -170,15 +225,12 @@ const SuperAdminDashboard = () => {
                     <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
                 </div>
                 <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                    {logs.length > 0 ? logs.slice(0, 10).map((log: any, i) => (
-                        <div key={i} className="font-mono text-[10px] border-l border-gray-700 pl-3 py-1">
-                            <span className="text-gray-500">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                            <span className="text-emerald-400 ml-2">{log.event}</span>
-                            <p className="text-gray-300 mt-1 truncate">{JSON.stringify(log.data)}</p>
-                        </div>
-                    )) : (
-                        <div className="text-gray-600 text-[10px] italic">Waiting for incoming logs...</div>
-                    )}
+                    <div className="font-mono text-[10px] border-l border-gray-700 pl-3 py-1">
+                        <span className="text-gray-500">[{new Date().toLocaleTimeString()}]</span>
+                        <span className="text-emerald-400 ml-2">system.ready</span>
+                        <p className="text-gray-300 mt-1">Backend connected, waiting for activity...</p>
+                    </div>
+                    <div className="text-gray-600 text-[10px] italic">Real-time logs will appear here when WhatsApp sessions are active.</div>
                 </div>
             </div>
 
