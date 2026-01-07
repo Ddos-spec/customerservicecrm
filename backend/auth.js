@@ -65,8 +65,12 @@ function requireTenantAccess(req, res, next) {
  * Called on server startup
  */
 async function ensureSuperAdmin() {
+    console.log('🔍 Checking super admin ENV vars...');
     const email = process.env.SUPER_ADMIN_EMAIL;
     const password = process.env.SUPER_ADMIN_PASSWORD;
+
+    console.log(`   SUPER_ADMIN_EMAIL: ${email ? '✓ SET' : '✗ NOT SET'}`);
+    console.log(`   SUPER_ADMIN_PASSWORD: ${password ? '✓ SET' : '✗ NOT SET'}`);
 
     if (!email || !password) {
         console.log('⚠️  SUPER_ADMIN_EMAIL or SUPER_ADMIN_PASSWORD not set in ENV');
