@@ -15,45 +15,45 @@ import AgentDashboard from './pages/AgentDashboard';
 
 function App() {
   const isDarkMode = useThemeStore((state) => state.isDarkMode);
-  
-  // --- CONTENT PROTECTION LOGIC ---
-  useEffect(() => {
-    // 1. Disable Right Click
-    const handleContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-    };
 
-    // 2. Disable Keyboard Shortcuts (Inspect, Save, Print, Source)
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.key === 'F12' || 
-        (e.ctrlKey && (e.key === 's' || e.key === 'S')) || // Save
-        (e.ctrlKey && (e.key === 'u' || e.key === 'U')) || // View Source
-        (e.ctrlKey && (e.key === 'p' || e.key === 'P')) || // Print
-        (e.ctrlKey && e.shiftKey && (e.key === 'i' || e.key === 'I')) || // DevTools
-        (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) || // DevTools
-        (e.ctrlKey && e.shiftKey && (e.key === 'j' || e.key === 'J'))    // DevTools
-      ) {
-        e.preventDefault();
-        return false;
-      }
-    };
+  // --- CONTENT PROTECTION LOGIC (DISABLED FOR DEBUGGING) ---
+  // useEffect(() => {
+  //   // 1. Disable Right Click
+  //   const handleContextMenu = (e: MouseEvent) => {
+  //     e.preventDefault();
+  //   };
 
-    // 3. Disable Image Dragging
-    const handleDragStart = (e: DragEvent) => {
-        e.preventDefault();
-    };
+  //   // 2. Disable Keyboard Shortcuts (Inspect, Save, Print, Source)
+  //   const handleKeyDown = (e: KeyboardEvent) => {
+  //     if (
+  //       e.key === 'F12' ||
+  //       (e.ctrlKey && (e.key === 's' || e.key === 'S')) || // Save
+  //       (e.ctrlKey && (e.key === 'u' || e.key === 'U')) || // View Source
+  //       (e.ctrlKey && (e.key === 'p' || e.key === 'P')) || // Print
+  //       (e.ctrlKey && e.shiftKey && (e.key === 'i' || e.key === 'I')) || // DevTools
+  //       (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) || // DevTools
+  //       (e.ctrlKey && e.shiftKey && (e.key === 'j' || e.key === 'J'))    // DevTools
+  //     ) {
+  //       e.preventDefault();
+  //       return false;
+  //     }
+  //   };
 
-    document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('dragstart', handleDragStart);
+  //   // 3. Disable Image Dragging
+  //   const handleDragStart = (e: DragEvent) => {
+  //       e.preventDefault();
+  //   };
 
-    return () => {
-      document.removeEventListener('contextmenu', handleContextMenu);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('dragstart', handleDragStart);
-    };
-  }, []);
+  //   document.addEventListener('contextmenu', handleContextMenu);
+  //   document.addEventListener('keydown', handleKeyDown);
+  //   document.addEventListener('dragstart', handleDragStart);
+
+  //   return () => {
+  //     document.removeEventListener('contextmenu', handleContextMenu);
+  //     document.removeEventListener('keydown', handleKeyDown);
+  //     document.removeEventListener('dragstart', handleDragStart);
+  //   };
+  // }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
