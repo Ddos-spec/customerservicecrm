@@ -1,38 +1,107 @@
-import { useState, useMemo } from 'react';
-import { UserPlus, Mail, Shield, Trash2, Edit2, X } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { UserPlus, Mail, Shield, Trash2, Edit2, X, Loader2, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
+import api from '../lib/api';
+
+interface AgentUser {
+  id: number;
+  name: string;
+  email: string;
+  status: string;
+  role: string;
+}
 
 const AgentManagement = () => {
-  // Mock Data - 4 slots: 1 Admin Agent + 3 User Agent
-  const initialAgents = useMemo(() => [
-    { id: 1, name: 'Admin Toko Maju', email: 'admin@tokomaju.com', status: 'Online', role: 'Admin Agent (Pemilik)' },
-    { id: 2, name: 'Siti Aminah', email: 'siti@tokomaju.com', status: 'Online', role: 'Support Shift Pagi' },
-    { id: 3, name: 'Budi Santoso', email: 'budi@tokomaju.com', status: 'Offline', role: 'Support Shift Siang' },
-    { id: 4, name: 'Dewi Lestari', email: 'dewi@tokomaju.com', status: 'Offline', role: 'Support Shift Malam' },
-  ], []);
-
-  const [agents, setAgents] = useState(initialAgents);
+  const [agents, setAgents] = useState<AgentUser[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6; // Grid 3 kolom x 2 baris
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const maxAgents = 4; // Limit: 1 Admin Agent + 3 User Agent
+  const [inviteLink, setInviteLink] = useState('');
+  const [inviteRecipient, setInviteRecipient] = useState({ name: '', email: '' });
+
+  const [formData, setFormData] = useState({
+    name: '',
+    email: ''
+  });
+
+  const fetchAgents = async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.get('/admin/users');
+      if (res.data.success) {
+        setAgents(res.data.users || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch agents:', error);
+      toast.error('Gagal memuat data agen');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchAgents();
+  }, []);
 
   const totalPages = Math.ceil(agents.length / itemsPerPage);
-  const currentData = agents.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const currentData = useMemo(() => (
+    agents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  ), [agents, currentPage]);
 
-  const handleAddAgent = (e: any) => {
+  const handleAddAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (agents.length >= maxAgents) {
       toast.error('Batas maksimum agen tercapai.');
       return;
     }
-    toast.success('Undangan agen berhasil dikirim!');
-    setIsModalOpen(false);
+    if (!formData.name.trim() || !formData.email.trim()) {
+      toast.error('Semua field wajib diisi.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await api.post('/admin/invites', {
+        name: formData.name.trim(),
+        email: formData.email.trim()
+      });
+      if (res.data.success) {
+        const token = res.data.invite?.token;
+        if (token) {
+          const baseUrl = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`.replace(/\/+$/, '/');
+          const link = `${baseUrl}invite/${token}`;
+          setInviteLink(link);
+          setInviteRecipient({ name: formData.name.trim(), email: formData.email.trim() });
+          toast.success('Undangan berhasil dibuat');
+        } else {
+          toast.success('Undangan berhasil dibuat');
+        }
+        setFormData({ name: '', email: '' });
+        void fetchAgents();
+      }
+    } catch (error: any) {
+      console.error('Failed to create agent:', error);
+      toast.error(error.response?.data?.error || 'Gagal menambahkan agen');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteAgent = async (agent: AgentUser) => {
+    if (!confirm('Hapus agen ini?')) return;
+    try {
+      await api.delete(`/admin/users/${agent.id}`);
+      setAgents(agents.filter((a) => a.id !== agent.id));
+      toast.success('Agen berhasil dihapus');
+    } catch (error: any) {
+      console.error('Failed to delete agent:', error);
+      toast.error(error.response?.data?.error || 'Gagal menghapus agen');
+    }
   };
 
   return (
@@ -44,7 +113,12 @@ const AgentManagement = () => {
         </div>
         
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setInviteLink('');
+            setInviteRecipient({ name: '', email: '' });
+            setFormData({ name: '', email: '' });
+            setIsModalOpen(true);
+          }}
           disabled={agents.length >= maxAgents}
           className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-slate-800 dark:disabled:text-gray-500 text-white px-6 py-3.5 rounded-2xl transition-all shadow-xl shadow-blue-100 dark:shadow-blue-900/30 font-black uppercase tracking-widest text-xs active:scale-95"
         >
@@ -68,46 +142,54 @@ const AgentManagement = () => {
       </div>
 
       <div className="flex-1">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {currentData.map((agent) => (
-            <div key={agent.id} className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-slate-700 p-8 hover:shadow-2xl hover:shadow-blue-100 dark:hover:shadow-blue-900/30 transition-all group relative overflow-hidden">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl font-black shadow-inner group-hover:scale-110 transition-transform">
-                  {agent.name.charAt(0)}
-                </div>
-                <div className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                  agent.status === 'Online' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500'
-                }`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${agent.status === 'Online' ? 'bg-green-500 animate-pulse' : 'bg-gray-400 dark:bg-gray-500'}`}></div>
-                  <span>{agent.status}</span>
-                </div>
-              </div>
-              
-              <h3 className="font-black text-gray-900 dark:text-white text-xl leading-none tracking-tight">{agent.name}</h3>
-              <p className="text-xs text-blue-600 dark:text-blue-400 font-bold uppercase tracking-widest mt-2">{agent.role}</p>
-              
-              <div className="flex items-center space-x-3 text-gray-400 dark:text-gray-500 text-xs mt-6 bg-gray-50 dark:bg-slate-900 p-3 rounded-2xl border border-gray-100/50 dark:border-slate-700/60">
-                <Mail size={14} className="flex-shrink-0" />
-                <span className="truncate font-medium">{agent.email}</span>
-              </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="animate-spin text-blue-600" size={32} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            {currentData.map((agent) => {
+              const statusLabel = agent.status === 'active' ? 'Aktif' : 'Nonaktif';
+              const roleLabel = agent.role === 'admin_agent' ? 'Admin Agent (Pemilik)' : 'Support Agent';
+              return (
+                <div key={agent.id} className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-slate-700 p-8 hover:shadow-2xl hover:shadow-blue-100 dark:hover:shadow-blue-900/30 transition-all group relative overflow-hidden">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl font-black shadow-inner group-hover:scale-110 transition-transform">
+                      {agent.name.charAt(0)}
+                    </div>
+                    <div className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                      agent.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${agent.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-400 dark:bg-gray-500'}`}></div>
+                      <span>{statusLabel}</span>
+                    </div>
+                  </div>
+                  
+                  <h3 className="font-black text-gray-900 dark:text-white text-xl leading-none tracking-tight">{agent.name}</h3>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 font-bold uppercase tracking-widest mt-2">{roleLabel}</p>
+                  
+                  <div className="flex items-center space-x-3 text-gray-400 dark:text-gray-500 text-xs mt-6 bg-gray-50 dark:bg-slate-900 p-3 rounded-2xl border border-gray-100/50 dark:border-slate-700/60">
+                    <Mail size={14} className="flex-shrink-0" />
+                    <span className="truncate font-medium">{agent.email}</span>
+                  </div>
 
-              <div className="flex items-center space-x-3 mt-8 pt-6 border-t border-gray-50 dark:border-slate-700">
-                <button className="flex-1 flex items-center justify-center space-x-2 py-3 bg-gray-950 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-gray-200 dark:shadow-black/30">
-                  <Edit2 size={14} />
-                  <span>Edit</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    if(confirm('Hapus agen ini?')) setAgents(agents.filter(a => a.id !== agent.id));
-                  }}
-                  className="p-3 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-100 dark:hover:border-red-900/30"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+                  <div className="flex items-center space-x-3 mt-8 pt-6 border-t border-gray-50 dark:border-slate-700">
+                    <button className="flex-1 flex items-center justify-center space-x-2 py-3 bg-gray-950 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-gray-200 dark:shadow-black/30">
+                      <Edit2 size={14} />
+                      <span>Edit</span>
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteAgent(agent)}
+                      className="p-3 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all border border-transparent hover:border-red-100 dark:hover:border-red-900/30"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="mt-auto bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
@@ -130,11 +212,61 @@ const AgentManagement = () => {
                <button onClick={() => setIsModalOpen(false)}><X className="text-gray-400 dark:text-gray-500" /></button>
             </div>
             <form onSubmit={handleAddAgent} className="space-y-4">
-               <input required placeholder="Nama Lengkap" className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
-               <input required type="email" placeholder="Email Kerja" className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
-               <input required type="password" placeholder="Password Awal" className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500" />
-               <button className="w-full py-4 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest text-xs">Kirim Undangan</button>
+               <input
+                 required
+                 placeholder="Nama Lengkap"
+                 value={formData.name}
+                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                 className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+               />
+               <input
+                 required
+                 type="email"
+                 placeholder="Email Kerja"
+                 value={formData.email}
+                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                 className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+               />
+               <button
+                 disabled={isSubmitting}
+                 className="w-full py-4 bg-blue-600 disabled:bg-blue-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2"
+               >
+                 {isSubmitting && <Loader2 className="animate-spin" size={16} />}
+                 <span>{isSubmitting ? 'Menyimpan...' : 'Kirim Undangan'}</span>
+               </button>
             </form>
+            {inviteLink && (
+              <div className="mt-6 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl p-4 space-y-3">
+                <p className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-widest">Link Undangan</p>
+                <div className="text-[11px] font-mono break-all text-gray-700 dark:text-gray-200">{inviteLink}</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(inviteLink).then(() => {
+                        toast.success('Link disalin');
+                      }).catch(() => {
+                        toast.error('Gagal menyalin link');
+                      });
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-[10px] font-bold uppercase tracking-widest text-gray-700 dark:text-gray-200"
+                  >
+                    <Copy size={14} />
+                    Salin
+                  </button>
+                  <button
+                    onClick={() => {
+                      const subject = encodeURIComponent('Undangan Akun Agent CRM');
+                      const body = encodeURIComponent(`Halo ${inviteRecipient.name || ''},\n\nSilakan klik link undangan ini untuk aktivasi akun:\n${inviteLink}\n\nTerima kasih.`);
+                      window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(inviteRecipient.email || '')}&su=${subject}&body=${body}`, '_blank');
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest"
+                  >
+                    <ExternalLink size={14} />
+                    Buka Gmail
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

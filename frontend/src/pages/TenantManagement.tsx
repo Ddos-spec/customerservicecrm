@@ -43,7 +43,13 @@ const TenantManagement = () => {
   const [isSessionSaving, setIsSessionSaving] = useState(false);
 
   // Form State
-  const [formData, setFormData] = useState({ company_name: '' });
+  const [formData, setFormData] = useState({
+    company_name: '',
+    admin_name: '',
+    admin_email: '',
+    admin_password: '',
+    session_id: ''
+  });
 
   // Fetch tenants from API
   const fetchTenants = async () => {
@@ -104,15 +110,39 @@ const TenantManagement = () => {
       toast.error('Nama perusahaan harus diisi');
       return;
     }
+    if (!formData.admin_name.trim() || !formData.admin_email.trim() || !formData.admin_password.trim()) {
+      toast.error('Data Admin Agent harus lengkap');
+      return;
+    }
+    if (formData.admin_password.trim().length < 6) {
+      toast.error('Password minimal 6 karakter');
+      return;
+    }
+    if (!formData.session_id.trim()) {
+      toast.error('Session WA harus diisi');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
-      const res = await api.post('/admin/tenants', { company_name: formData.company_name });
+      const res = await api.post('/admin/tenants', {
+        company_name: formData.company_name,
+        admin_name: formData.admin_name,
+        admin_email: formData.admin_email,
+        admin_password: formData.admin_password,
+        session_id: formData.session_id
+      });
       if (res.data.success) {
         setTenants([res.data.tenant, ...tenants]);
         setIsModalOpen(false);
         toast.success('Tenant berhasil dibuat!');
-        setFormData({ company_name: '' });
+        setFormData({
+          company_name: '',
+          admin_name: '',
+          admin_email: '',
+          admin_password: '',
+          session_id: ''
+        });
       }
     } catch (error: any) {
       console.error('Failed to create tenant:', error);
@@ -419,8 +449,50 @@ const TenantManagement = () => {
                     onChange={(e) => setFormData({...formData, company_name: e.target.value})}
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Nama Admin Agent</label>
+                  <input
+                    required
+                    placeholder="Contoh: Admin Toko"
+                    value={formData.admin_name}
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    onChange={(e) => setFormData({...formData, admin_name: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Email Admin Agent (Username)</label>
+                  <input
+                    required
+                    type="email"
+                    placeholder="admin@tokomaju.com"
+                    value={formData.admin_email}
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    onChange={(e) => setFormData({...formData, admin_email: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Password Admin Agent</label>
+                  <input
+                    required
+                    type="password"
+                    placeholder="Minimal 6 karakter"
+                    value={formData.admin_password}
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    onChange={(e) => setFormData({...formData, admin_password: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Session WA (Nomor)</label>
+                  <input
+                    required
+                    placeholder="Contoh: 628123456789"
+                    value={formData.session_id}
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    onChange={(e) => setFormData({...formData, session_id: e.target.value})}
+                  />
+                </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Setelah tenant dibuat, Anda dapat menambahkan Admin Agent untuk tenant ini dari menu User Management.
+                  Admin Agent dibuat otomatis. Login menggunakan email sebagai username.
                 </p>
                 <button
                   type="submit"

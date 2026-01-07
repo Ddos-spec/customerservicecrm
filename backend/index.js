@@ -1,11 +1,30 @@
-const {
-    default: makeWASocket,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
-    Browsers,
-    DisconnectReason,
-    useMultiFileAuthState,
-} = require('@whiskeysockets/baileys');
+const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+let makeWASocket;
+let fetchLatestBaileysVersion;
+let makeCacheableSignalKeyStore;
+let Browsers;
+let DisconnectReason;
+let useMultiFileAuthState;
+
+try {
+    const baileys = require('@whiskeysockets/baileys');
+    makeWASocket = baileys.default;
+    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+    makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
+    Browsers = baileys.Browsers;
+    DisconnectReason = baileys.DisconnectReason;
+    useMultiFileAuthState = baileys.useMultiFileAuthState;
+} catch (error) {
+    if (!isTest) {
+        throw error;
+    }
+    makeWASocket = () => { throw error; };
+    fetchLatestBaileysVersion = async () => ({ version: [0, 0, 0] });
+    makeCacheableSignalKeyStore = () => ({});
+    Browsers = { macOS: () => ['Test', 'Test', '1.0.0'] };
+    DisconnectReason = { loggedOut: 401 };
+    useMultiFileAuthState = async () => ({ state: { creds: {}, keys: {} }, saveCreds: async () => {} });
+}
 const pino = require('pino');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
@@ -32,6 +51,14 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
+if (isTest) {
+    if (!process.env.SESSION_SECRET) {
+        process.env.SESSION_SECRET = 'test-session-secret';
+    }
+    if (!process.env.ENCRYPTION_KEY) {
+        process.env.ENCRYPTION_KEY = '0'.repeat(64);
+    }
+}
 const logger = pino({
     level: isProd ? 'warn' : 'info',
     transport: isProd ? undefined : { target: 'pino-pretty', options: { colorize: true } }
@@ -54,7 +81,7 @@ app.set('trust proxy', 1);
 
 // --- SECURITY ---
 const requiredEnvVars = ['SESSION_SECRET', 'ENCRYPTION_KEY'];
-if (requiredEnvVars.some(k => !process.env[k])) {
+if (!isTest && requiredEnvVars.some(k => !process.env[k])) {
     console.error('❌ Missing Env Vars');
     process.exit(1);
 }
@@ -78,15 +105,18 @@ const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localh
 const redisSessionClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
 
 // Connect Redis clients
-(async () => {
-    try {
-        await redisClient.connect();
-        await redisSessionClient.connect();
-        console.log('✅ Redis connected');
-    } catch (err) {
-        console.error('❌ Redis connection error:', err.message);
-    }
-})();
+if (!isTest) {
+    (async () => {
+        try {
+            await redisClient.connect();
+            await redisSessionClient.connect();
+            console.log('? Redis connected');
+        } catch (err) {
+            console.error('? Redis connection error:', err.message);
+        }
+    })();
+}
+
 
 const sessions = new Map();
 const sessionTokens = new Map();
@@ -217,6 +247,8 @@ app.use(session({
 
 // Health check endpoints (no auth required)
 app.get('/', (req, res) => res.json({ status: 'online', message: 'WA Gateway Engine is running', version: '1.0.0' }));
+app.get('/ping', (req, res) => res.send('pong'));
+app.get('/sessions', (req, res) => res.status(200).json(getSessionsDetails()));
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 app.get('/api/v1/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
@@ -411,25 +443,28 @@ app.use('/api/v1/n8n', n8nRouter);
 app.use('/api/v1', initializeApi(sessions, sessionTokens, createSession, getSessionsDetails, deleteSession, console.log, phonePairing, saveSessionSettings, regenerateSessionToken, redisClient, scheduleMessageSend, validateWhatsAppRecipient, getSessionContacts, upsertSessionContact, removeSessionContact, postToWebhook));
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, async () => {
-    loadTokens();
+if (!isTest) {
+    server.listen(PORT, async () => {
+        loadTokens();
 
-    try {
-        await db.ensureTenantWebhooksTable();
-        await db.ensureTenantSessionColumn();
-    } catch (err) {
-        console.error('Webhook table check failed:', err.message);
-    }
+        try {
+            await db.ensureTenantWebhooksTable();
+            await db.ensureTenantSessionColumn();
+            await db.ensureUserInvitesTable();
+        } catch (err) {
+            console.error('Webhook table check failed:', err.message);
+        }
 
-    // Ensure super admin exists (from ENV)
-    try {
-        await ensureSuperAdmin();
-    } catch (err) {
-        console.error('❌ Super admin check failed:', err.message);
-    }
+        // Ensure super admin exists (from ENV)
+        try {
+            await ensureSuperAdmin();
+        } catch (err) {
+            console.error('? Super admin check failed:', err.message);
+        }
 
-    console.log(`🚀 Gateway Engine running on port ${PORT}`);
-});
+        console.log(`?? Gateway Engine running on port ${PORT}`);
+    });
+}
 
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
@@ -480,3 +515,5 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
     logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
+module.exports = { app, server };
