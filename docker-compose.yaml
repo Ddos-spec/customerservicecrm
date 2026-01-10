@@ -46,7 +46,7 @@ services:
   # Go WhatsApp Gateway
   wa-gateway:
     build:
-      context: ./wa-gateway
+      context: ./backend/wa-gateway
       dockerfile: Dockerfile
     container_name: crm-wa-gateway
     networks:
@@ -57,8 +57,8 @@ services:
       SERVER_ADDRESS: "0.0.0.0"
       SERVER_PORT: "3001"
       HTTP_BASE_URL: "/api/v1/whatsapp"
-      AUTH_BASIC_PASSWORD: ${WA_AUTH_PASSWORD:-SecurePassword123}
-      AUTH_JWT_SECRET: ${WA_JWT_SECRET:-SuperSecretJWTKey}
+      AUTH_BASIC_PASSWORD: ${WA_GATEWAY_PASSWORD}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
       REDIS_URL: "redis://redis:6379"
       WEBHOOK_URL: "http://backend:3000/api/v1/webhook/incoming"
       WHATSAPP_DATASTORE_TYPE: "postgres"
@@ -95,6 +95,7 @@ services:
       REDIS_URL: "redis://redis:6379"
       DATABASE_URL: "postgres://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:-crmpassword}@postgres:5432/${POSTGRES_DB:-customercrm}"
       WA_GATEWAY_URL: "http://wa-gateway:3001/api/v1/whatsapp"
+      WA_GATEWAY_PASSWORD: ${WA_GATEWAY_PASSWORD}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     depends_on:
       redis:
