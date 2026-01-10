@@ -1,7 +1,7 @@
 {
-  "name": "super-light-web-whatsapp-api-server",
-  "version": "3.0.4",
-  "description": "A super lightweight web server for WhatsApp API using whiskeysockets/baileys",
+  "name": "customerservice-crm-backend",
+  "version": "4.0.0",
+  "description": "Customer Service CRM Backend with Go WhatsApp Gateway",
   "main": "index.js",
   "scripts": {
     "start": "node --expose-gc index.js",
@@ -9,11 +9,9 @@
     "test": "jest",
     "install:smart": "node install-dependencies.js"
   },
-  "author": "Alucard0x1",
+  "author": "",
   "license": "MIT",
   "dependencies": {
-    "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.17.16",
     "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.3",
@@ -31,7 +29,6 @@
     "pg": "^8.16.3",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
-    "qrcode-terminal": "^0.12.0",
     "redis": "^4.7.0",
     "sanitize-html": "^2.14.0",
     "sharp": "^0.33.5",
@@ -51,10 +48,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "overrides": {
-    "@whiskeysockets/baileys": {
-      "sharp": "$sharp"
-    }
   }
 }

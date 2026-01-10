@@ -1,0 +1,390 @@
+const express = require('express');
+const path = require('path');
+
+const router = express.Router();
+
+function buildMessagesRouter(deps) {
+    const {
+        sessions,
+        log,
+        db,
+        scheduleMessageSend,
+        validateWhatsAppRecipient,
+        MAX_MESSAGES_PER_BATCH,
+        INTERNAL_RATE_LIMIT_PER_HOUR,
+        INTERNAL_REPLY_WINDOW_HOURS,
+        DISABLE_PUBLIC_MESSAGES,
+        formatPhoneNumber,
+        toWhatsAppFormat,
+        isValidPhoneNumber,
+        mapMessagePayload,
+        sanitizeBatchMessages,
+        validateMessageEnvelope,
+        normalizeDestination,
+        validateMediaIdOrLink,
+        validateToken,
+    } = deps;
+    const unsupportedTypes = new Set(['button', 'list', 'template', 'contacts']);
+
+    router.post('/internal/messages', async (req, res) => {
+        const user = req.session?.user;
+        if (!user) {
+            return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
+        if (!['admin_agent', 'agent'].includes(user.role)) {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+
+        const rawPhone = (req.body?.phone || req.body?.to || '').toString().trim();
+        const messageText = (req.body?.message_text || req.body?.text || '').toString().trim();
+        const ticketId = parseInt(req.body?.ticket_id || req.body?.ticketId, 10);
+
+        if (!rawPhone) {
+            return res.status(400).json({ status: 'error', message: 'Nomor tujuan wajib diisi' });
+        }
+        if (!messageText) {
+            return res.status(400).json({ status: 'error', message: 'Pesan tidak boleh kosong' });
+        }
+        if (!ticketId) {
+            return res.status(400).json({ status: 'error', message: 'ticket_id wajib diisi' });
+        }
+        if (!isValidPhoneNumber(rawPhone)) {
+            return res.status(400).json({ status: 'error', message: 'Format nomor tidak valid' });
+        }
+        if (messageText.length > 4096) {
+            return res.status(400).json({ status: 'error', message: 'Pesan terlalu panjang' });
+        }
+
+        const formattedPhone = formatPhoneNumber(rawPhone);
+
+        const ticket = await db.getTicketWithLastCustomerMessage(ticketId);
+        if (!ticket) {
+            return res.status(404).json({ status: 'error', message: 'Tiket tidak ditemukan' });
+        }
+        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+            return res.status(403).json({ status: 'error', message: 'Tidak boleh mengirim pesan untuk tenant lain' });
+        }
+
+        const formattedTicketNumber = formatPhoneNumber(ticket.customer_contact || '');
+        if (!formattedTicketNumber || formattedTicketNumber !== formattedPhone) {
+            return res.status(400).json({ status: 'error', message: 'Nomor tujuan harus sesuai dengan kontak tiket' });
+        }
+
+        if (INTERNAL_REPLY_WINDOW_HOURS > 0) {
+            const lastCustomerAt = ticket.last_customer_message_at ? new Date(ticket.last_customer_message_at) : null;
+            const tooOld = !lastCustomerAt || Number.isNaN(lastCustomerAt.getTime()) || (Date.now() - lastCustomerAt.getTime()) > INTERNAL_REPLY_WINDOW_HOURS * 60 * 60 * 1000;
+            if (tooOld) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: `Di luar window ${INTERNAL_REPLY_WINDOW_HOURS} jam sejak pesan customer. Minta pelanggan kirim pesan lagi.`
+                });
+            }
+        }
+
+        if (INTERNAL_RATE_LIMIT_PER_HOUR > 0 && ticket.tenant_id) {
+            const sentCount = await db.countTenantMessagesSince(ticket.tenant_id, 60, 'agent');
+            if (sentCount >= INTERNAL_RATE_LIMIT_PER_HOUR) {
+                return res.status(429).json({
+                    status: 'error',
+                    message: `Rate limit ${INTERNAL_RATE_LIMIT_PER_HOUR} pesan/jam tercapai untuk tenant ini`
+                });
+            }
+        }
+
+        let sessionId = user.tenant_session_id || null;
+        if (user.tenant_id) {
+            try {
+                const tenant = await db.getTenantById(user.tenant_id);
+                if (tenant?.session_id) {
+                    sessionId = tenant.session_id;
+                }
+            } catch (error) {
+                console.error('Failed to fetch tenant session:', error);
+            }
+        }
+
+        if (!sessionId) {
+            return res.status(400).json({ status: 'error', message: 'Session WA belum diatur' });
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session || !session.sock || session.status !== 'CONNECTED') {
+            return res.status(409).json({ status: 'error', message: 'Session WhatsApp belum tersambung' });
+        }
+
+        const destination = toWhatsAppFormat(formattedPhone);
+
+        try {
+            await validateWhatsAppRecipient(sessionId, destination);
+        } catch (error) {
+            return res.status(400).json({ status: 'error', message: 'Nomor tidak terdaftar di WhatsApp' });
+        }
+
+        try {
+            const result = await scheduleMessageSend(sessionId, async () => {
+                const activeSession = sessions.get(sessionId);
+                if (!activeSession || !activeSession.sock || activeSession.status !== 'CONNECTED') {
+                    throw new Error('Session tidak tersedia');
+                }
+                await activeSession.sock.sendPresenceUpdate('composing', destination);
+                const typingDelay = Math.floor(Math.random() * 1000) + 500;
+                await new Promise((resolve) => setTimeout(resolve, typingDelay));
+                const sendResult = await activeSession.sock.sendMessage(destination, { text: messageText });
+                await activeSession.sock.sendPresenceUpdate('paused', destination);
+                return { status: 'success', messageId: sendResult?.key?.id };
+            });
+
+            if (!result || result.status !== 'success') {
+                return res.status(502).json({ status: 'error', message: result?.message || 'Gagal mengirim pesan' });
+            }
+
+            return res.status(200).json({ status: 'success', messageId: result.messageId });
+        } catch (error) {
+            return res.status(503).json({ status: 'error', message: error.message || 'Gagal mengirim pesan' });
+        }
+    });
+
+    router.use(validateToken);
+
+    const sendMessage = async (sock, to, message) => {
+        try {
+            const targetJid = to;
+            const result = await sock.sendMessage(targetJid, message);
+            return { status: 'success', message: `Message sent to ${to}`, messageId: result.key.id };
+        } catch (error) {
+            return { status: 'error', message: `Failed to send message to ${to}. Reason: ${error.message}` };
+        }
+    };
+
+    const handleSendMessage = async (req, res) => {
+        log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, query: req.query });
+
+        if (DISABLE_PUBLIC_MESSAGES) {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Endpoint /api/v1/messages dinonaktifkan. Gunakan /internal/messages via dashboard.'
+            });
+        }
+
+        const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
+        if (!sessionId) {
+            log('API error', 'SYSTEM', { event: 'api-error', error: 'sessionId could not be determined', endpoint: req.originalUrl });
+            return res.status(400).json({ status: 'error', message: 'sessionId is required (in query, body, or implied by token)' });
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session || !session.sock || session.status !== 'CONNECTED') {
+            log('API error', 'SYSTEM', { event: 'api-error', error: `Session ${sessionId} not found or not connected.`, endpoint: req.originalUrl });
+            return res.status(404).json({ status: 'error', message: `Session ${sessionId} not found or not connected.` });
+        }
+
+        const messages = sanitizeBatchMessages(req.body).filter((msg) => msg && typeof msg === 'object');
+
+        if (messages.length === 0) {
+            return res.status(400).json({ status: 'error', message: 'No message payload provided.' });
+        }
+        if (messages.length > MAX_MESSAGES_PER_BATCH) {
+            return res.status(400).json({
+                status: 'error',
+                message: `Batch limit exceeded. Max ${MAX_MESSAGES_PER_BATCH} messages per request.`
+            });
+        }
+
+        const responseSlots = [];
+        const phoneNumbers = [];
+        const messageContents = [];
+
+        for (const rawMessage of messages) {
+            const msg = { ...rawMessage };
+            const envelopeErrors = validateMessageEnvelope(msg);
+            if (envelopeErrors.length) {
+                responseSlots.push(Promise.resolve({ status: 'error', message: envelopeErrors[0] }));
+                continue;
+            }
+
+            const { recipient_type, to, type } = msg;
+            if (unsupportedTypes.has(type)) {
+                responseSlots.push(Promise.resolve({
+                    status: 'error',
+                    message: `Tipe pesan "${type}" belum didukung di gateway Go.`
+                }));
+                continue;
+            }
+            let destinationMeta;
+            try {
+                destinationMeta = normalizeDestination(to, recipient_type);
+            } catch (error) {
+                responseSlots.push(Promise.resolve({ status: 'error', message: error.message }));
+                continue;
+            }
+            const { isGroup, destination } = destinationMeta;
+
+            if (type === 'image' && msg.image) {
+                try {
+                    validateMediaIdOrLink(msg.image);
+                } catch (err) {
+                    responseSlots.push(Promise.resolve({ status: 'error', message: err.message }));
+                    continue;
+                }
+            }
+            if (type === 'document' && msg.document) {
+                try {
+                    validateMediaIdOrLink(msg.document);
+                } catch (err) {
+                    responseSlots.push(Promise.resolve({ status: 'error', message: err.message }));
+                    continue;
+                }
+            }
+
+            let messagePayload;
+            try {
+                messagePayload = mapMessagePayload({ ...msg, to: destination });
+            } catch (error) {
+                responseSlots.push(Promise.resolve({ status: 'error', message: `Failed to prepare message for ${to}: ${error.message}` }));
+                continue;
+            }
+
+            if (!isGroup) {
+                try {
+                    await validateWhatsAppRecipient(sessionId, destination);
+                } catch (error) {
+                    responseSlots.push(Promise.resolve({
+                        status: 'error',
+                        message: `Nomor ${to} tidak terdaftar di WhatsApp.`
+                    }));
+                    continue;
+                }
+            }
+
+            phoneNumbers.push(to);
+            messageContents.push({ type, to });
+
+            const sendPromise = scheduleMessageSend(sessionId, async () => {
+                const targetSession = sessions.get(sessionId);
+                if (!targetSession || !targetSession.sock || targetSession.status !== 'CONNECTED') {
+                    throw new Error('Session tidak tersedia saat pengiriman berlangsung.');
+                }
+                await targetSession.sock.sendPresenceUpdate('composing', destination);
+                const typingDelay = Math.floor(Math.random() * 1000) + 500;
+                await new Promise((resolve) => setTimeout(resolve, typingDelay));
+                const result = await sendMessage(targetSession.sock, destination, messagePayload);
+                await targetSession.sock.sendPresenceUpdate('paused', destination);
+                return result;
+            }).catch((error) => ({
+                status: 'error',
+                message: `Failed to process message for ${to}: ${error.message}`
+            }));
+
+            responseSlots.push(sendPromise);
+        }
+
+        const resolvedResults = await Promise.all(responseSlots);
+        log('Messages sent', sessionId, {
+            event: 'messages-sent',
+            sessionId,
+            count: resolvedResults.length,
+            phoneNumbers,
+            messages: messageContents
+        });
+        res.status(200).json(resolvedResults);
+    };
+
+    router.post('/messages', handleSendMessage);
+    router.post('/', handleSendMessage);
+
+    router.delete('/message', async (req, res) => {
+        log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
+        const { sessionId, messageId, remoteJid } = req.body;
+
+        if (!sessionId || !messageId || !remoteJid) {
+            log('API error', 'SYSTEM', { event: 'api-error', error: 'sessionId, messageId, and remoteJid are required.', endpoint: req.originalUrl });
+            return res.status(400).json({ status: 'error', message: 'sessionId, messageId, and remoteJid are required.' });
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session || !session.sock || session.status !== 'CONNECTED') {
+            log('API error', 'SYSTEM', { event: 'api-error', error: `Session ${sessionId} not found or not connected.`, endpoint: req.originalUrl });
+            return res.status(404).json({ status: 'error', message: `Session ${sessionId} not found or not connected.` });
+        }
+
+        try {
+            await session.sock.sendMessage(remoteJid, { delete: { id: messageId } });
+
+            log('Message deleted', sessionId, { event: 'message-deleted', messageId, remoteJid });
+            res.status(200).json({ status: 'success', message: `Message ${messageId} deleted.` });
+        } catch (error) {
+            log('API error', 'SYSTEM', { event: 'api-error', error: error.message, endpoint: req.originalUrl });
+            res.status(500).json({ status: 'error', message: `Failed to delete message: ${error.message}` });
+        }
+    });
+
+    router.post('/reply', async (req, res) => {
+        return res.status(501).json({
+            status: 'error',
+            message: 'Fitur reply belum didukung di gateway Go.'
+        });
+    });
+
+    router.post('/mention', async (req, res) => {
+        return res.status(501).json({
+            status: 'error',
+            message: 'Fitur mention belum didukung di gateway Go.'
+        });
+    });
+
+    router.post('/link-preview', async (req, res) => {
+        const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
+        const { to, text, title, description, thumbnailUrl } = req.body;
+
+        if (!to || !text) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'to and text are required.'
+            });
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session || !session.sock || session.status !== 'CONNECTED') {
+            return res.status(404).json({ status: 'error', message: `Session ${sessionId} not found or not connected.` });
+        }
+
+        try {
+            const destination = to.includes('@') ? to : `${formatPhoneNumber(to)}@s.whatsapp.net`;
+            const urlMatch = text.match(/https?:\/\/[^\s]+/);
+            const matchedUrl = urlMatch ? urlMatch[0] : null;
+
+            const messagePayload = {
+                text,
+                linkPreview: title && matchedUrl ? {
+                    title: title,
+                    description: description || '',
+                    canonicalUrl: matchedUrl,
+                    matchedText: matchedUrl,
+                    thumbnailUrl: thumbnailUrl
+                } : undefined
+            };
+
+            const result = await session.sock.sendMessage(destination, messagePayload);
+
+            res.status(200).json({
+                status: 'success',
+                message: 'Message sent',
+                messageId: result.key.id
+            });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    const unsupportedMessageFeature = (message) => (req, res) => {
+        res.status(501).json({ status: 'error', message });
+    };
+
+    router.post('/broadcast', unsupportedMessageFeature('Broadcast belum didukung di gateway Go. Gunakan /messages batch.'));
+    router.post('/forward', unsupportedMessageFeature('Forward pesan belum didukung di gateway Go.'));
+    router.post('/star', unsupportedMessageFeature('Star pesan belum didukung di gateway Go.'));
+
+    return router;
+}
+
+module.exports = { buildMessagesRouter };

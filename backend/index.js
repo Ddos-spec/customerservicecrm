@@ -1,56 +1,41 @@
-const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
-let makeWASocket;
-let fetchLatestBaileysVersion;
-let makeCacheableSignalKeyStore;
-let Browsers;
-let DisconnectReason;
-let useMultiFileAuthState;
+/**
+ * Customer Service CRM - Backend Server
+ *
+ * This is the main entry point for the Node.js backend.
+ * WhatsApp operations are delegated to the Go WhatsApp Gateway.
+ */
 
-try {
-    const baileys = require('@whiskeysockets/baileys');
-    makeWASocket = baileys.default;
-    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
-    makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
-    Browsers = baileys.Browsers;
-    DisconnectReason = baileys.DisconnectReason;
-    useMultiFileAuthState = baileys.useMultiFileAuthState;
-} catch (error) {
-    if (!isTest) {
-        throw error;
-    }
-    makeWASocket = () => { throw error; };
-    fetchLatestBaileysVersion = async () => ({ version: [0, 0, 0] });
-    makeCacheableSignalKeyStore = () => ({});
-    Browsers = { macOS: () => ['Test', 'Test', '1.0.0'] };
-    DisconnectReason = { loggedOut: 401 };
-    useMultiFileAuthState = async () => ({ state: { creds: {}, keys: {} }, saveCreds: async () => {} });
-}
+const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+
 const pino = require('pino');
-const { Boom } = require('@hapi/boom');
 const express = require('express');
 const bodyParser = require('body-parser');
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
-const axios = require('axios');
 const { createClient } = require('redis');
-const useRedisAuthState = require('./redis-auth');
 const { initializeApi, getWebhookUrl } = require('./api_v1');
 const { router: authRouter, ensureSuperAdmin } = require('./auth');
 const db = require('./db');
 const n8nRouter = require('./n8n-api');
 require('dotenv').config();
 const session = require('express-session');
-const PhonePairing = require('./phone-pairing');
 const { RedisStore } = require('connect-redis');
 const cors = require('cors');
 const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const axios = require('axios');
+
+// Go WhatsApp Gateway Client
+const waGateway = require('./wa-gateway-client');
+const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
+
+// Test environment defaults
 if (isTest) {
     if (!process.env.SESSION_SECRET) {
         process.env.SESSION_SECRET = 'test-session-secret';
@@ -59,11 +44,11 @@ if (isTest) {
         process.env.ENCRYPTION_KEY = '0'.repeat(64);
     }
 }
+
 const logger = pino({
     level: isProd ? 'warn' : 'info',
     transport: isProd ? undefined : { target: 'pino-pretty', options: { colorize: true } }
 });
-const phonePairing = new PhonePairing((msg) => logger.info(`[Pairing] ${msg}`));
 
 // Memory management - schedule GC if available
 const scheduleGC = () => {
@@ -71,25 +56,25 @@ const scheduleGC = () => {
         setInterval(() => {
             global.gc();
             logger.debug('Manual GC executed');
-        }, 60000); // Every minute
+        }, 60000);
     }
 };
 scheduleGC();
 
-// Trust proxy is required for express-rate-limit to work behind Easypanel/Nginx
+// Trust proxy for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
 
 // --- SECURITY ---
-const requiredEnvVars = ['SESSION_SECRET', 'ENCRYPTION_KEY'];
+const requiredEnvVars = ['SESSION_SECRET', 'ENCRYPTION_KEY', 'WA_GATEWAY_PASSWORD'];
 if (!isTest && requiredEnvVars.some(k => !process.env[k])) {
-    console.error('❌ Missing Env Vars');
+    console.error('Missing required environment variables');
     process.exit(1);
 }
 
-// --- CORS (untuk cross-domain frontend) ---
+// --- CORS ---
 const allowedOrigins = process.env.FRONTEND_URL
     ? [process.env.FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000']
-    : true; // Allow all in dev
+    : true;
 
 app.use(cors({
     origin: allowedOrigins,
@@ -101,36 +86,131 @@ app.use(cors({
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// Redis clients
 const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
 const redisSessionClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
 
-// Connect Redis clients
+// Connect Redis
 if (!isTest) {
     (async () => {
         try {
             await redisClient.connect();
             await redisSessionClient.connect();
-            console.log('? Redis connected');
+            console.log('Redis connected');
         } catch (err) {
-            console.error('? Redis connection error:', err.message);
+            console.error('Redis connection error:', err.message);
         }
     })();
 }
 
-
+// Session state (synced from Go gateway via webhooks)
 const sessions = new Map();
 const sessionTokens = new Map();
 
-// --- Controls ---
+// --- Encryption ---
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 const ENCRYPTED_TOKENS_FILE = path.join(__dirname, 'session_tokens.enc');
 
+function encrypt(text) {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex'), iv);
+    return iv.toString('hex') + ':' + cipher.update(text, 'utf8', 'hex') + cipher.final('hex');
+}
+
+function decrypt(text) {
+    const [iv, content] = text.split(':');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex'), Buffer.from(iv, 'hex'));
+    return decipher.update(content, 'hex', 'utf8') + decipher.final('utf8');
+}
+
+function saveTokens() {
+    fs.writeFileSync(ENCRYPTED_TOKENS_FILE, encrypt(JSON.stringify(Object.fromEntries(sessionTokens))), 'utf-8');
+}
+
+async function loadTokens() {
+    if (fs.existsSync(ENCRYPTED_TOKENS_FILE)) {
+        try {
+            const tokens = JSON.parse(decrypt(fs.readFileSync(ENCRYPTED_TOKENS_FILE, 'utf-8')));
+            for (const [k, v] of Object.entries(tokens)) {
+                sessionTokens.set(k, v);
+            }
+
+            // Re-authenticate gateway JWTs using session ids as username
+            const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+            await Promise.allSettled(Array.from(sessionTokens.keys()).map(async (sessionId) => {
+                try {
+                    const auth = await waGateway.authenticate(sessionId, gatewayPassword);
+                    if (auth.status && auth.data?.token) {
+                        waGateway.setSessionToken(sessionId, auth.data.token);
+                    }
+                } catch (err) {
+                    logger.warn(`Failed to refresh gateway token for ${sessionId}: ${err.message}`);
+                }
+            }));
+        } catch (err) {
+            logger.warn('Failed to load tokens:', err.message);
+        }
+    }
+}
+
+// --- Session Lock (Redis) ---
+async function acquireSessionLock(sessionId) {
+    await redisClient.set(`wa:lock:${sessionId}`, 'locked', { EX: 60 });
+    return true;
+}
+
+async function releaseSessionLock(sessionId) {
+    await redisClient.del(`wa:lock:${sessionId}`);
+}
+
+// --- Contact Management (Redis) ---
+async function getSessionContacts(sessionId) {
+    const raw = await redisClient.get(`wa:contacts:${sessionId}`);
+    return raw ? JSON.parse(raw) : [];
+}
+
+async function saveSessionContacts(sessionId, contacts) {
+    await redisClient.set(`wa:contacts:${sessionId}`, JSON.stringify(contacts));
+}
+
+async function upsertSessionContact(sessionId, contact) {
+    const contacts = await getSessionContacts(sessionId);
+    const idx = contacts.findIndex(c => c.contactId === contact.contactId);
+    if (idx >= 0) contacts[idx] = { ...contacts[idx], ...contact };
+    else contacts.push(contact);
+    await saveSessionContacts(sessionId, contacts);
+}
+
+async function removeSessionContact(sessionId, contactId) {
+    const contacts = await getSessionContacts(sessionId);
+    const filtered = contacts.filter(c => c.contactId !== contactId);
+    await saveSessionContacts(sessionId, filtered);
+}
+
+// --- Session Settings (Redis) ---
+async function saveSessionSettings(sessionId, settings) {
+    await redisClient.set(`wa:settings:${sessionId}`, JSON.stringify(settings));
+}
+
+// --- Message Queue ---
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 function ensureSessionQueueState(sessionId) {
-    if (!sessions.has(sessionId)) sessions.set(sessionId, { queue: [], processing: false });
-    return sessions.get(sessionId);
+    if (!sessions.has(sessionId)) {
+        sessions.set(sessionId, {
+            sessionId,
+            queue: [],
+            processing: false,
+            status: 'UNKNOWN',
+            sock: createCompatSocket(sessionId)
+        });
+    }
+    const session = sessions.get(sessionId);
+    // Ensure sock exists
+    if (!session.sock) {
+        session.sock = createCompatSocket(sessionId);
+    }
+    return session;
 }
 
 async function processSessionQueue(sessionId) {
@@ -156,276 +236,117 @@ function scheduleMessageSend(sessionId, operation) {
     });
 }
 
-async function validateWhatsAppRecipient(sock, destination) {
-    const lookup = await sock.onWhatsApp(destination);
-    if (!lookup || !lookup[0]?.exists) throw new Error('Not found');
-    return lookup[0];
-}
-
-async function getSessionContacts(sessionId) {
-    const raw = await redisClient.get(`wa:contacts:${sessionId}`);
-    return raw ? JSON.parse(raw) : [];
-}
-
-async function saveSessionContacts(sessionId, contacts) {
-    await redisClient.set(`wa:contacts:${sessionId}`, JSON.stringify(contacts));
-}
-
-async function upsertSessionContact(sessionId, contact) {
-    const contacts = await getSessionContacts(sessionId);
-    const idx = contacts.findIndex(c => c.contactId === contact.contactId);
-    if (idx >= 0) contacts[idx] = { ...contacts[idx], ...contact };
-    else contacts.push(contact);
-    await saveSessionContacts(sessionId, contacts);
-}
-
-async function removeSessionContact(sessionId, contactId) {
-    const contacts = await getSessionContacts(sessionId);
-    const filtered = contacts.filter(c => c.contactId !== contactId);
-    await saveSessionContacts(sessionId, filtered);
-}
-
-async function acquireSessionLock(sessionId) {
-    await redisClient.set(`wa:lock:${sessionId}`, 'locked', { EX: 60 });
-    return true;
-}
-
-async function releaseSessionLock(sessionId) {
-    await redisClient.del(`wa:lock:${sessionId}`);
-}
-
-function encrypt(text) {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex'), iv);
-    return iv.toString('hex') + ':' + cipher.update(text, 'utf8', 'hex') + cipher.final('hex');
-}
-
-function decrypt(text) {
-    const [iv, content] = text.split(':');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex'), Buffer.from(iv, 'hex'));
-    return decipher.update(content, 'hex', 'utf8') + decipher.final('utf8');
-}
-
-function saveTokens() {
-    fs.writeFileSync(ENCRYPTED_TOKENS_FILE, encrypt(JSON.stringify(Object.fromEntries(sessionTokens))), 'utf-8');
-}
-
-function loadTokens() {
-    if (fs.existsSync(ENCRYPTED_TOKENS_FILE)) {
-        const tokens = JSON.parse(decrypt(fs.readFileSync(ENCRYPTED_TOKENS_FILE, 'utf-8')));
-        for (const [k, v] of Object.entries(tokens)) sessionTokens.set(k, v);
-    }
-}
-
-app.use(bodyParser.json());
-
-// Helmet dengan config untuk CORS
-app.use(helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
-}));
-
-app.use(rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per window
-    standardHeaders: true,
-    legacyHeaders: false,
-}));
-// Session config untuk cross-domain (Vercel frontend + Easypanel backend)
-app.use(session({
-    store: new RedisStore({ client: redisSessionClient }),
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: isProd, // HTTPS only in production
-        httpOnly: true,
-        sameSite: isProd ? 'none' : 'lax', // 'none' untuk cross-domain
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
-}));
-
-// Health check endpoints (no auth required)
-app.get('/', (req, res) => res.json({ status: 'online', message: 'WA Gateway Engine is running', version: '1.0.0' }));
-app.get('/ping', (req, res) => res.send('pong'));
-app.get('/sessions', (req, res) => res.status(200).json(getSessionsDetails()));
-app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
-app.get('/api/v1/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
-
-async function saveSessionSettings(sessionId, settings) {
-    await redisClient.set(`wa:settings:${sessionId}`, JSON.stringify(settings));
-}
-
+// --- Webhook ---
 async function postToWebhook(data) {
     const url = await getWebhookUrl(data.sessionId);
     if (url) axios.post(url, data).catch(() => {});
 }
 
-async function postToTenantWebhooks(data) {
-    try {
-        if (!data || !data.sessionId) return;
-        const tenant = await db.getTenantBySessionId(data.sessionId);
-        if (!tenant) return;
-        const webhooks = await db.getTenantWebhooks(tenant.id);
-        if (!webhooks.length) return;
-
-        const payload = { ...data, tenant_id: tenant.id, tenant_name: tenant.company_name };
-        await Promise.allSettled(
-            webhooks.map((wh) => axios.post(wh.url, payload, { timeout: 5000 }))
-        );
-    } catch (error) {
-        logger.warn(`Webhook dispatch failed: ${error.message}`);
-    }
-}
-
+// --- Session Management (via Go Gateway) ---
 function getSessionsDetails() {
-    return Array.from(sessions.values()).map(s => ({ sessionId: s.sessionId, status: s.status, qr: s.qr }));
-}
-
-async function connectToWhatsApp(sessionId, retryCount = 0) {
-    const maxRetries = 5;
-    const retryDelay = Math.min(5000 * Math.pow(2, retryCount), 60000); // Exponential backoff, max 60s
-
-    try {
-        // Cleanup existing session if any
-        const existingSession = sessions.get(sessionId);
-        if (existingSession?.sock) {
-            try {
-                existingSession.sock.ev.removeAllListeners();
-                existingSession.sock.ws?.close();
-            } catch (e) {
-                logger.warn(`Cleanup error for ${sessionId}: ${e.message}`);
-            }
-        }
-
-        const { state, saveCreds } = await useRedisAuthState(redisClient, sessionId);
-        const { version } = await fetchLatestBaileysVersion();
-
-        const sock = makeWASocket({
-            version,
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, logger),
-            },
-            logger,
-            browser: Browsers.macOS('Chrome'),
-            printQRInTerminal: false,
-            syncFullHistory: false,
-            markOnlineOnConnect: true,
-            retryRequestDelayMs: 250,
-            connectTimeoutMs: 60000,
-            qrTimeout: 60000,
-            defaultQueryTimeoutMs: 60000,
-            emitOwnEvents: false,
-            fireInitQueries: true,
-        });
-
-        // Event handlers
-        sock.ev.on('creds.update', saveCreds);
-
-        sock.ev.on('connection.update', async (update) => {
-            const { connection, qr, lastDisconnect } = update;
-            const session = sessions.get(sessionId) || { sessionId };
-
-            if (qr) {
-                session.qr = qr;
-                session.status = 'CONNECTING';
-                logger.info(`QR generated for session: ${sessionId}`);
-            }
-
-            if (connection === 'open') {
-                session.status = 'CONNECTED';
-                session.qr = null;
-                session.retryCount = 0;
-                logger.info(`Session connected: ${sessionId}`);
-            }
-
-            if (connection === 'close') {
-                session.status = 'DISCONNECTED';
-                session.qr = null;
-
-                const statusCode = (lastDisconnect?.error instanceof Boom)
-                    ? lastDisconnect.error.output?.statusCode
-                    : 500;
-
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-                logger.warn(`Session ${sessionId} disconnected. StatusCode: ${statusCode}, Reconnect: ${shouldReconnect}`);
-
-                if (shouldReconnect && retryCount < maxRetries) {
-                    logger.info(`Reconnecting ${sessionId} in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries})`);
-                    setTimeout(() => connectToWhatsApp(sessionId, retryCount + 1), retryDelay);
-                } else if (!shouldReconnect) {
-                    logger.info(`Session ${sessionId} logged out, clearing auth state`);
-                    await releaseSessionLock(sessionId);
-                    sessions.delete(sessionId);
-                }
-            }
-
-            sessions.set(sessionId, { ...session, sock });
-            broadcastSessionUpdate();
-        });
-
-        // Memory cleanup: limit message store
-        sock.ev.on('messages.upsert', (upsert) => {
-            // No-op, just prevent default buffering
-            void postToTenantWebhooks({
-                event: 'messages.upsert',
-                sessionId,
-                data: upsert
-            });
-        });
-
-        sessions.set(sessionId, { sessionId, sock, status: 'CONNECTING', qr: null });
-
-    } catch (error) {
-        logger.error(`Error connecting session ${sessionId}: ${error.message}`);
-        if (retryCount < maxRetries) {
-            setTimeout(() => connectToWhatsApp(sessionId, retryCount + 1), retryDelay);
-        }
-    }
+    return Array.from(sessions.values()).map(s => ({
+        sessionId: s.sessionId,
+        status: s.status || 'UNKNOWN',
+        qr: s.qr || null
+    }));
 }
 
 function broadcastSessionUpdate() {
     const data = JSON.stringify({ type: 'session-update', data: getSessionsDetails() });
     wss.clients.forEach(client => {
-        if (client.readyState === 1) { // OPEN
+        if (client.readyState === 1) {
             client.send(data);
         }
     });
 }
 
+/**
+ * Create a new WhatsApp session
+ * Authenticates with Go gateway and initiates login
+ */
 async function createSession(sessionId) {
-    const token = crypto.randomBytes(32).toString('hex');
-    sessionTokens.set(sessionId, token);
-    saveTokens();
-    await acquireSessionLock(sessionId);
-    connectToWhatsApp(sessionId);
-    return { token };
-}
+    try {
+        // Generate local token for API auth
+        const token = crypto.randomBytes(32).toString('hex');
+        sessionTokens.set(sessionId, token);
+        saveTokens();
 
-async function deleteSession(sessionId) {
-    const session = sessions.get(sessionId);
-    if (session?.sock) {
-        try {
-            // Remove all event listeners first
-            session.sock.ev.removeAllListeners();
-            // Then logout
-            await session.sock.logout();
-        } catch (error) {
-            logger.warn(`Error during session ${sessionId} logout: ${error.message}`);
+        // Acquire lock
+        await acquireSessionLock(sessionId);
+
+        // Authenticate with Go gateway
+        const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+        const authResponse = await waGateway.authenticate(sessionId, gatewayPassword);
+
+        if (authResponse.status && authResponse.data?.token) {
+            // Store gateway JWT token
+            waGateway.setSessionToken(sessionId, authResponse.data.token);
         }
+
+        // Initialize session state with compatible socket
+        const sessionState = {
+            sessionId,
+            status: 'CONNECTING',
+            qr: null,
+            sock: createCompatSocket(sessionId)
+        };
+        sessions.set(sessionId, sessionState);
+
+        // Request QR code from gateway
+        const loginResponse = await waGateway.login(sessionId);
+
+        if (loginResponse.status && loginResponse.data?.qrcode) {
+            const session = sessions.get(sessionId);
+            session.qr = loginResponse.data.qrcode;
+            sessions.set(sessionId, session);
+        }
+
+        broadcastSessionUpdate();
+
+        return { token };
+    } catch (error) {
+        logger.error(`Failed to create session ${sessionId}: ${error.message}`);
+        await releaseSessionLock(sessionId);
+        throw error;
     }
-    sessions.delete(sessionId);
-    sessionTokens.delete(sessionId);
-    saveTokens();
-    await releaseSessionLock(sessionId);
-    // Clear session data from Redis
-    await redisClient.del(`wa:contacts:${sessionId}`);
-    await redisClient.del(`wa:settings:${sessionId}`);
-    logger.info(`Session ${sessionId} deleted and cleaned up`);
 }
 
+/**
+ * Delete a WhatsApp session
+ * Logs out from Go gateway and cleans up local state
+ */
+async function deleteSession(sessionId) {
+    try {
+        // Try to logout via Go gateway
+        try {
+            await waGateway.logout(sessionId);
+        } catch (error) {
+            logger.warn(`Gateway logout error for ${sessionId}: ${error.message}`);
+        }
+
+        // Clean up local state
+        sessions.delete(sessionId);
+        sessionTokens.delete(sessionId);
+        waGateway.removeSessionToken(sessionId);
+        saveTokens();
+
+        await releaseSessionLock(sessionId);
+
+        // Clear session data from Redis
+        await redisClient.del(`wa:contacts:${sessionId}`);
+        await redisClient.del(`wa:settings:${sessionId}`);
+
+        logger.info(`Session ${sessionId} deleted and cleaned up`);
+        broadcastSessionUpdate();
+    } catch (error) {
+        logger.error(`Error deleting session ${sessionId}: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * Regenerate session token
+ */
 async function regenerateSessionToken(sessionId) {
     const token = crypto.randomBytes(32).toString('hex');
     sessionTokens.set(sessionId, token);
@@ -433,62 +354,177 @@ async function regenerateSessionToken(sessionId) {
     return token;
 }
 
-// Admin authentication routes (MUST be before WhatsApp API to avoid token validation)
+/**
+ * Validate WhatsApp recipient via Go gateway
+ */
+async function validateWhatsAppRecipient(sessionId, destination) {
+    try {
+        const target = (destination || '').replace('@s.whatsapp.net', '').replace('@g.us', '');
+        const result = await waGateway.checkRegistered(sessionId, target);
+        if (result.status !== true) {
+            throw new Error(result.message || 'Number not registered on WhatsApp');
+        }
+        return result;
+    } catch (error) {
+        throw new Error(`Recipient validation failed: ${error.message}`);
+    }
+}
+
+// --- Middleware ---
+app.use(bodyParser.json());
+
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+}));
+
+app.use(rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+}));
+
+app.use(session({
+    store: new RedisStore({ client: redisSessionClient }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: isProd,
+        httpOnly: true,
+        sameSite: isProd ? 'none' : 'lax',
+        maxAge: 24 * 60 * 60 * 1000
+    }
+}));
+
+// --- Health Check Endpoints ---
+app.get('/', (req, res) => res.json({
+    status: 'online',
+    message: 'Customer Service CRM Backend',
+    version: '2.0.0',
+    gateway: 'go-whatsapp-gateway'
+}));
+app.get('/ping', (req, res) => res.send('pong'));
+app.get('/sessions', (req, res) => res.status(200).json(getSessionsDetails()));
+app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/api/v1/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
+// Gateway health check
+app.get('/api/v1/gateway/health', async (req, res) => {
+    try {
+        const health = await waGateway.checkHealth();
+        res.json(health);
+    } catch (error) {
+        res.status(503).json({ status: 'error', message: error.message });
+    }
+});
+
+// --- Routes ---
+
+// Admin authentication
 app.use('/api/v1/admin', authRouter);
 
-// n8n integration routes
+// n8n integration
 app.use('/api/v1/n8n', n8nRouter);
 
-// WhatsApp API routes (has validateToken middleware)
-app.use('/api/v1', initializeApi(sessions, sessionTokens, createSession, getSessionsDetails, deleteSession, console.log, phonePairing, saveSessionSettings, regenerateSessionToken, redisClient, scheduleMessageSend, validateWhatsAppRecipient, getSessionContacts, upsertSessionContact, removeSessionContact, postToWebhook));
+// Webhook handler for Go WhatsApp Gateway
+const webhookHandler = require('./webhook-handler');
+webhookHandler.setWebSocketServer(wss);
 
+// Listen for connection events to update local session state
+webhookHandler.on('connection', (sessionId, data) => {
+    let session = sessions.get(sessionId);
+    if (!session) {
+        session = {
+            sessionId,
+            sock: createCompatSocket(sessionId)
+        };
+    }
+    session.status = data.status === 'connected' ? 'CONNECTED' :
+        data.status === 'disconnected' ? 'DISCONNECTED' :
+        data.status === 'logged_out' ? 'LOGGED_OUT' : 'UNKNOWN';
+    session.qr = null;
+    // Ensure sock exists
+    if (!session.sock) {
+        session.sock = createCompatSocket(sessionId);
+    }
+    sessions.set(sessionId, session);
+    broadcastSessionUpdate();
+});
+
+app.use('/api/v1/webhook', webhookHandler.router);
+
+// WhatsApp API routes
+app.use('/api/v1', initializeApi(
+    sessions,
+    sessionTokens,
+    createSession,
+    getSessionsDetails,
+    deleteSession,
+    console.log,
+    null, // phonePairing - not used with Go gateway
+    saveSessionSettings,
+    regenerateSessionToken,
+    redisClient,
+    scheduleMessageSend,
+    validateWhatsAppRecipient,
+    getSessionContacts,
+    upsertSessionContact,
+    removeSessionContact,
+    postToWebhook
+));
+
+// --- Server Start ---
 const PORT = process.env.PORT || 3000;
 if (!isTest) {
     server.listen(PORT, async () => {
-        loadTokens();
+        await loadTokens();
 
         try {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
             await db.ensureUserInvitesTable();
         } catch (err) {
-            console.error('Webhook table check failed:', err.message);
+            console.error('Database setup error:', err.message);
         }
 
-        // Ensure super admin exists (from ENV)
         try {
             await ensureSuperAdmin();
         } catch (err) {
-            console.error('? Super admin check failed:', err.message);
+            console.error('Super admin check failed:', err.message);
         }
 
-        console.log(`?? Gateway Engine running on port ${PORT}`);
+        // Check Go gateway health
+        try {
+            const gatewayHealth = await waGateway.checkHealth();
+            const isHealthy = gatewayHealth?.status === true || gatewayHealth?.status === 'ok';
+            console.log('Go Gateway:', isHealthy ? 'Connected' : 'Not available');
+        } catch (err) {
+            console.warn('Go Gateway not available:', err.message);
+        }
+
+        console.log(`CRM Backend running on port ${PORT}`);
     });
 }
 
-// Graceful shutdown
+// --- Graceful Shutdown ---
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, shutting down gracefully...`);
 
-    // Close all WebSocket connections
+    // Close WebSocket connections
     wss.clients.forEach(client => client.close());
 
-    // Cleanup all WhatsApp sessions
-    for (const [sessionId, session] of sessions) {
-        if (session?.sock) {
-            try {
-                session.sock.ev.removeAllListeners();
-                await session.sock.ws?.close();
-            } catch (e) {
-                logger.warn(`Error closing session ${sessionId}: ${e.message}`);
-            }
-        }
-    }
+    // Clear local session state
     sessions.clear();
 
     // Close Redis connections
-    await redisClient.quit();
-    await redisSessionClient.quit();
+    try {
+        await redisClient.quit();
+        await redisSessionClient.quit();
+    } catch (err) {
+        logger.warn('Redis disconnect error:', err.message);
+    }
 
     // Close HTTP server
     server.close(() => {
@@ -506,7 +542,6 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
     logger.error(`Uncaught Exception: ${error.message}`);
     logger.error(error.stack);
