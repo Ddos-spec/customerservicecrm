@@ -1,5 +1,5 @@
 # --- Stage 1: Build Go WhatsApp Gateway ---
-FROM golang:1.25-bookworm AS gateway-builder
+FROM golang:1.25-alpine AS gateway-builder
 
 WORKDIR /src/wa-gateway
 COPY wa-gateway/go.mod wa-gateway/go.sum ./
