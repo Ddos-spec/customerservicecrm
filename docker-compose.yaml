@@ -1,0 +1,133 @@
+version: '3.8'
+
+networks:
+  crm-network:
+    driver: bridge
+
+services:
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis
+    networks:
+      - crm-network
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: crm-postgres
+    networks:
+      - crm-network
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-crm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crmpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-customercrm}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Go WhatsApp Gateway
+  wa-gateway:
+    build:
+      context: ./wa-gateway
+      dockerfile: Dockerfile
+    container_name: crm-wa-gateway
+    networks:
+      - crm-network
+    ports:
+      - "3001:3001"
+    environment:
+      SERVER_ADDRESS: "0.0.0.0"
+      SERVER_PORT: "3001"
+      HTTP_BASE_URL: "/api/v1/whatsapp"
+      AUTH_BASIC_PASSWORD: ${WA_AUTH_PASSWORD:-SecurePassword123}
+      AUTH_JWT_SECRET: ${WA_JWT_SECRET:-SuperSecretJWTKey}
+      REDIS_URL: "redis://redis:6379"
+      WEBHOOK_URL: "http://backend:3000/api/v1/webhook/incoming"
+      WHATSAPP_DATASTORE_TYPE: "postgres"
+      WHATSAPP_DATASTORE_URI: "postgres://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:-crmpassword}@postgres:5432/whatsapp?sslmode=disable"
+      WHATSAPP_MEDIA_IMAGE_COMPRESSION: "true"
+      WHATSAPP_MEDIA_IMAGE_CONVERT_WEBP: "true"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Node.js Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crm-backend
+    networks:
+      - crm-network
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SESSION_SECRET: ${SESSION_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      REDIS_URL: "redis://redis:6379"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:-crmpassword}@postgres:5432/${POSTGRES_DB:-customercrm}"
+      WA_GATEWAY_URL: "http://wa-gateway:3001/api/v1/whatsapp"
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      wa-gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (optional - can be deployed separately on Vercel)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+    container_name: crm-frontend
+    networks:
+      - crm-network
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    profiles:
+      - full  # Only run with: docker-compose --profile full up
+
+volumes:
+  redis-data:
+  postgres-data:

@@ -1,55 +1,40 @@
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
 
-const API_URL = 'http://localhost:3000/api/v1';
-const AUTH_DIR = path.join(__dirname, '..', 'auth_info_baileys');
-const PAIRING_FILE = path.join(__dirname, '..', 'pairing_statuses.json');
+const MEDIA_DIR = path.join(__dirname, '..', 'media');
+const TOKENS_FILE = path.join(__dirname, '..', 'session_tokens.enc');
 
-async function cleanup() {
-    console.log('🧹 STARTING CLEANUP...');
+function safeRm(targetPath) {
+    if (fs.existsSync(targetPath)) {
+        fs.rmSync(targetPath, { recursive: true, force: true });
+        return true;
+    }
+    return false;
+}
 
-    // 1. Get active sessions via API
-    try {
-        const res = await axios.get(`${API_URL}/sessions`);
-        const sessions = res.data;
-        console.log(`   Found ${sessions.length} active sessions in memory.`);
+function cleanup() {
+    console.log('Starting cleanup...');
 
-        for (const s of sessions) {
-            console.log(`   - Deleting session: ${s.sessionId}`);
-            try {
-                // We use the token if available, or rely on the server not checking token for now if we can't get it easily
-                // Actually, our delete endpoint requires token.
-                // We can bypass this by manually deleting folders and pairing file, then restarting server.
-                // But let's try to use the API first if we have a way. 
-                // Since we are running locally, we can just kill the folders.
-            } catch (e) {
-                console.log(`     Failed to delete via API: ${e.message}`);
-            }
+    // 1) Clear media uploads
+    if (fs.existsSync(MEDIA_DIR)) {
+        const files = fs.readdirSync(MEDIA_DIR);
+        for (const file of files) {
+            const fullPath = path.join(MEDIA_DIR, file);
+            safeRm(fullPath);
         }
-    } catch (e) {
-        console.log('   API check failed (server might be down).');
+        console.log(`   Media cleared (${MEDIA_DIR}).`);
+    } else {
+        console.log('   Media folder not found, skipping.');
     }
 
-    // 2. Nuke Auth Folders
-    console.log('💥 NUKING AUTH FOLDERS...');
-    if (fs.existsSync(AUTH_DIR)) {
-        const folders = fs.readdirSync(AUTH_DIR);
-        for (const folder of folders) {
-            const folderPath = path.join(AUTH_DIR, folder);
-            fs.rmSync(folderPath, { recursive: true, force: true });
-            console.log(`   Deleted: ${folder}`);
-        }
+    // 2) Remove stored session tokens (forces re-auth to gateway)
+    if (safeRm(TOKENS_FILE)) {
+        console.log('   Removed encrypted session tokens file.');
+    } else {
+        console.log('   No session_tokens.enc found, skipping.');
     }
 
-    // 3. Nuke Pairing File
-    console.log('💥 NUKING PAIRING STATUSES...');
-    if (fs.existsSync(PAIRING_FILE)) {
-        fs.unlinkSync(PAIRING_FILE);
-        console.log('   Deleted pairing_statuses.json');
-    }
-
-    console.log('\n✅ CLEANUP COMPLETE. PLEASE RESTART THE SERVER (npm run dev).');
+    console.log('Cleanup complete. Restart the server after this.');
 }
 
 cleanup();
