@@ -67,7 +67,12 @@ app.set('trust proxy', 1);
 // --- SECURITY ---
 const requiredEnvVars = ['SESSION_SECRET', 'ENCRYPTION_KEY', 'WA_GATEWAY_PASSWORD'];
 if (!isTest && requiredEnvVars.some(k => !process.env[k])) {
-    console.error('Missing required environment variables');
+    console.error('CRITICAL: Missing required environment variables: ' + requiredEnvVars.filter(k => !process.env[k]).join(', '));
+    process.exit(1);
+}
+
+if (!isTest && process.env.ENCRYPTION_KEY.length < 32) {
+    console.error('CRITICAL: ENCRYPTION_KEY must be at least 32 characters long');
     process.exit(1);
 }
 
