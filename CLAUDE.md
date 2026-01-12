@@ -12,7 +12,7 @@ Multi-tenant WhatsApp CRM SaaS with real-time chat, role-based access control (R
 customerservicecrm/
 ├── frontend/          # React 19 + TypeScript + Vite + Tailwind CSS 4
 ├── backend/           # Node.js + Express 5 + Redis (API & Auth)
-├── backend/wa-gateway/        # Go + whatsmeow (WhatsApp Protocol)
+├── wa-gateway/                # Go + whatsmeow (WhatsApp Protocol)
 └── docs/              # Documentation
 ```
 
@@ -69,7 +69,7 @@ npm run start         # Production with GC (node --expose-gc)
 npm test              # Jest tests
 ```
 
-### Go Gateway (`cd backend/wa-gateway`)
+### Go Gateway (`cd wa-gateway`)
 ```bash
 make run              # Development mode
 make build            # Build binary
@@ -112,9 +112,9 @@ AUTH_JWT_SECRET=<jwt_secret>
 | `backend/wa-gateway-client.js` | HTTP client for Go gateway |
 | `backend/wa-socket-compat.js` | Baileys-compatible wrapper |
 | `backend/webhook-handler.js` | Incoming message handler |
-| `backend/wa-gateway/pkg/whatsapp/whatsapp.go` | WhatsApp client (whatsmeow) |
-| `backend/wa-gateway/pkg/webhook/webhook.go` | Outgoing webhook system |
-| `backend/wa-gateway/pkg/events/handler.go` | Message event handler |
+| `wa-gateway/pkg/whatsapp/whatsapp.go` | WhatsApp client (whatsmeow) |
+| `wa-gateway/pkg/webhook/webhook.go` | Outgoing webhook system |
+| `wa-gateway/pkg/events/handler.go` | Message event handler |
 
 ## Deployment
 

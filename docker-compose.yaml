@@ -46,7 +46,7 @@ services:
   # Go WhatsApp Gateway
   wa-gateway:
     build:
-      context: ./backend/wa-gateway
+      context: ./wa-gateway
       dockerfile: Dockerfile
     container_name: crm-wa-gateway
     networks:

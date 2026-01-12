@@ -130,37 +130,82 @@ async function handleMessage(sessionId, data) {
     // Skip messages from self unless specifically needed
     if (message.isFromMe) {
         console.log(`[Webhook] Skipping self message: ${message.id}`);
+        // TODO: Handle self message storage (outgoing messages)
         return;
     }
 
-    // Broadcast to WebSocket clients
-    broadcast({
-        type: 'message',
-        sessionId,
-        data: message,
-    });
-
-    // Try to get tenant info for this session
     try {
+        // 1. Identify Tenant
         const tenant = await db.getTenantBySessionId(sessionId);
-        if (tenant) {
-            // Forward to tenant webhooks if configured
-            const webhooks = await db.getTenantWebhooks(tenant.id);
-            if (webhooks && webhooks.length > 0) {
-                await forwardToTenantWebhooks(webhooks, {
-                    event: 'message',
-                    sessionId,
-                    tenantId: tenant.id,
-                    tenantName: tenant.company_name,
-                    message,
-                });
-            }
+        if (!tenant) {
+            console.warn(`[Webhook] Received message for unknown session: ${sessionId}`);
+            return;
         }
-    } catch (error) {
-        console.error('[Webhook] Error forwarding to tenant:', error);
-    }
 
-    console.log(`[Webhook] Message from ${message.from}: ${message.type} - ${message.body?.substring(0, 50) || '(media)'}`);
+        // 2. Identify Contact & Create Ticket
+        const contactNumber = message.from.split('@')[0];
+        const contactName = message.pushName || contactNumber;
+        
+        const ticket = await db.getOrCreateTicket({
+            tenant_id: tenant.id,
+            customer_name: contactName,
+            customer_contact: contactNumber
+        });
+
+        // 3. Persist Message
+        let messageText = message.body || '';
+        let fileUrl = null;
+
+        // Handle simple media types (image/document with caption)
+        if (message.type === 'image' || message.type === 'video' || message.type === 'document') {
+             // Jika ada caption, jadikan text. URL media idealnya di-upload dulu, 
+             // tapi untuk sekarang kita simpan type-nya aja atau URL mock jika ada dari gateway
+             messageText = message.caption || `[${message.type}]`;
+             // TODO: Handle media upload/storage retrieval from Gateway
+        } else if (message.type === 'sticker') {
+            messageText = '[Sticker]';
+        } else if (message.type === 'audio' || message.type === 'ptt') {
+            messageText = '[Audio]';
+        }
+
+        const savedMessage = await db.logMessage({
+            ticket_id: ticket.id,
+            sender_type: 'customer',
+            message_text: messageText,
+            file_url: fileUrl
+        });
+
+        console.log(`[Webhook] Saved message ID ${savedMessage.id} for Ticket ${ticket.id}`);
+
+        // 4. Broadcast to WebSocket (UI Update)
+        // Kirim struktur yang sesuai dengan yang diharapkan Frontend
+        broadcast({
+            type: 'message',
+            sessionId,
+            data: {
+                ...message,
+                db_id: savedMessage.id,
+                ticket_id: ticket.id,
+                tenant_id: tenant.id
+            },
+        });
+
+        // 5. Forward to external webhooks (Legacy/Integration)
+        const webhooks = await db.getTenantWebhooks(tenant.id);
+        if (webhooks && webhooks.length > 0) {
+            await forwardToTenantWebhooks(webhooks, {
+                event: 'message',
+                sessionId,
+                tenantId: tenant.id,
+                tenantName: tenant.company_name,
+                message,
+                ticketId: ticket.id
+            });
+        }
+
+    } catch (error) {
+        console.error('[Webhook] Error handling message persistence:', error);
+    }
 }
 
 /**
