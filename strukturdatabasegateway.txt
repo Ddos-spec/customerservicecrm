@@ -1,0 +1,19 @@
+-- Buat database khusus untuk WA Gateway
+-- Jalankan dengan user yang punya hak CREATE DATABASE (mis. postgres)
+
+CREATE DATABASE wagateway
+    WITH OWNER = postgres
+         ENCODING = 'UTF8'
+         LC_COLLATE = 'en_US.utf8'
+         LC_CTYPE = 'en_US.utf8'
+         TEMPLATE = template0;
+
+-- Opsional: jika ingin menggunakan owner lain, ganti OWNER di atas
+-- lalu pastikan user itu punya akses ke DB baru.
+
+-- Setelah DB dibuat, konek ke wagateway lalu aktifkan extension yang umum dipakai:
+-- \c wagateway;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- Schema/tabel akan diisi oleh WA Gateway saat pertama kali jalan (pakai DSN wagateway).
