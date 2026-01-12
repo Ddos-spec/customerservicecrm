@@ -14,7 +14,7 @@ func Routines(cron *cron.Cron) {
 		// If WhatsAppClient Connection is more than 0
 		if len(pkgWhatsApp.WhatsAppClient) > 0 {
 			// Check Every Authenticated MSISDN
-			for jid, client := range pkgWhatsApp.WhatsAppClient {
+			for _, client := range pkgWhatsApp.WhatsAppClient {
 				// Get Real JID from Datastore
 				realJID := client.Store.ID.User
 
@@ -23,16 +23,6 @@ func Routines(cron *cron.Cron) {
 
 				// Print Log Show Information of Device Checking
 				log.Print(nil).Info("Checking WhatsApp Client for " + maskJID)
-
-				// Check WhatsAppClient Registered JID with Authenticated MSISDN
-				if jid != realJID {
-					// Print Log Show Information to Force Log-out Device
-					log.Print(nil).Info("Logging out WhatsApp Client for " + maskJID + " Due to Missmatch Authentication")
-
-					// Logout WhatsAppClient Device
-					_ = pkgWhatsApp.WhatsAppLogout(jid)
-					delete(pkgWhatsApp.WhatsAppClient, jid)
-				}
 			}
 		}
 	})
