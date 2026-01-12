@@ -12,6 +12,7 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 ### 1. Refactoring & Cleanup (✅ Selesai)
 - [x] Restrukturisasi Folder: Rename `client` -> `frontend`
 - [x] Restrukturisasi Folder: Rename `wagateway` -> `backend`
+- [x] Restrukturisasi Folder: Move `backend/wa-gateway` -> `wa-gateway` (Microservices Standard)
 - [x] Kerapihan Dokumen: Pindahkan `readme`, `strukturdatabase` ke `docs/`
 - [x] Backend Cleanup: Hapus folder legacy `admin` (HTML/JS lama)
 - [x] Backend Cleanup: Hapus endpoint static file & documentation lama di `index.js`
@@ -45,8 +46,8 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 ### 5. Next Steps / Pending Tasks (🚧 To Do)
 - [ ] **Deployment**: User perlu deploy Frontend ke Vercel & Backend ke VPS.
 - [ ] **Database**: Implementasi penyimpanan Chat History (saat ini masih Mock).
-- [ ] **Webhook Handler**: Logic penyimpanan pesan masuk ke Database.
-- [ ] **Real-time Chat**: Sinkronisasi pesan masuk ke UI via WebSocket/Polling.
+- [x] **Webhook Handler**: Logic penyimpanan pesan masuk ke Database (Basic Text & Media Caption).
+- [x] **Real-time Chat**: Sinkronisasi pesan masuk ke UI via WebSocket/Polling.
 
 ---
 

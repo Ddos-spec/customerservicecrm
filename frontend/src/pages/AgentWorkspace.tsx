@@ -1,206 +1,315 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
-import {
-  Send, Paperclip, Smile, MoreVertical, Search,
-  Phone, Video, Info, CheckCheck, Clock, User, X, Loader2
-} from 'lucide-react';
-import { toast } from 'sonner';
-import api from '../lib/api';
-
-interface Contact {
-  id: number;
-  name: string;
-  lastMsg: string;
-  time: string;
-  unread: number;
-  online: boolean;
-  phone?: string;
-  status?: string;
-  totalMessages?: number;
-}
-
-interface Message {
-  id: number;
-  sender: 'customer' | 'agent';
-  text: string;
-  time: string;
-  status?: 'sent' | 'read';
-}
-
-const formatRelativeTime = (value?: string) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
-  if (diffMinutes < 1) return 'baru saja';
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-};
-
-const formatMessageTime = (value?: string) => {
-  if (!value) return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-  return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-};
-
-const AgentWorkspace = () => {
-  const location = useLocation();
-  const [message, setMessage] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isInfoOpen, setIsInfoOpen] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-
-  const [tickets, setTickets] = useState<any[]>([]);
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoadingTickets, setIsLoadingTickets] = useState(true);
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-
-  const contacts: Contact[] = useMemo(() => (
-    tickets.map((ticket) => {
-      const name = ticket.customer_name || ticket.customer_contact || `Customer #${ticket.id}`;
-      return {
-        id: ticket.id,
-        name,
-        lastMsg: ticket.last_message || 'Belum ada pesan',
-        time: formatRelativeTime(ticket.last_message_at || ticket.updated_at || ticket.created_at),
-        unread: ticket.last_sender_type === 'customer' ? 1 : 0,
-        online: false,
-        phone: ticket.customer_contact,
-        status: ticket.status,
-        totalMessages: ticket.message_count
-      };
-    })
-  ), [tickets]);
-
-  const fetchTickets = useCallback(async () => {
-    setIsLoadingTickets(true);
-    try {
-      const res = await api.get('/admin/tickets?limit=200');
-      if (res.data.success) {
-        setTickets(res.data.tickets || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch tickets:', error);
-      toast.error('Gagal memuat chat');
-    } finally {
-      setIsLoadingTickets(false);
-    }
-  }, []);
-
-  const fetchMessages = useCallback(async (ticketId: number) => {
-    setIsLoadingMessages(true);
-    try {
-      const res = await api.get(`/admin/tickets/${ticketId}/messages`);
-      if (res.data.success) {
-        const mapped = (res.data.messages || []).map((msg: any) => ({
-          id: msg.id,
-          sender: msg.sender_type === 'customer' ? 'customer' : 'agent',
-          text: msg.message_text || '',
-          time: formatMessageTime(msg.created_at),
-          status: msg.sender_type === 'agent' ? 'sent' : undefined
-        }));
-        setMessages(mapped);
-      }
-    } catch (error) {
-      console.error('Failed to fetch messages:', error);
-      toast.error('Gagal memuat pesan');
-    } finally {
-      setIsLoadingMessages(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchTickets();
-  }, [fetchTickets]);
-
-  useEffect(() => {
-    if (contacts.length === 0) {
-      setSelectedContact(null);
-      setMessages([]);
-      return;
-    }
-    const selectedFromState = location.state?.selectedChat?.id;
-    const initial = contacts.find((c) => c.id === selectedFromState) || contacts[0];
-    setSelectedContact(initial);
-    void fetchMessages(initial.id);
-  }, [contacts, location.state, fetchMessages]);
-
-  const handleSelectContact = (contact: Contact) => {
-    setSelectedContact(contact);
-    void fetchMessages(contact.id);
-  };
-
-  const handleSendMessage = async () => {
-    if (!message.trim()) return;
-    if (!selectedContact) return;
-    if (!selectedContact.phone) {
-      toast.error('Nomor pelanggan tidak tersedia');
-      return;
-    }
-
-    setIsSending(true);
-    const messageText = message.trim();
-    try {
-      await api.post('/internal/messages', {
-        phone: selectedContact.phone,
-        message_text: messageText,
-        ticket_id: selectedContact.id
-      });
-    } catch (error: any) {
-      console.error('Failed to send WhatsApp message:', error);
-      toast.error(error.response?.data?.message || 'Gagal mengirim pesan');
-      setIsSending(false);
-      return;
-    }
-
-    try {
-      const res = await api.post(`/admin/tickets/${selectedContact.id}/messages`, {
-        message_text: messageText
-      });
-      if (res.data.success) {
-        const newMsg: Message = {
-          id: res.data.message.id,
-          sender: 'agent',
-          text: res.data.message.message_text,
-          time: formatMessageTime(res.data.message.created_at),
-          status: 'sent'
-        };
-        setMessages((prev) => [...prev, newMsg]);
-        setTickets((prev) => prev.map((ticket) => (
-          ticket.id === selectedContact.id
-            ? { ...ticket, last_message: res.data.message.message_text, last_sender_type: 'agent', last_message_at: res.data.message.created_at }
-            : ticket
-        )));
-        toast.success('Pesan terkirim');
-        setMessage('');
-      }
-    } catch (error: any) {
-      console.error('Failed to log message:', error);
-      const fallbackTime = new Date().toISOString();
-      const newMsg: Message = {
-        id: Date.now(),
-        sender: 'agent',
-        text: messageText,
-        time: formatMessageTime(fallbackTime),
-        status: 'sent'
-      };
-      setMessages((prev) => [...prev, newMsg]);
-      setTickets((prev) => prev.map((ticket) => (
-        ticket.id === selectedContact.id
-          ? { ...ticket, last_message: messageText, last_sender_type: 'agent', last_message_at: fallbackTime }
-          : ticket
-      )));
-      setMessage('');
-      toast.error(error.response?.data?.error || 'Pesan terkirim, tapi gagal disimpan');
-    } finally {
-      setIsSending(false);
-    }
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import {
+  Send, Paperclip, Smile, MoreVertical, Search,
+  Phone, Video, Info, CheckCheck, Clock, User, X, Loader2
+} from 'lucide-react';
+import { toast } from 'sonner';
+import api from '../lib/api';
+import { useAuthStore } from '../store/useAuthStore';
+
+interface Contact {
+  id: number;
+  name: string;
+  lastMsg: string;
+  time: string;
+  unread: number;
+  online: boolean;
+  phone?: string;
+  status?: string;
+  totalMessages?: number;
+}
+
+interface Message {
+  id: number;
+  sender: 'customer' | 'agent';
+  text: string;
+  time: string;
+  status?: 'sent' | 'read';
+}
+
+const formatRelativeTime = (value?: string) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffMinutes < 1) return 'baru saja';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+};
+
+const formatMessageTime = (value?: string) => {
+  if (!value) return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+};
+
+const AgentWorkspace = () => {
+  const { user } = useAuthStore();
+  const location = useLocation();
+  const [message, setMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoadingTickets, setIsLoadingTickets] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  
+  const ws = useRef<WebSocket | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const contacts: Contact[] = useMemo(() => (
+    tickets.map((ticket) => {
+      const name = ticket.customer_name || ticket.customer_contact || `Customer #${ticket.id}`;
+      return {
+        id: ticket.id,
+        name,
+        lastMsg: ticket.last_message || 'Belum ada pesan',
+        time: formatRelativeTime(ticket.last_message_at || ticket.updated_at || ticket.created_at),
+        unread: ticket.last_sender_type === 'customer' ? 1 : 0, // Simplifikasi unread
+        online: false,
+        phone: ticket.customer_contact,
+        status: ticket.status,
+        totalMessages: ticket.message_count
+      };
+    })
+  ), [tickets]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const fetchTickets = useCallback(async () => {
+    setIsLoadingTickets(true);
+    try {
+      const res = await api.get('/admin/tickets?limit=200');
+      if (res.data.success) {
+        setTickets(res.data.tickets || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch tickets:', error);
+      toast.error('Gagal memuat chat');
+    } finally {
+      setIsLoadingTickets(false);
+    }
+  }, []);
+
+  const fetchMessages = useCallback(async (ticketId: number) => {
+    setIsLoadingMessages(true);
+    try {
+      const res = await api.get(`/admin/tickets/${ticketId}/messages`);
+      if (res.data.success) {
+        const mapped = (res.data.messages || []).map((msg: any) => ({
+          id: msg.id,
+          sender: msg.sender_type === 'customer' ? 'customer' : 'agent',
+          text: msg.message_text || '',
+          time: formatMessageTime(msg.created_at),
+          status: msg.sender_type === 'agent' ? 'sent' : undefined
+        }));
+        setMessages(mapped);
+      }
+    } catch (error) {
+      console.error('Failed to fetch messages:', error);
+      toast.error('Gagal memuat pesan');
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, []);
+
+  // WebSocket Connection
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = import.meta.env.VITE_API_URL 
+      ? new URL(import.meta.env.VITE_API_URL).host 
+      : window.location.host;
+    
+    // Fallback logic jika development dan beda port
+    const wsUrl = `${protocol}//${host}`;
+    
+    console.log('Connecting to WebSocket:', wsUrl);
+    ws.current = new WebSocket(wsUrl);
+
+    ws.current.onopen = () => {
+      console.log('WebSocket Connected');
+    };
+
+    ws.current.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        
+        // Handle incoming message
+        if (payload.type === 'message') {
+           const msgData = payload.data;
+           
+           // Filter tenant (Basic security)
+           if (user?.tenant_id && msgData.tenant_id && user.tenant_id !== msgData.tenant_id) {
+             return;
+           }
+
+           const incomingTicketId = msgData.ticket_id;
+           const newMessage: Message = {
+             id: msgData.db_id || Date.now(),
+             sender: 'customer',
+             text: msgData.body || msgData.caption || '[Media]',
+             time: formatMessageTime(new Date().toISOString()),
+             status: 'read'
+           };
+
+           // 1. Update Messages list if chat is open
+           // Note: Kita pake functional update state biar dapet value terbaru selectedContact tanpa dependency
+           setSelectedContact((currentSelected) => {
+             if (currentSelected?.id === incomingTicketId) {
+                setMessages((prev) => [...prev, newMessage]);
+                // Mark as read (optional API call here)
+             } else {
+                toast.info(`Pesan baru dari ${msgData.pushName || msgData.from}`);
+             }
+             return currentSelected;
+           });
+
+           // 2. Update Tickets List (Last message info)
+           setTickets((prev) => {
+             const existingTicket = prev.find(t => t.id === incomingTicketId);
+             
+             if (existingTicket) {
+               // Update existing ticket
+               return prev.map(t => t.id === incomingTicketId ? {
+                 ...t,
+                 last_message: newMessage.text,
+                 last_sender_type: 'customer',
+                 last_message_at: new Date().toISOString(),
+                 message_count: (parseInt(t.message_count || '0') + 1).toString()
+               } : t).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+             } else {
+               // New ticket logic (need full ticket data, maybe fetchTickets again or append simple obj)
+               // For simplicity, fetch all again to get fresh order
+               void fetchTickets();
+               return prev;
+             }
+           });
+        }
+      } catch (err) {
+        console.error('WebSocket message error:', err);
+      }
+    };
+
+    ws.current.onerror = (error) => {
+      console.error('WebSocket Error:', error);
+    };
+
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, [user, fetchTickets]);
+
+  useEffect(() => {
+    void fetchTickets();
+  }, [fetchTickets]);
+
+  useEffect(() => {
+    if (contacts.length === 0) {
+      setSelectedContact(null);
+      setMessages([]);
+      return;
+    }
+    const selectedFromState = location.state?.selectedChat?.id;
+    if (selectedFromState && !selectedContact) {
+         const target = contacts.find((c) => c.id === selectedFromState);
+         if (target) {
+            setSelectedContact(target);
+            void fetchMessages(target.id);
+         }
+    } else if (!selectedContact && contacts.length > 0) {
+        // Auto select first? Maybe no
+        // setSelectedContact(contacts[0]);
+        // void fetchMessages(contacts[0].id);
+    }
+  }, [contacts, location.state, fetchMessages, selectedContact]);
+
+  const handleSelectContact = (contact: Contact) => {
+    setSelectedContact(contact);
+    void fetchMessages(contact.id);
+  };
+
+  const handleSendMessage = async () => {
+    if (!message.trim()) return;
+    if (!selectedContact) return;
+    if (!selectedContact.phone) {
+      toast.error('Nomor pelanggan tidak tersedia');
+      return;
+    }
+
+    setIsSending(true);
+    const messageText = message.trim();
+    try {
+      await api.post('/internal/messages', {
+        phone: selectedContact.phone,
+        message_text: messageText,
+        ticket_id: selectedContact.id
+      });
+    } catch (error: any) {
+      console.error('Failed to send WhatsApp message:', error);
+      toast.error(error.response?.data?.message || 'Gagal mengirim pesan');
+      setIsSending(false);
+      return;
+    }
+
+    try {
+      const res = await api.post(`/admin/tickets/${selectedContact.id}/messages`, {
+        message_text: messageText
+      });
+      if (res.data.success) {
+        const newMsg: Message = {
+          id: res.data.message.id,
+          sender: 'agent',
+          text: res.data.message.message_text,
+          time: formatMessageTime(res.data.message.created_at),
+          status: 'sent'
+        };
+        setMessages((prev) => [...prev, newMsg]);
+        setTickets((prev) => prev.map((ticket) => (
+          ticket.id === selectedContact.id
+            ? { ...ticket, last_message: res.data.message.message_text, last_sender_type: 'agent', last_message_at: res.data.message.created_at }
+            : ticket
+        )));
+        // toast.success('Pesan terkirim'); // Gak usah toast biar clean ala WA
+        setMessage('');
+      }
+    } catch (error: any) {
+      console.error('Failed to log message:', error);
+      const fallbackTime = new Date().toISOString();
+      const newMsg: Message = {
+        id: Date.now(),
+        sender: 'agent',
+        text: messageText,
+        time: formatMessageTime(fallbackTime),
+        status: 'sent'
+      };
+      setMessages((prev) => [...prev, newMsg]);
+      setTickets((prev) => prev.map((ticket) => (
+        ticket.id === selectedContact.id
+          ? { ...ticket, last_message: messageText, last_sender_type: 'agent', last_message_at: fallbackTime }
+          : ticket
+      )));
+      setMessage('');
+      toast.error(error.response?.data?.error || 'Pesan terkirim, tapi gagal disimpan');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   
@@ -322,9 +431,13 @@ const filteredContacts = contacts.filter(c =>
           ) : (
             <div className="text-center text-gray-400 dark:text-gray-500">Belum ada pesan.</div>
           )}
-        </div>
-
-        {/* Input Area */}
+                  {messages.length > 0 && <div ref={messagesEndRef} />}
+
+                </div>
+
+        
+
+                {/* Input Area */}
         <div className="p-4 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700">
           <div className="max-w-4xl mx-auto flex items-center space-x-4">
             <button onClick={() => toast.info('Fitur lampiran akan segera hadir')} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Paperclip size={20} /></button>

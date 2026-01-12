@@ -376,7 +376,7 @@ async function setSystemSetting(key, value) {
 
 async function getSystemSetting(key) {
     const result = await query(
-        `SELECT value FROM system_settings WHERE key = $1`,
+        'SELECT value FROM system_settings WHERE key = $1',
         [key]
     );
     return result.rows[0]?.value || null;

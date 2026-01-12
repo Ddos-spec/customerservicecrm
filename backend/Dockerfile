@@ -1,5 +1,5 @@
 # Backend-only Dockerfile (Node/Express API)
-# WA Gateway dijalankan terpisah via backend/wa-gateway/Dockerfile
+# WA Gateway dijalankan terpisah via wa-gateway/Dockerfile
 
 FROM node:20-bookworm AS deps
 
