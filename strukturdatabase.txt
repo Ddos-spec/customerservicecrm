@@ -645,4 +645,3 @@ AS
    FROM v_conversation_inbox
   WHERE (status = 'needs_human'::conversation_status)
   ORDER BY escalated_at DESC NULLS LAST, last_message_at DESC;;
- 
