@@ -48,8 +48,10 @@ const TenantManagement = () => {
     admin_name: '',
     admin_email: '',
     admin_password: '',
+    admin_phone_number: '',
     session_id: ''
   });
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
 
   // Fetch tenants from API
   const fetchTenants = async () => {
@@ -130,6 +132,7 @@ const TenantManagement = () => {
         admin_name: formData.admin_name,
         admin_email: formData.admin_email,
         admin_password: formData.admin_password,
+        admin_phone_number: formData.admin_phone_number,
         session_id: formData.session_id
       });
       if (res.data.success) {
@@ -141,6 +144,7 @@ const TenantManagement = () => {
           admin_name: '',
           admin_email: '',
           admin_password: '',
+          admin_phone_number: '',
           session_id: ''
         });
       }
@@ -472,13 +476,32 @@ const TenantManagement = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Password Admin Agent</label>
+                  <div className="relative">
+                    <input
+                      required
+                      type={showAdminPassword ? 'text' : 'password'}
+                      placeholder="Minimal 6 karakter"
+                      value={formData.admin_password}
+                      className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 pr-16"
+                      onChange={(e) => setFormData({...formData, admin_password: e.target.value})}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminPassword(!showAdminPassword)}
+                      className="absolute inset-y-0 right-3 flex items-center text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                    >
+                      {showAdminPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">No. WhatsApp Admin (opsional)</label>
                   <input
-                    required
-                    type="password"
-                    placeholder="Minimal 6 karakter"
-                    value={formData.admin_password}
+                    type="tel"
+                    placeholder="62xxxxxxxxxx"
+                    value={formData.admin_phone_number}
                     className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    onChange={(e) => setFormData({...formData, admin_password: e.target.value})}
+                    onChange={(e) => setFormData({...formData, admin_phone_number: e.target.value})}
                   />
                 </div>
                 <div>
