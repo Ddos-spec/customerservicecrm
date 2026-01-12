@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Server, Smartphone,
-  Terminal, Trash2, RefreshCw,
+  Terminal, Trash2, RefreshCw, QrCode,
   Globe, MessageSquare, Database, Building2, Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -30,6 +30,9 @@ const SuperAdminDashboard = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [newSessionId, setNewSessionId] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [isRefreshingQr, setIsRefreshingQr] = useState<string | null>(null);
 
   // Delete WhatsApp session
   const handleDeleteSession = async (sessionId: string) => {
@@ -74,6 +77,45 @@ const SuperAdminDashboard = () => {
     } finally {
         setIsLoading(false);
     }
+  };
+
+  const handleCreateSession = async () => {
+    const trimmed = newSessionId.trim();
+    if (!trimmed) {
+      toast.error('Isi Session ID terlebih dahulu');
+      return;
+    }
+    setIsCreating(true);
+    try {
+      await api.post('/sessions', { sessionId: trimmed });
+      toast.success(`Session ${trimmed} dibuat, tunggu QR muncul`);
+      setNewSessionId('');
+      await fetchData();
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Gagal membuat session';
+      toast.error(msg);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleRegenerateQr = async (sessionId: string) => {
+    setIsRefreshingQr(sessionId);
+    try {
+      await api.get(`/sessions/${sessionId}/qr`);
+      toast.success('QR diregenerate, tunggu sebentar');
+      await fetchData();
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Gagal regenerate QR';
+      toast.error(msg);
+    } finally {
+      setIsRefreshingQr(null);
+    }
+  };
+
+  const asDataUrl = (qr: string) => {
+    if (!qr) return '';
+    return qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`;
   };
 
   useEffect(() => {
@@ -163,6 +205,28 @@ const SuperAdminDashboard = () => {
                     </h3>
                     <span className="text-xs font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full">{sessions.length} Instance</span>
                 </div>
+                <div className="px-6 pb-4 flex flex-col md:flex-row gap-3 md:items-center">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 font-semibold">Buat Session WA</label>
+                    <div className="flex gap-2 mt-1">
+                      <input
+                        value={newSessionId}
+                        onChange={(e) => setNewSessionId(e.target.value)}
+                        placeholder="contoh: outlet_utama"
+                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-gray-900 dark:text-white"
+                      />
+                      <button
+                        onClick={handleCreateSession}
+                        disabled={isCreating}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
+                      >
+                        <QrCode size={16} />
+                        {isCreating ? 'Memproses...' : 'Generate QR'}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">QR akan muncul di tabel sesi setelah dibuat.</p>
+                  </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50/50 dark:bg-slate-800/60 text-gray-400 dark:text-gray-500 text-[10px] uppercase font-bold tracking-widest">
@@ -170,6 +234,7 @@ const SuperAdminDashboard = () => {
                                 <th className="px-6 py-4">Session ID</th>
                                 <th className="px-6 py-4">Tenant</th>
                                 <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4">QR Code</th>
                                 <th className="px-6 py-4 text-right">Action</th>
                             </tr>
                         </thead>
@@ -186,6 +251,33 @@ const SuperAdminDashboard = () => {
                                         <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                                             s.status === 'CONNECTED' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
                                         }`}>{s.status}</span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {s.qr ? (
+                                          <div className="flex items-center gap-3">
+                                            <img
+                                              src={asDataUrl(s.qr)}
+                                              alt="QR"
+                                              className="w-20 h-20 rounded-lg border border-gray-200 dark:border-slate-700 bg-white"
+                                            />
+                                            <button
+                                              onClick={() => handleRegenerateQr(s.sessionId)}
+                                              disabled={isRefreshingQr === s.sessionId}
+                                              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                                            >
+                                              {isRefreshingQr === s.sessionId ? 'Mengambil...' : 'Regenerate QR'}
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            onClick={() => handleRegenerateQr(s.sessionId)}
+                                            disabled={isRefreshingQr === s.sessionId}
+                                            className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 flex items-center gap-1"
+                                          >
+                                            <QrCode size={14} />
+                                            {isRefreshingQr === s.sessionId ? 'Mengambil...' : 'Tampilkan QR'}
+                                          </button>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <button
