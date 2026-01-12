@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { QrCode, RefreshCw, Smartphone, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
@@ -9,6 +9,8 @@ const SuperAdminSettings = () => {
   const [isRefreshingQr, setIsRefreshingQr] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  const ws = useRef<WebSocket | null>(null);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -26,6 +28,42 @@ const SuperAdminSettings = () => {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // WebSocket Connection
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = import.meta.env.VITE_API_URL 
+      ? new URL(import.meta.env.VITE_API_URL).host 
+      : window.location.host;
+    
+    const wsUrl = `${protocol}//${host}`;
+    
+    ws.current = new WebSocket(wsUrl);
+
+    ws.current.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'session-update') {
+            // Filter only notifier session for this page
+            const notifierData = payload.data.filter((s: any) => s.sessionId === NOTIFIER_ID);
+            if (notifierData.length > 0) {
+                 setSessions(notifierData);
+                 if (notifierData[0].status === 'CONNECTED') {
+                     toast.success('Notifier Terhubung!');
+                 }
+            }
+        }
+      } catch (err) {
+        console.error('WebSocket message error:', err);
+      }
+    };
+
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
   }, []);
 
   const asDataUrl = (qr: string) => {
