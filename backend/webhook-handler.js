@@ -345,7 +345,8 @@ async function notifySessionDisconnected(sessionId, status, reason) {
         throw new Error('Auth ke gateway (notifier) gagal');
     }
 
-    const message = `Session WA ${sessionId} status: ${status}${reason ? ` (reason: ${reason})` : ''}. Mohon cek dan login ulang jika perlu.`;
+    const tenantName = tenant?.company_name || 'Tanpa Tenant';
+    const message = `Session WA (${tenantName}) ${sessionId} status: ${status}${reason ? ` (reason: ${reason})` : ''}. Mohon cek dan login ulang jika perlu.`;
 
     await Promise.allSettled(
         uniquePhones.map(async (phone) => {

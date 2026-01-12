@@ -187,12 +187,12 @@ const SuperAdminSettings = () => {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    {s.qr ? (
+                        {s.qr ? (
                       <div className="flex items-center gap-3">
                         <img
                           src={asDataUrl(s.qr)}
                           alt="QR"
-                          className="w-20 h-20 rounded-lg border border-gray-200 dark:border-slate-700 bg-white"
+                          className="w-40 h-40 rounded-lg border border-gray-200 dark:border-slate-700 bg-white"
                         />
                         <button
                           onClick={() => handleRegenerateQr(s.sessionId)}
