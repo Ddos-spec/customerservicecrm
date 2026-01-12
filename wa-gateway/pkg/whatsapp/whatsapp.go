@@ -54,9 +54,19 @@ func init() {
 		log.Print(nil).Fatal("Error Parse Environment Variable for WhatsApp Client Datastore URI")
 	}
 
-	datastore, err := sqlstore.New(context.Background(), dbType, dbURI, nil)
+	// Retry logic for sqlstore connection
+	var datastore *sqlstore.Container
+	for i := 0; i < 15; i++ {
+		datastore, err = sqlstore.New(context.Background(), dbType, dbURI, nil)
+		if err == nil {
+			break
+		}
+		log.Print(nil).Warn(fmt.Sprintf("WhatsApp Datastore not ready (attempt %d/15): %v. Retrying in 2s...", i+1, err))
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
-		log.Print(nil).Fatal("Error Connect WhatsApp Client Datastore")
+		log.Print(nil).Fatal("Error Connect WhatsApp Client Datastore: " + err.Error())
 	}
 
 	WhatsAppClientProxyURL, _ = env.GetEnvString("WHATSAPP_CLIENT_PROXY_URL")
