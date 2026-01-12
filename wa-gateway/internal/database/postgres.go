@@ -40,12 +40,23 @@ func Init() error {
 		db.SetConnMaxLifetime(5 * time.Minute)
 		db.SetConnMaxIdleTime(1 * time.Minute)
 
-		// Test connection
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		// Test connection with retry
+		var pingErr error
+		for i := 0; i < 15; i++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			pingErr = db.PingContext(ctx)
+			cancel()
 
-		if err := db.PingContext(ctx); err != nil {
-			initErr = fmt.Errorf("failed to ping database: %w", err)
+			if pingErr == nil {
+				break
+			}
+
+			log.Print(nil).Warn(fmt.Sprintf("Database not ready (attempt %d/15): %v. Retrying in 2s...", i+1, pingErr))
+			time.Sleep(2 * time.Second)
+		}
+
+		if pingErr != nil {
+			initErr = fmt.Errorf("failed to ping database after retries: %w", pingErr)
 			return
 		}
 
