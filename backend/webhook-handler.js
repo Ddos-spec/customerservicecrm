@@ -8,6 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('./db');
+const waGateway = require('./wa-gateway-client');
 
 // Event handlers map (can be extended by other modules)
 const eventHandlers = new Map();
@@ -239,6 +240,15 @@ async function handleConnection(sessionId, data) {
     });
 
     console.log(`[Webhook] Connection status: ${status} for session ${sessionId}`);
+
+    // Notify admins when a session disconnects/logs out
+    if (status === 'disconnected' || status === 'logged_out') {
+        try {
+            await notifySessionDisconnected(sessionId, status, reason);
+        } catch (error) {
+            console.error('[Webhook] Failed to send disconnect notification:', error.message);
+        }
+    }
 }
 
 /**
@@ -294,6 +304,57 @@ async function forwardToTenantWebhooks(webhooks, payload) {
                 },
             })
         )
+    );
+}
+
+async function notifySessionDisconnected(sessionId, status, reason) {
+    const notifierSessionId = await db.getSystemSetting('notifier_session_id');
+    const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+
+    if (!notifierSessionId || !gatewayPassword) {
+        return;
+    }
+
+    // Jangan kirim jika session yang putus adalah notifier
+    if (notifierSessionId === sessionId) return;
+
+    // Cari tenant terkait
+    const tenant = await db.getTenantBySessionId(sessionId);
+
+    // Kumpulkan penerima: admin_agent (tenant terkait) + super_admin
+    const recipients = [];
+    if (tenant) {
+        const tenantAdmins = await db.getUsersByTenantWithPhone(tenant.id, ['admin_agent', 'agent']);
+        recipients.push(...tenantAdmins);
+    }
+    const supers = await db.getSuperAdminsWithPhone();
+    recipients.push(...supers);
+
+    // Dedup berdasarkan phone_number
+    const uniquePhones = Array.from(new Set(recipients
+        .map(u => (u.phone_number || '').trim())
+        .filter(Boolean)));
+
+    if (!uniquePhones.length) return;
+
+    // Authenticate notifier session ke gateway
+    const auth = await waGateway.authenticate(notifierSessionId, gatewayPassword);
+    if (auth?.status && auth.data?.token) {
+        waGateway.setSessionToken(notifierSessionId, auth.data.token);
+    } else {
+        throw new Error('Auth ke gateway (notifier) gagal');
+    }
+
+    const message = `Session WA ${sessionId} status: ${status}${reason ? ` (reason: ${reason})` : ''}. Mohon cek dan login ulang jika perlu.`;
+
+    await Promise.allSettled(
+        uniquePhones.map(async (phone) => {
+            try {
+                await waGateway.sendText(notifierSessionId, phone, message);
+            } catch (err) {
+                console.warn(`[Notifier] Gagal kirim ke ${phone}: ${err.message}`);
+            }
+        })
     );
 }
 

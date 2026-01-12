@@ -26,7 +26,8 @@ const AgentManagement = () => {
 
   const [formData, setFormData] = useState({
     name: '',
-    email: ''
+    email: '',
+    phone_number: ''
   });
 
   const fetchAgents = async () => {
@@ -68,7 +69,8 @@ const AgentManagement = () => {
     try {
       const res = await api.post('/admin/invites', {
         name: formData.name.trim(),
-        email: formData.email.trim()
+        email: formData.email.trim(),
+        phone_number: formData.phone_number.trim() || undefined
       });
       if (res.data.success) {
         const token = res.data.invite?.token;
@@ -225,6 +227,13 @@ const AgentManagement = () => {
                  placeholder="Email Kerja"
                  value={formData.email}
                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                 className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+               />
+               <input
+                 type="tel"
+                 placeholder="No. WhatsApp (opsional)"
+                 value={formData.phone_number}
+                 onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
                  className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                />
                <button

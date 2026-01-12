@@ -82,6 +82,29 @@ async function ensureTenantSessionColumn() {
     );
 }
 
+async function ensureSystemSettingsTable() {
+    await query(
+        `CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )`
+    );
+}
+
+async function ensureUserPhoneColumn() {
+    await query(
+        `ALTER TABLE users
+         ADD COLUMN IF NOT EXISTS phone_number TEXT`
+    );
+}
+
+async function ensureInvitePhoneColumn() {
+    await query(
+        `ALTER TABLE user_invites
+         ADD COLUMN IF NOT EXISTS phone_number TEXT`
+    );
+}
+
 /**
  * Ensure user invites table exists
  */
@@ -123,7 +146,7 @@ async function ensureUserInvitesTable() {
  */
 async function findUserByEmail(email) {
     const result = await query(
-        `SELECT u.id, u.tenant_id, u.name, u.email, u.password_hash, u.role, u.status, u.created_at,
+        `SELECT u.id, u.tenant_id, u.name, u.email, u.password_hash, u.role, u.status, u.created_at, u.phone_number,
                 t.company_name as tenant_name,
                 t.session_id as tenant_session_id
          FROM users u
@@ -141,7 +164,7 @@ async function findUserByEmail(email) {
  */
 async function findUserById(id) {
     const result = await query(
-        `SELECT u.id, u.tenant_id, u.name, u.email, u.role, u.status, u.created_at,
+        `SELECT u.id, u.tenant_id, u.name, u.email, u.role, u.status, u.created_at, u.phone_number,
                 t.company_name as tenant_name,
                 t.session_id as tenant_session_id
          FROM users u
@@ -157,12 +180,12 @@ async function findUserById(id) {
  * @param {Object} userData - User data
  * @returns {Promise<Object>} Created user
  */
-async function createUser({ tenant_id, name, email, password_hash, role, status = 'active' }) {
+async function createUser({ tenant_id, name, email, password_hash, role, status = 'active', phone_number = null }) {
     const result = await query(
-        `INSERT INTO users (tenant_id, name, email, password_hash, role, status)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, tenant_id, name, email, role, status, created_at`,
-        [tenant_id, name, email, password_hash, role, status]
+        `INSERT INTO users (tenant_id, name, email, password_hash, role, status, phone_number)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, tenant_id, name, email, role, status, phone_number, created_at`,
+        [tenant_id, name, email, password_hash, role, status, phone_number]
     );
     return result.rows[0];
 }
@@ -174,7 +197,7 @@ async function createUser({ tenant_id, name, email, password_hash, role, status 
  */
 async function getUsersByTenant(tenantId) {
     const result = await query(
-        `SELECT id, tenant_id, name, email, role, status, created_at
+        `SELECT id, tenant_id, name, email, role, status, phone_number, created_at
          FROM users
          WHERE tenant_id = $1
          ORDER BY created_at DESC`,
@@ -314,6 +337,51 @@ async function getTenantAdmin(tenantId) {
     return result.rows[0] || null;
 }
 
+async function getUsersByTenantWithPhone(tenantId, roles = []) {
+    const hasRoleFilter = roles && roles.length > 0;
+    const params = hasRoleFilter ? [tenantId, roles] : [tenantId];
+    const roleClause = hasRoleFilter ? 'AND role = ANY($2)' : '';
+    const result = await query(
+        `SELECT id, tenant_id, name, email, role, status, phone_number
+         FROM users
+         WHERE tenant_id = $1
+           AND phone_number IS NOT NULL
+           AND status = 'active'
+           ${roleClause}`,
+        params
+    );
+    return result.rows;
+}
+
+async function getSuperAdminsWithPhone() {
+    const result = await query(
+        `SELECT id, name, email, phone_number
+         FROM users
+         WHERE role = 'super_admin'
+           AND status = 'active'
+           AND phone_number IS NOT NULL`
+    );
+    return result.rows;
+}
+
+async function setSystemSetting(key, value) {
+    await query(
+        `INSERT INTO system_settings(key, value)
+         VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [key, value]
+    );
+    return true;
+}
+
+async function getSystemSetting(key) {
+    const result = await query(
+        `SELECT value FROM system_settings WHERE key = $1`,
+        [key]
+    );
+    return result.rows[0]?.value || null;
+}
+
 // ===== USER INVITES =====
 
 /**
@@ -321,12 +389,12 @@ async function getTenantAdmin(tenantId) {
  * @param {Object} inviteData - Invite data
  * @returns {Promise<Object>} Created invite
  */
-async function createUserInvite({ tenant_id, name, email, role = 'agent', token, created_by, expires_at }) {
+async function createUserInvite({ tenant_id, name, email, role = 'agent', token, created_by, expires_at, phone_number = null }) {
     const result = await query(
-        `INSERT INTO user_invites (tenant_id, name, email, role, token, created_by, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, tenant_id, name, email, role, token, status, created_at, expires_at`,
-        [tenant_id, name, email, role, token, created_by || null, expires_at || null]
+        `INSERT INTO user_invites (tenant_id, name, email, role, token, created_by, expires_at, phone_number)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, tenant_id, name, email, role, token, status, created_at, expires_at, phone_number`,
+        [tenant_id, name, email, role, token, created_by || null, expires_at || null, phone_number]
     );
     return result.rows[0];
 }
@@ -708,11 +776,16 @@ module.exports = {
     ensureTenantWebhooksTable,
     ensureTenantSessionColumn,
     ensureUserInvitesTable,
+    ensureSystemSettingsTable,
+    ensureUserPhoneColumn,
+    ensureInvitePhoneColumn,
     // Users
     findUserByEmail,
     findUserById,
     createUser,
     getUsersByTenant,
+    getUsersByTenantWithPhone,
+    getSuperAdminsWithPhone,
     updateUserStatus,
     deleteUser,
     // Tenants
@@ -728,6 +801,9 @@ module.exports = {
     getInviteByToken,
     acceptInvite,
     countPendingInvites,
+    // Settings
+    setSystemSetting,
+    getSystemSetting,
     // Tenant webhooks
     getTenantWebhooks,
     createTenantWebhook,

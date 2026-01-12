@@ -550,7 +550,7 @@ router.get('/users', requireAuth, async (req, res) => {
  */
 router.post('/users', requireRole('super_admin'), async (req, res) => {
     try {
-        const { tenant_id, name, email, password, role } = req.body;
+        const { tenant_id, name, email, password, role, phone_number } = req.body;
         const currentUser = req.session.user;
 
         // Validation
@@ -589,7 +589,8 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
             name,
             email,
             password_hash,
-            role
+            role,
+            phone_number: phone_number && phone_number.toString().trim() !== '' ? phone_number.toString().trim() : null
         });
 
         res.status(201).json({ success: true, user });
@@ -605,7 +606,7 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
  */
 router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, res) => {
     try {
-        const { tenant_id, name, email } = req.body;
+        const { tenant_id, name, email, phone_number } = req.body;
         const currentUser = req.session.user;
 
         if (!name || !email) {
@@ -642,7 +643,8 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
             role: 'agent',
             token,
             created_by: currentUser.id,
-            expires_at: expiresAt
+            expires_at: expiresAt,
+            phone_number: phone_number && phone_number.toString().trim() !== '' ? phone_number.toString().trim() : null
         });
 
         res.status(201).json({ success: true, invite });
@@ -669,7 +671,8 @@ router.get('/invites/:token', async (req, res) => {
                 name: invite.name,
                 email: invite.email,
                 tenant_name: invite.tenant_name,
-                expires_at: invite.expires_at
+                expires_at: invite.expires_at,
+                phone_number: invite.phone_number || null
             }
         });
     } catch (error) {
@@ -685,7 +688,7 @@ router.get('/invites/:token', async (req, res) => {
 router.post('/invites/:token/accept', async (req, res) => {
     try {
         const { token } = req.params;
-        const { password } = req.body;
+        const { password, phone_number } = req.body;
 
         if (!password || password.length < 6) {
             return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
@@ -713,7 +716,10 @@ router.post('/invites/:token/accept', async (req, res) => {
             name: invite.name,
             email: invite.email,
             password_hash,
-            role: invite.role || 'agent'
+            role: invite.role || 'agent',
+            phone_number: (phone_number && phone_number.toString().trim() !== '')
+                ? phone_number.toString().trim()
+                : (invite.phone_number || null)
         });
 
         await db.acceptInvite(token);
@@ -913,6 +919,39 @@ router.get('/stats', requireAuth, async (req, res) => {
     } catch (error) {
         console.error('Error fetching stats:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch stats' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/notifier-session
+ * Get current notifier session id (super admin only)
+ */
+router.get('/notifier-session', requireRole('super_admin'), async (req, res) => {
+    try {
+        const sessionId = await db.getSystemSetting('notifier_session_id');
+        res.json({ success: true, notifier_session_id: sessionId });
+    } catch (error) {
+        console.error('Error fetching notifier session:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch notifier session' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/notifier-session
+ * Set notifier session id (super admin only)
+ */
+router.post('/notifier-session', requireRole('super_admin'), async (req, res) => {
+    try {
+        const { session_id } = req.body;
+        if (!session_id || typeof session_id !== 'string') {
+            return res.status(400).json({ success: false, error: 'session_id is required' });
+        }
+        const trimmed = session_id.trim();
+        await db.setSystemSetting('notifier_session_id', trimmed);
+        res.json({ success: true, notifier_session_id: trimmed });
+    } catch (error) {
+        console.error('Error setting notifier session:', error);
+        res.status(500).json({ success: false, error: 'Failed to set notifier session' });
     }
 });
 
