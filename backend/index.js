@@ -508,6 +508,44 @@ if (!isTest) {
             const gatewayHealth = await waGateway.checkHealth();
             const isHealthy = gatewayHealth?.status === true || gatewayHealth?.status === 'ok';
             console.log('Go Gateway:', isHealthy ? 'Connected' : 'Not available');
+            
+            // Sync sessions with Gateway
+            if (isHealthy) {
+                console.log('Syncing sessions with Gateway...');
+                for (const [sessionId, token] of sessionTokens.entries()) {
+                    try {
+                        // Ensure token is set
+                        waGateway.setSessionToken(sessionId, token);
+                        
+                        // Check login status
+                        // Calling login on an active session returns "Reconnected" message
+                        // Calling on inactive returns QR
+                        const response = await waGateway.login(sessionId);
+                        
+                        let session = sessions.get(sessionId);
+                        if (!session) {
+                            session = { 
+                                sessionId, 
+                                sock: createCompatSocket(sessionId),
+                                status: 'UNKNOWN'
+                            };
+                        }
+
+                        if (response.status && response.data?.qr) {
+                            session.status = 'DISCONNECTED';
+                            session.qr = response.data.qr;
+                        } else if (response.message?.includes('Reconnected')) {
+                            session.status = 'CONNECTED';
+                            session.qr = null;
+                        }
+                        
+                        sessions.set(sessionId, session);
+                    } catch (err) {
+                        console.warn(`Failed to sync session ${sessionId}: ${err.message}`);
+                    }
+                }
+                broadcastSessionUpdate();
+            }
         } catch (err) {
             console.warn('Go Gateway not available:', err.message);
         }
