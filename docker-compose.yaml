@@ -62,7 +62,7 @@ services:
       REDIS_URL: "redis://redis:6379"
       WEBHOOK_URL: "http://backend:3000/api/v1/webhook/incoming"
       WHATSAPP_DATASTORE_TYPE: "postgres"
-      WHATSAPP_DATASTORE_URI: "postgres://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:-crmpassword}@postgres:5432/whatsapp?sslmode=disable"
+      WHATSAPP_DATASTORE_URI: "postgres://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:-crmpassword}@postgres:5432/wagateway?sslmode=disable"
       WHATSAPP_MEDIA_IMAGE_COMPRESSION: "true"
       WHATSAPP_MEDIA_IMAGE_CONVERT_WEBP: "true"
     depends_on:
