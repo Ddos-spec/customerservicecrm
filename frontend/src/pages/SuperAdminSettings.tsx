@@ -12,6 +12,24 @@ const SuperAdminSettings = () => {
   const [isSettingNotifier, setIsSettingNotifier] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const pickAutoNotifier = async (sessionList: any[], currentId: string | null) => {
+    if (currentId) return;
+    const connected = sessionList.find((s) => s.status === 'CONNECTED');
+    const pick = connected?.sessionId || sessionList[0]?.sessionId;
+    if (!pick) return;
+    try {
+      setIsSettingNotifier(pick);
+      await api.post('/admin/notifier-session', { session_id: pick });
+      setNotifierSessionId(pick);
+      toast.success(`Session ${pick} otomatis dijadikan notifier`);
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || 'Gagal set notifier otomatis';
+      toast.error(msg);
+    } finally {
+      setIsSettingNotifier(null);
+    }
+  };
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -25,6 +43,7 @@ const SuperAdminSettings = () => {
       if (notifierRes.data?.success) {
         setNotifierSessionId(notifierRes.data.notifier_session_id || null);
       }
+      await pickAutoNotifier(Array.isArray(sessionRes.data) ? sessionRes.data : [], notifierRes.data?.notifier_session_id || null);
     } catch (error) {
       console.error('Failed to fetch notifier settings:', error);
     } finally {
@@ -53,6 +72,7 @@ const SuperAdminSettings = () => {
       toast.success(`Session ${trimmed} dibuat, tunggu QR muncul`);
       setNewSessionId('');
       await fetchData();
+      await handleSetNotifier(trimmed);
     } catch (error: any) {
       const msg = error?.response?.data?.message || 'Gagal membuat session';
       toast.error(msg);
