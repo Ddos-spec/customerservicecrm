@@ -1,10 +1,3 @@
-ALTER TABLE "public"."contact_identifiers" DROP CONSTRAINT "contact_identifiers_contact_id_fkey";
-ALTER TABLE "public"."conversations" DROP CONSTRAINT "conversations_contact_id_fkey";
-ALTER TABLE "public"."users" DROP CONSTRAINT "users_tenant_id_fkey";
-ALTER TABLE "public"."tickets" DROP CONSTRAINT "tickets_tenant_id_fkey";
-ALTER TABLE "public"."tickets" DROP CONSTRAINT "tickets_assigned_agent_id_fkey";
-ALTER TABLE "public"."messages" DROP CONSTRAINT "messages_ticket_id_fkey";
-ALTER TABLE "public"."conversation_events" DROP CONSTRAINT "conversation_events_conversation_id_fkey";
 CREATE TABLE "public"."contacts" ( 
   "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
   "tenant_id" UUID NOT NULL,
@@ -20,13 +13,6 @@ CREATE TABLE "public"."outlet_channels" (
   "channel_identifier" VARCHAR(255) NULL,
   "created_at" TIMESTAMP NULL DEFAULT now() ,
   CONSTRAINT "outlet_channels_pkey" PRIMARY KEY ("id")
-);
-CREATE TABLE "public"."tenants" ( 
-  "id" SERIAL,
-  "company_name" VARCHAR(255) NOT NULL,
-  "status" VARCHAR(20) NULL DEFAULT 'active'::character varying ,
-  "created_at" TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ,
-  CONSTRAINT "tenants_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "public"."users" ( 
   "id" SERIAL,
@@ -147,6 +133,141 @@ CREATE TABLE "public"."conversations" (
   "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now() ,
   CONSTRAINT "conversations_pkey" PRIMARY KEY ("id")
 );
+CREATE TABLE "public"."tenant_webhooks" ( 
+  "id" SERIAL,
+  "tenant_id" INTEGER NOT NULL,
+  "url" TEXT NOT NULL,
+  "created_at" TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ,
+  CONSTRAINT "tenant_webhooks_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "public"."tenants" ( 
+  "id" SERIAL,
+  "company_name" VARCHAR(255) NOT NULL,
+  "status" VARCHAR(20) NULL DEFAULT 'active'::character varying ,
+  "created_at" TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ,
+  "session_id" TEXT NULL,
+  CONSTRAINT "tenants_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "public"."user_invites" ( 
+  "id" SERIAL,
+  "tenant_id" INTEGER NOT NULL,
+  "name" TEXT NOT NULL,
+  "email" TEXT NOT NULL,
+  "role" VARCHAR(20) NOT NULL DEFAULT 'agent'::character varying ,
+  "token" TEXT NOT NULL,
+  "status" VARCHAR(20) NOT NULL DEFAULT 'pending'::character varying ,
+  "created_by" INTEGER NULL,
+  "created_at" TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ,
+  "expires_at" TIMESTAMP NULL,
+  CONSTRAINT "user_invites_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "user_invites_token_key" UNIQUE ("token")
+);
+CREATE INDEX "idx_contacts_tenant_id" 
+ON "public"."contacts" (
+  "tenant_id" ASC
+);
+CREATE INDEX "idx_contacts_tenant" 
+ON "public"."contacts" (
+  "tenant_id" ASC
+);
+CREATE INDEX "idx_outlet_channels_outlet_id" 
+ON "public"."outlet_channels" (
+  "outlet_id" ASC
+);
+CREATE INDEX "idx_tickets_tenant_id" 
+ON "public"."tickets" (
+  "tenant_id" ASC
+);
+CREATE INDEX "idx_messages_ticket_id" 
+ON "public"."messages" (
+  "ticket_id" ASC
+);
+CREATE INDEX "idx_messages_created_at" 
+ON "public"."messages" (
+  "created_at" ASC
+);
+CREATE INDEX "idx_attachments_message" 
+ON "public"."message_attachments" (
+  "message_id" ASC
+);
+CREATE INDEX "idx_events_conv_time" 
+ON "public"."conversation_events" (
+  "conversation_id" ASC,
+  "created_at" DESC
+);
+CREATE INDEX "idx_tenant_members_tenant" 
+ON "public"."tenant_members" (
+  "tenant_id" ASC
+);
+CREATE INDEX "idx_tenant_members_user" 
+ON "public"."tenant_members" (
+  "user_id" ASC
+);
+CREATE INDEX "idx_audit_actor_time" 
+ON "public"."audit_logs" (
+  "actor_user_id" ASC,
+  "created_at" DESC
+);
+CREATE INDEX "idx_audit_tenant_time" 
+ON "public"."audit_logs" (
+  "tenant_id" ASC,
+  "created_at" DESC
+);
+CREATE INDEX "idx_contact_identifiers_contact" 
+ON "public"."contact_identifiers" (
+  "contact_id" ASC
+);
+CREATE INDEX "idx_conversations_contact" 
+ON "public"."conversations" (
+  "contact_id" ASC
+);
+CREATE INDEX "idx_conversations_tenant_status" 
+ON "public"."conversations" (
+  "tenant_id" ASC,
+  "status" ASC
+);
+CREATE INDEX "idx_conversations_tenant_lastmsg" 
+ON "public"."conversations" (
+  "tenant_id" ASC,
+  "last_message_at" DESC
+);
+CREATE INDEX "idx_conversations_tenant_id" 
+ON "public"."conversations" (
+  "tenant_id" ASC
+);
+CREATE INDEX "idx_conversations_contact_id" 
+ON "public"."conversations" (
+  "contact_id" ASC
+);
+CREATE INDEX "idx_conversations_status" 
+ON "public"."conversations" (
+  "status" ASC
+);
+CREATE INDEX "tenant_webhooks_tenant_id_idx" 
+ON "public"."tenant_webhooks" (
+  "tenant_id" ASC
+);
+CREATE UNIQUE INDEX "tenant_webhooks_tenant_url_idx" 
+ON "public"."tenant_webhooks" (
+  "tenant_id" ASC,
+  "url" ASC
+);
+CREATE UNIQUE INDEX "tenants_session_id_idx" 
+ON "public"."tenants" (
+  "session_id" ASC
+);
+CREATE INDEX "user_invites_status_idx" 
+ON "public"."user_invites" (
+  "status" ASC
+);
+CREATE INDEX "user_invites_tenant_id_idx" 
+ON "public"."user_invites" (
+  "tenant_id" ASC
+);
+CREATE INDEX "user_invites_email_idx" 
+ON "public"."user_invites" (
+  "email" ASC
+);
 ALTER TABLE "public"."users" ADD CONSTRAINT "users_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."tickets" ADD CONSTRAINT "tickets_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."tickets" ADD CONSTRAINT "tickets_assigned_agent_id_fkey" FOREIGN KEY ("assigned_agent_id") REFERENCES "public"."users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
@@ -154,6 +275,9 @@ ALTER TABLE "public"."messages" ADD CONSTRAINT "messages_ticket_id_fkey" FOREIGN
 ALTER TABLE "public"."conversation_events" ADD CONSTRAINT "conversation_events_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."contact_identifiers" ADD CONSTRAINT "contact_identifiers_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."conversations" ADD CONSTRAINT "conversations_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts" ("id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+ALTER TABLE "public"."tenant_webhooks" ADD CONSTRAINT "tenant_webhooks_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."user_invites" ADD CONSTRAINT "user_invites_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."user_invites" ADD CONSTRAINT "user_invites_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 CREATE FUNCTION "public"."app_set_context"(IN p_tenant UUID, IN p_user UUID) RETURNS VOID LANGUAGE PLPGSQL
 AS
 $$
