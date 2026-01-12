@@ -11,6 +11,7 @@ const InviteAccept = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -45,7 +46,10 @@ const InviteAccept = () => {
 
     setIsSubmitting(true);
     try {
-      const res = await api.post(`/admin/invites/${token}/accept`, { password });
+      const res = await api.post(`/admin/invites/${token}/accept`, {
+        password,
+        phone_number: phoneNumber.trim() || undefined
+      });
       if (res.data.success) {
         toast.success('Akun berhasil diaktifkan');
         navigate('/login');
@@ -105,6 +109,16 @@ const InviteAccept = () => {
                 className="w-full p-4 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400"
                 placeholder="Ulangi password"
                 required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">No. WhatsApp (opsional)</label>
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="w-full p-4 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400"
+                placeholder="62xxxxxxxxxx"
               />
             </div>
             <button

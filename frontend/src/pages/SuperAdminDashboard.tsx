@@ -33,6 +33,8 @@ const SuperAdminDashboard = () => {
   const [newSessionId, setNewSessionId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [isRefreshingQr, setIsRefreshingQr] = useState<string | null>(null);
+  const [notifierSessionId, setNotifierSessionId] = useState<string | null>(null);
+  const [isSettingNotifier, setIsSettingNotifier] = useState<string | null>(null);
 
   // Delete WhatsApp session
   const handleDeleteSession = async (sessionId: string) => {
@@ -51,9 +53,10 @@ const SuperAdminDashboard = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-        const [statsRes, tenantsRes] = await Promise.all([
+        const [statsRes, tenantsRes, notifierRes] = await Promise.all([
             api.get('/admin/stats'),
-            api.get('/admin/tenants')
+            api.get('/admin/tenants'),
+            api.get('/admin/notifier-session')
         ]);
 
         if (statsRes.data.success) {
@@ -61,6 +64,9 @@ const SuperAdminDashboard = () => {
         }
         if (tenantsRes.data.success) {
             setTenants(tenantsRes.data.tenants);
+        }
+        if (notifierRes.data.success) {
+            setNotifierSessionId(notifierRes.data.notifier_session_id || null);
         }
 
         // Try to fetch sessions (may fail if no WhatsApp API token)
@@ -116,6 +122,20 @@ const SuperAdminDashboard = () => {
   const asDataUrl = (qr: string) => {
     if (!qr) return '';
     return qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`;
+  };
+
+  const handleSetNotifier = async (sessionId: string) => {
+    setIsSettingNotifier(sessionId);
+    try {
+      await api.post('/admin/notifier-session', { session_id: sessionId });
+      toast.success(`Session ${sessionId} dijadikan notifier`);
+      setNotifierSessionId(sessionId);
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || 'Gagal set notifier';
+      toast.error(msg);
+    } finally {
+      setIsSettingNotifier(null);
+    }
   };
 
   useEffect(() => {
@@ -280,13 +300,27 @@ const SuperAdminDashboard = () => {
                                         )}
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <button
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            onClick={() => handleSetNotifier(s.sessionId)}
+                                            disabled={isSettingNotifier === s.sessionId}
+                                            className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest border ${
+                                              notifierSessionId === s.sessionId
+                                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                                : 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-slate-700'
+                                            } disabled:opacity-50`}
+                                            title="Jadikan nomor notifikasi"
+                                          >
+                                            {notifierSessionId === s.sessionId ? 'Notifier' : (isSettingNotifier === s.sessionId ? 'Setting...' : 'Set Notifier')}
+                                          </button>
+                                          <button
                                             onClick={() => handleDeleteSession(s.sessionId)}
                                             className="text-gray-400 dark:text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                                             title="Hapus session"
-                                        >
+                                          >
                                             <Trash2 size={16} />
-                                        </button>
+                                          </button>
+                                        </div>
                                     </td>
                                 </tr>
                             )) : (

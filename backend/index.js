@@ -485,6 +485,9 @@ if (!isTest) {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
             await db.ensureUserInvitesTable();
+            await db.ensureSystemSettingsTable();
+            await db.ensureUserPhoneColumn();
+            await db.ensureInvitePhoneColumn();
         } catch (err) {
             console.error('Database setup error:', err.message);
         }
