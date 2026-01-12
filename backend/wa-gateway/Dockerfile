@@ -6,6 +6,9 @@ WORKDIR /usr/src/app
 
 COPY . ./
 
+# Batasi paralel build (-p=1) agar CPU/RAM lebih ringan di mesin kecil
+ENV GOFLAGS="-p=1"
+
 RUN go mod download \
     && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -a -o main cmd/main/main.go
 
