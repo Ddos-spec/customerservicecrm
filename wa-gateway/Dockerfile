@@ -20,11 +20,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -a -o main cmd/main/main.
 # Final Image
 # ---------------------------------------------------
 FROM dimaskiddo/alpine:base-glibc
-MAINTAINER Dimas Restu Hidayanto <dimas.restu@student.upi.edu>
+LABEL maintainer="Dimas Restu Hidayanto <dimas.restu@student.upi.edu>"
 
 ARG SERVICE_NAME="gowam-rest"
 
-ENV PATH $PATH:/usr/app/${SERVICE_NAME}
+ENV PATH=$PATH:/usr/app/${SERVICE_NAME}
 
 WORKDIR /usr/app/${SERVICE_NAME}
 
