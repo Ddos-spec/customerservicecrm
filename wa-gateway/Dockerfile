@@ -32,10 +32,9 @@ RUN apk --no-cache --update upgrade \
     && mkdir -p {.bin/webp,dbs} \
     && chmod 775 {.bin/webp,dbs}
 
-COPY --from=go-builder /usr/src/app/.env.example ./.env
 COPY --from=go-builder /usr/src/app/main ./gowam-rest
 
-EXPOSE 3001
+EXPOSE 3400
 
 VOLUME ["/usr/app/${SERVICE_NAME}/dbs"]
 CMD ["gowam-rest"]
