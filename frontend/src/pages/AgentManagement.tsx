@@ -83,7 +83,7 @@ const AgentManagement = () => {
         } else {
           toast.success('Undangan berhasil dibuat');
         }
-        setFormData({ name: '', email: '' });
+        setFormData({ name: '', email: '', phone_number: '' });
         void fetchAgents();
       }
     } catch (error: any) {
@@ -118,7 +118,7 @@ const AgentManagement = () => {
           onClick={() => {
             setInviteLink('');
             setInviteRecipient({ name: '', email: '' });
-            setFormData({ name: '', email: '' });
+            setFormData({ name: '', email: '', phone_number: '' });
             setIsModalOpen(true);
           }}
           disabled={agents.length >= maxAgents}

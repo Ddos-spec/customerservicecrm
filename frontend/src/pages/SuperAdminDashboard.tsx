@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Server, Smartphone,
-  Terminal, Trash2, RefreshCw, QrCode,
+  Terminal, RefreshCw,
   Globe, MessageSquare, Database, Building2, Plus
 } from 'lucide-react';
-import { toast } from 'sonner';
 import api from '../lib/api';
 
 interface Stats {
@@ -31,20 +30,6 @@ const SuperAdminDashboard = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [notifierSessionId, setNotifierSessionId] = useState<string | null>(null);
-
-  // Delete WhatsApp session
-  const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm(`Hapus session ${sessionId}? Session akan logout dari WhatsApp.`)) return;
-
-    try {
-      await api.delete(`/sessions/${sessionId}`);
-      setSessions(sessions.filter(s => s.sessionId !== sessionId));
-      toast.success(`Session ${sessionId} berhasil dihapus`);
-    } catch (error) {
-      console.error('Failed to delete session:', error);
-      toast.error('Gagal menghapus session');
-    }
-  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -79,11 +64,6 @@ const SuperAdminDashboard = () => {
     } finally {
         setIsLoading(false);
     }
-  };
-
-  const asDataUrl = (qr: string) => {
-    if (!qr) return '';
-    return qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`;
   };
 
   useEffect(() => {
