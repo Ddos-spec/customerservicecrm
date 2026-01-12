@@ -300,9 +300,14 @@ async function createSession(sessionId) {
         // Request QR code from gateway
         const loginResponse = await waGateway.login(sessionId);
 
+        const session = sessions.get(sessionId);
         if (loginResponse.status && loginResponse.data?.qrcode) {
-            const session = sessions.get(sessionId);
             session.qr = loginResponse.data.qrcode;
+            session.status = 'CONNECTING';
+            sessions.set(sessionId, session);
+        } else if (loginResponse.message?.includes('Reconnected')) {
+            session.status = 'CONNECTED';
+            session.qr = null;
             sessions.set(sessionId, session);
         }
 
