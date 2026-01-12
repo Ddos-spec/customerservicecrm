@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Server, Smartphone,
@@ -30,6 +30,8 @@ const SuperAdminDashboard = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [notifierSessionId, setNotifierSessionId] = useState<string | null>(null);
+  
+  const ws = useRef<WebSocket | null>(null);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -65,6 +67,36 @@ const SuperAdminDashboard = () => {
         setIsLoading(false);
     }
   };
+
+  // WebSocket Connection for Real-time Updates
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = import.meta.env.VITE_API_URL 
+      ? new URL(import.meta.env.VITE_API_URL).host 
+      : window.location.host;
+    
+    const wsUrl = `${protocol}//${host}`;
+    
+    ws.current = new WebSocket(wsUrl);
+
+    ws.current.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'session-update') {
+            // Update sessions state directly
+            setSessions(payload.data);
+        }
+      } catch (err) {
+        console.error('WebSocket message error:', err);
+      }
+    };
+
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     fetchData();
