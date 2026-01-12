@@ -9,6 +9,7 @@ import AgentManagement from './pages/AgentManagement';
 import AgentWorkspace from './pages/AgentWorkspace';
 import ChatHistory from './pages/ChatHistory';
 import InviteAccept from './pages/InviteAccept';
+import SuperAdminSettings from './pages/SuperAdminSettings';
 import { Toaster } from 'sonner';
 import { useThemeStore } from './store/useThemeStore';
 
@@ -72,6 +73,7 @@ function App() {
           <Route path="/super-admin" element={<MainLayout />}>
             <Route index element={<SuperAdminDashboard />} />
             <Route path="tenants" element={<TenantManagement />} />
+            <Route path="settings" element={<SuperAdminSettings />} />
           </Route>
         </Route>
 
