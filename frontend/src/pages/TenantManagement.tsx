@@ -351,20 +351,24 @@ const TenantManagement = () => {
         toast.error('Nama dan Email harus diisi');
         return;
     }
-    
+
     if (adminFormData.password && adminFormData.password.length < 6) {
         toast.error('Password minimal 6 karakter');
         return;
     }
 
+    const payload: Record<string, any> = {
+        name: adminFormData.name,
+        email: adminFormData.email,
+        phone_number: adminFormData.phone_number
+    };
+    if (adminFormData.password) {
+        payload.password = adminFormData.password;
+    }
+
     setIsAdminSubmitting(true);
     try {
-        const res = await api.patch(`/admin/users/${adminUser.id}`, {
-            name: adminFormData.name,
-            email: adminFormData.email,
-            password: adminFormData.password, // Optional
-            phone_number: adminFormData.phone_number
-        });
+        const res = await api.patch(`/admin/users/${adminUser.id}`, payload);
 
         if (res.data.success) {
             toast.success('Data Admin Agent berhasil diperbarui');
