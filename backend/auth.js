@@ -241,6 +241,7 @@ async function notifyInviteWebhook(invitePayload) {
             </p>
         </div>
         <div class="footer">
+            <p style="font-size: 14px; color: #f59e0b; margin-bottom: 8px;">⭐ <strong>Jangan lupa bintangi email ini agar tidak hilang!</strong></p>
             <p>Email ini dikirim secara otomatis. Jangan bagikan informasi login Anda kepada siapapun.</p>
         </div>
     </div>
