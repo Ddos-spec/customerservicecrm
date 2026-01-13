@@ -96,7 +96,8 @@ function buildSessionsRouter(deps) {
         // Trigger background refresh for stale sessions
         if (refreshSession) {
             sessionsData.forEach(session => {
-                if (session.status === 'UNKNOWN' || session.status === 'CONNECTING') {
+                // AGRESSIVE CHECK: If not connected, force check!
+                if (session.status !== 'CONNECTED') {
                     refreshSession(session.sessionId).catch(() => {});
                 }
             });

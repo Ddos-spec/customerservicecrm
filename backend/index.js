@@ -284,12 +284,19 @@ async function refreshSession(sessionId) {
             };
         }
 
+        const msg = (response.message || '').toLowerCase();
+        
         if (response.status && response.data?.qr) {
             currentSession.status = 'DISCONNECTED';
             currentSession.qr = response.data.qr;
-        } else if (response.message?.includes('Reconnected') || response.message?.includes('Already logged in')) {
+        } else if (msg.includes('reconnected') || msg.includes('already') || msg.includes('login')) {
+            // "Already logged in" or "Reconnected" -> CONNECTED
             currentSession.status = 'CONNECTED';
             currentSession.qr = null;
+        } else if (response.code === 200 && !response.data?.qr) {
+             // Fallback: HTTP 200 without QR usually means connected
+             currentSession.status = 'CONNECTED';
+             currentSession.qr = null;
         }
         
         sessions.set(sessionId, currentSession);
