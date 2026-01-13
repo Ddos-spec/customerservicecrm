@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const db = require('./db');
 const { formatPhoneNumber } = require('./phone-utils');
+const axios = require('axios');
 
 const router = express.Router();
 
@@ -153,6 +154,19 @@ async function ensureSuperAdmin() {
         console.error('❌ Error ensuring super admin:', error.message);
         console.error('   Stack:', error.stack);
         return null;
+    }
+}
+
+/**
+ * Send invite payload to n8n webhook (email handled there)
+ */
+async function notifyInviteWebhook(invitePayload) {
+    const webhookUrl = process.env.N8N_INVITE_WEBHOOK_URL;
+    if (!webhookUrl) return;
+    try {
+        await axios.post(webhookUrl, invitePayload, { timeout: 5000 });
+    } catch (err) {
+        console.error('Failed to notify invite webhook:', err.message);
     }
 }
 
@@ -627,6 +641,23 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
             phone_number: normalizedPhone
         });
 
+        // Notify n8n webhook (email sending handled there)
+        const frontendBase = process.env.FRONTEND_URL || '';
+        const baseUrl = (frontendBase || '').replace(/\/+$/, '');
+        const inviteLink = `${baseUrl || ''}/login`;
+        await notifyInviteWebhook({
+            invite_link: inviteLink,
+            invitee_email: email,
+            invitee_name: name,
+            invitee_role: role,
+            tenant_id: targetTenantId,
+            tenant_name: null,
+            created_by_email: currentUser?.email || null,
+            created_by_name: currentUser?.name || null,
+            created_by_role: currentUser?.role || null,
+            expires_at: null
+        });
+
         res.status(201).json({ success: true, user });
     } catch (error) {
         console.error('Error creating user:', error);
@@ -679,6 +710,24 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
             created_by: currentUser.id,
             expires_at: expiresAt,
             phone_number: normalizedPhone
+        });
+
+        // Build invite link for email
+        const frontendBase = process.env.FRONTEND_URL || '';
+        const baseUrl = (frontendBase || '').replace(/\/+$/, '');
+        const inviteLink = `${baseUrl || ''}/invite/${token}`;
+
+        await notifyInviteWebhook({
+            invite_link: inviteLink,
+            invitee_email: email,
+            invitee_name: name,
+            invitee_role: 'agent',
+            tenant_id: targetTenantId,
+            tenant_name: null,
+            created_by_email: currentUser?.email || null,
+            created_by_name: currentUser?.name || null,
+            created_by_role: currentUser?.role || null,
+            expires_at: expiresAt.toISOString(),
         });
 
         res.status(201).json({ success: true, invite });
