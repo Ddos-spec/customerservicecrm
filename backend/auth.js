@@ -5,9 +5,19 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const db = require('./db');
 
 const router = express.Router();
+
+// ===== RATE LIMITERS =====
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // Limit each IP to 5 login requests per window
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'Too many login attempts, please try again after 15 minutes' }
+});
 
 // ===== MIDDLEWARE =====
 
@@ -62,7 +72,15 @@ function requireTenantAccess(req, res, next) {
 function isValidHttpUrl(value) {
     try {
         const parsed = new URL(value);
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+        
+        // SSRF Protection: Block private IPs and localhost
+        const hostname = parsed.hostname;
+        if (['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(hostname)) return false;
+        if (hostname.startsWith('10.') || hostname.startsWith('192.168.')) return false;
+        if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) return false; // 172.16.x.x - 172.31.x.x
+        
+        return true;
     } catch {
         return false;
     }
@@ -143,7 +161,7 @@ async function ensureSuperAdmin() {
  * POST /api/v1/admin/login
  * Login with email and password
  */
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
 

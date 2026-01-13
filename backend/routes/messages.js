@@ -1,7 +1,16 @@
 const express = require('express');
 const path = require('path');
+const rateLimit = require('express-rate-limit'); // Security Fix High #12
 
 const router = express.Router();
+
+// Security Fix High #12: Per-user rate limiter for sending messages
+const sendMessageLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 1000, // Limit each IP to 1000 messages per hour (adjust as needed)
+    message: { status: 'error', message: 'Too many messages sent, please try again later.' },
+    keyGenerator: (req) => req.session?.user?.id ? `msg_limit_${req.session.user.id}` : req.ip // Limit by User ID if logged in
+});
 
 function buildMessagesRouter(deps) {
     const {
@@ -26,7 +35,7 @@ function buildMessagesRouter(deps) {
     } = deps;
     const unsupportedTypes = new Set(['button', 'list', 'template', 'contacts']);
 
-    router.post('/internal/messages', async (req, res) => {
+    router.post('/internal/messages', sendMessageLimiter, async (req, res) => {
         const user = req.session?.user;
         if (!user) {
             return res.status(401).json({ status: 'error', message: 'Authentication required' });
@@ -39,108 +48,96 @@ function buildMessagesRouter(deps) {
         const messageText = (req.body?.message_text || req.body?.text || '').toString().trim();
         const ticketId = parseInt(req.body?.ticket_id || req.body?.ticketId, 10);
 
-        if (!rawPhone) {
-            return res.status(400).json({ status: 'error', message: 'Nomor tujuan wajib diisi' });
-        }
-        if (!messageText) {
-            return res.status(400).json({ status: 'error', message: 'Pesan tidak boleh kosong' });
-        }
-        if (!ticketId) {
-            return res.status(400).json({ status: 'error', message: 'ticket_id wajib diisi' });
-        }
-        if (!isValidPhoneNumber(rawPhone)) {
-            return res.status(400).json({ status: 'error', message: 'Format nomor tidak valid' });
-        }
-        if (messageText.length > 4096) {
-            return res.status(400).json({ status: 'error', message: 'Pesan terlalu panjang' });
-        }
+        if (!rawPhone) return res.status(400).json({ status: 'error', message: 'Nomor tujuan wajib diisi' });
+        if (!messageText) return res.status(400).json({ status: 'error', message: 'Pesan tidak boleh kosong' });
+        if (!ticketId) return res.status(400).json({ status: 'error', message: 'ticket_id wajib diisi' });
+        if (!isValidPhoneNumber(rawPhone)) return res.status(400).json({ status: 'error', message: 'Format nomor tidak valid' });
+        if (messageText.length > 4096) return res.status(400).json({ status: 'error', message: 'Pesan terlalu panjang' });
 
-        const formattedPhone = formatPhoneNumber(rawPhone);
-
-        const ticket = await db.getTicketWithLastCustomerMessage(ticketId);
-        if (!ticket) {
-            return res.status(404).json({ status: 'error', message: 'Tiket tidak ditemukan' });
-        }
-        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
-            return res.status(403).json({ status: 'error', message: 'Tidak boleh mengirim pesan untuk tenant lain' });
-        }
-
-        const formattedTicketNumber = formatPhoneNumber(ticket.customer_contact || '');
-        if (!formattedTicketNumber || formattedTicketNumber !== formattedPhone) {
-            return res.status(400).json({ status: 'error', message: 'Nomor tujuan harus sesuai dengan kontak tiket' });
-        }
-
-        if (INTERNAL_REPLY_WINDOW_HOURS > 0) {
-            const lastCustomerAt = ticket.last_customer_message_at ? new Date(ticket.last_customer_message_at) : null;
-            const tooOld = !lastCustomerAt || Number.isNaN(lastCustomerAt.getTime()) || (Date.now() - lastCustomerAt.getTime()) > INTERNAL_REPLY_WINDOW_HOURS * 60 * 60 * 1000;
-            if (tooOld) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: `Di luar window ${INTERNAL_REPLY_WINDOW_HOURS} jam sejak pesan customer. Minta pelanggan kirim pesan lagi.`
-                });
+        try {
+            const formattedPhone = formatPhoneNumber(rawPhone);
+            const ticket = await db.getTicketWithLastCustomerMessage(ticketId);
+            
+            if (!ticket) return res.status(404).json({ status: 'error', message: 'Tiket tidak ditemukan' });
+            if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+                return res.status(403).json({ status: 'error', message: 'Akses ditolak' });
             }
-        }
 
-        if (INTERNAL_RATE_LIMIT_PER_HOUR > 0 && ticket.tenant_id) {
-            const sentCount = await db.countTenantMessagesSince(ticket.tenant_id, 60, 'agent');
-            if (sentCount >= INTERNAL_RATE_LIMIT_PER_HOUR) {
-                return res.status(429).json({
-                    status: 'error',
-                    message: `Rate limit ${INTERNAL_RATE_LIMIT_PER_HOUR} pesan/jam tercapai untuk tenant ini`
-                });
+            // Validate match between phone and ticket
+            const formattedTicketNumber = formatPhoneNumber(ticket.customer_contact || '');
+            if (!formattedTicketNumber || formattedTicketNumber !== formattedPhone) {
+                return res.status(400).json({ status: 'error', message: 'Nomor tujuan tidak sesuai dengan tiket' });
             }
-        }
 
-        let sessionId = user.tenant_session_id || null;
-        if (user.tenant_id) {
-            try {
-                const tenant = await db.getTenantById(user.tenant_id);
-                if (tenant?.session_id) {
-                    sessionId = tenant.session_id;
+            // Internal Reply Window Logic
+            if (INTERNAL_REPLY_WINDOW_HOURS > 0) {
+                const lastCustomerAt = ticket.last_customer_message_at ? new Date(ticket.last_customer_message_at) : null;
+                const tooOld = !lastCustomerAt || Number.isNaN(lastCustomerAt.getTime()) || (Date.now() - lastCustomerAt.getTime()) > INTERNAL_REPLY_WINDOW_HOURS * 60 * 60 * 1000;
+                if (tooOld) {
+                    return res.status(400).json({ status: 'error', message: `Sesi berakhir (${INTERNAL_REPLY_WINDOW_HOURS} jam). Tunggu balasan pelanggan.` });
                 }
-            } catch (error) {
-                console.error('Failed to fetch tenant session:', error);
             }
-        }
 
-        if (!sessionId) {
-            return res.status(400).json({ status: 'error', message: 'Session WA belum diatur' });
-        }
+            // Internal Rate Limit (Tenant level)
+            if (INTERNAL_RATE_LIMIT_PER_HOUR > 0 && ticket.tenant_id) {
+                const sentCount = await db.countTenantMessagesSince(ticket.tenant_id, 60, 'agent');
+                if (sentCount >= INTERNAL_RATE_LIMIT_PER_HOUR) {
+                    return res.status(429).json({ status: 'error', message: 'Limit pesan per jam tercapai untuk tenant ini' });
+                }
+            }
 
-        const session = sessions.get(sessionId);
-        if (!session || !session.sock || session.status !== 'CONNECTED') {
-            return res.status(409).json({ status: 'error', message: 'Session WhatsApp belum tersambung' });
-        }
+            // Session Lookup
+            let sessionId = user.tenant_session_id || null;
+            if (user.tenant_id && !sessionId) {
+                const tenant = await db.getTenantById(user.tenant_id);
+                sessionId = tenant?.session_id;
+            }
 
-        const destination = toWhatsAppFormat(formattedPhone);
+            if (!sessionId) return res.status(400).json({ status: 'error', message: 'Session WA belum diatur' });
 
-        try {
-            await validateWhatsAppRecipient(sessionId, destination);
-        } catch (error) {
-            return res.status(400).json({ status: 'error', message: 'Nomor tidak terdaftar di WhatsApp' });
-        }
+            const session = sessions.get(sessionId);
+            if (!session || !session.sock || session.status !== 'CONNECTED') {
+                return res.status(409).json({ status: 'error', message: 'WhatsApp Offline' });
+            }
 
-        try {
+            const destination = toWhatsAppFormat(formattedPhone);
+
+            // Send to WhatsApp
             const result = await scheduleMessageSend(sessionId, async () => {
                 const activeSession = sessions.get(sessionId);
-                if (!activeSession || !activeSession.sock || activeSession.status !== 'CONNECTED') {
-                    throw new Error('Session tidak tersedia');
-                }
+                if (!activeSession?.sock) throw new Error('Session disconnected');
+                
                 await activeSession.sock.sendPresenceUpdate('composing', destination);
-                const typingDelay = Math.floor(Math.random() * 1000) + 500;
-                await new Promise((resolve) => setTimeout(resolve, typingDelay));
+                await new Promise(r => setTimeout(r, 500)); // Humanize
+                
                 const sendResult = await activeSession.sock.sendMessage(destination, { text: messageText });
+                
                 await activeSession.sock.sendPresenceUpdate('paused', destination);
                 return { status: 'success', messageId: sendResult?.key?.id };
             });
 
             if (!result || result.status !== 'success') {
-                return res.status(502).json({ status: 'error', message: result?.message || 'Gagal mengirim pesan' });
+                throw new Error(result?.message || 'Gagal mengirim pesan ke gateway');
             }
 
-            return res.status(200).json({ status: 'success', messageId: result.messageId });
+            // AUTO-SAVE to Database (Robustness Fix)
+            const savedMsg = await db.logMessage({
+                ticket_id: ticketId,
+                sender_type: 'agent',
+                message_text: messageText
+            });
+
+            return res.status(200).json({ 
+                status: 'success', 
+                messageId: result.messageId,
+                db_message: savedMsg // Return saved DB record
+            });
+
         } catch (error) {
-            return res.status(503).json({ status: 'error', message: error.message || 'Gagal mengirim pesan' });
+            console.error('[Internal Message Error]', error);
+            // Security Fix High #11: Sanitize error message
+            const clientMessage = error.message.includes('Session') ? error.message : 'Terjadi kesalahan sistem saat mengirim pesan';
+            return res.status(503).json({ status: 'error', message: clientMessage });
         }
     });
 

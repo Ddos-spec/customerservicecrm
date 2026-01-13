@@ -129,7 +129,11 @@ function decrypt(text) {
 }
 
 function saveTokens() {
-    fs.writeFileSync(ENCRYPTED_TOKENS_FILE, encrypt(JSON.stringify(Object.fromEntries(sessionTokens))), 'utf-8');
+    try {
+        fs.writeFileSync(ENCRYPTED_TOKENS_FILE, encrypt(JSON.stringify(Object.fromEntries(sessionTokens))), { encoding: 'utf-8', mode: 0o600 });
+    } catch (error) {
+        logger.error(`Failed to save session tokens: ${error.message}`);
+    }
 }
 
 async function loadTokens() {
@@ -254,6 +258,45 @@ function getSessionsDetails() {
         status: s.status || 'UNKNOWN',
         qr: s.qr || null
     }));
+}
+
+async function refreshSession(sessionId) {
+    // Only refresh if we have a token (known session)
+    if (!sessionTokens.has(sessionId)) return;
+    
+    // Don't refresh if already connecting/connected recently
+    const session = sessions.get(sessionId);
+    if (session && session.status === 'CONNECTED') return;
+
+    try {
+        const token = sessionTokens.get(sessionId);
+        waGateway.setSessionToken(sessionId, token);
+        
+        // "Login" acts as a status check
+        const response = await waGateway.login(sessionId);
+        
+        let currentSession = sessions.get(sessionId);
+        if (!currentSession) {
+            currentSession = { 
+                sessionId, 
+                sock: createCompatSocket(sessionId),
+                status: 'UNKNOWN'
+            };
+        }
+
+        if (response.status && response.data?.qr) {
+            currentSession.status = 'DISCONNECTED';
+            currentSession.qr = response.data.qr;
+        } else if (response.message?.includes('Reconnected') || response.message?.includes('Already logged in')) {
+            currentSession.status = 'CONNECTED';
+            currentSession.qr = null;
+        }
+        
+        sessions.set(sessionId, currentSession);
+        broadcastSessionUpdate();
+    } catch (error) {
+        console.warn(`[Refresh] Failed to refresh session ${sessionId}: ${error.message}`);
+    }
 }
 
 function broadcastSessionUpdate() {
@@ -482,7 +525,8 @@ app.use('/api/v1', initializeApi(
     getSessionContacts,
     upsertSessionContact,
     removeSessionContact,
-    postToWebhook
+    postToWebhook,
+    refreshSession
 ));
 
 // --- Server Start ---

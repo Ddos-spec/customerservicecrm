@@ -227,7 +227,9 @@ async function updateUserStatus(userId, status) {
  * @returns {Promise<Object>} Updated user
  */
 async function updateUser(userId, updates) {
-    const fields = Object.keys(updates);
+    const ALLOWED_FIELDS = ['name', 'email', 'password_hash', 'role', 'status', 'phone_number'];
+    const fields = Object.keys(updates).filter(key => ALLOWED_FIELDS.includes(key));
+    
     if (fields.length === 0) return null;
 
     const setClause = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');

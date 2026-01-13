@@ -29,12 +29,7 @@ function buildTokenValidator(sessionTokens) {
             return res.status(403).json({ status: 'error', message: `Invalid token for session ${sessionId}` });
         }
 
-        const isAnyTokenValid = Array.from(sessionTokens.values()).includes(token);
-        if (isAnyTokenValid) {
-            return next();
-        }
-
-        return res.status(403).json({ status: 'error', message: 'Invalid token' });
+        return res.status(403).json({ status: 'error', message: 'Invalid token or session not found' });
     };
 }
 
