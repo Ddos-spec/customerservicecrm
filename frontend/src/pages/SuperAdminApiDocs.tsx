@@ -15,7 +15,7 @@ const SuperAdminApiDocs = () => {
     {
       title: 'Incoming Message Log',
       description: 'Gunakan ini untuk mencatat pesan yang masuk dari customer ke database CRM.',
-      icon: <MessageSquare className="text-blue-500" />,
+      icon: <MessageSquare className="text-emerald-500" />,
       curl: `curl -X POST "${apiUrl}/n8n/log-message" \
   -H "Content-Type: application/json" \
   -H "x-api-key: ${apiKey}" \
@@ -71,16 +71,16 @@ const SuperAdminApiDocs = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-3xl p-6 mb-4">
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-3xl p-6 mb-4">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-blue-500 rounded-2xl text-white">
+            <div className="p-3 bg-emerald-500 rounded-2xl text-white">
               <ShieldCheck size={24} />
             </div>
             <div>
-              <h3 className="text-lg font-black text-blue-900 dark:text-blue-100 uppercase tracking-tight">Security Note</h3>
-              <p className="text-blue-700/80 dark:text-blue-300/80 text-sm mt-1 leading-relaxed">
-                Semua request wajib menyertakan header <code className="bg-blue-100 dark:bg-blue-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code>. 
-                Pastikan variabel <code className="bg-blue-100 dark:bg-blue-800 px-1.5 py-0.5 rounded font-bold">N8N_API_KEY</code> sudah diatur di file <code className="italic">.env</code> backend lu.
+              <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">Security Note</h3>
+              <p className="text-emerald-700/80 dark:text-emerald-300/80 text-sm mt-1 leading-relaxed">
+                Semua request wajib menyertakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code>. 
+                Pastikan variabel <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">N8N_API_KEY</code> sudah diatur di file <code className="italic">.env</code> backend lu.
               </p>
             </div>
           </div>
@@ -123,7 +123,7 @@ const SuperAdminApiDocs = () => {
             href="https://n8n.io" 
             target="_blank" 
             rel="noreferrer"
-            className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 font-black uppercase tracking-widest text-xs hover:underline"
+            className="inline-flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-widest text-xs hover:underline"
           >
             Pelajari n8n documentation
             <ExternalLink size={14} />

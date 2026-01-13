@@ -110,7 +110,7 @@ const SuperAdminSettings = () => {
   return (
     <div className="p-8 max-w-2xl mx-auto">
       <div className="mb-8 flex items-center gap-3">
-        <div className="p-3 rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-200">
+        <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-200">
           <Bell size={20} />
         </div>
         <div>
@@ -161,7 +161,7 @@ const SuperAdminSettings = () => {
         <div className="p-6">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
-              <Loader2 className="animate-spin text-blue-500 mb-3" size={32} />
+              <Loader2 className="animate-spin text-emerald-500 mb-3" size={32} />
               <p className="text-sm text-gray-500 dark:text-gray-400">Memuat data...</p>
             </div>
           ) : (
@@ -228,7 +228,7 @@ const SuperAdminSettings = () => {
                   <button
                     onClick={handleConnect}
                     disabled={isProcessing}
-                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-60"
+                    className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-60"
                   >
                     {isProcessing ? (
                       <>

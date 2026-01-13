@@ -389,7 +389,7 @@ const TenantManagement = () => {
           <button onClick={fetchTenants} className="p-3.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-all">
             <RefreshCw size={18} className={`text-gray-600 dark:text-gray-300 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
-          <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3.5 rounded-2xl transition-all shadow-xl shadow-blue-100 dark:shadow-blue-900/30 font-black uppercase tracking-widest text-xs active:scale-95">
+          <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl transition-all shadow-xl shadow-emerald-100 dark:shadow-emerald-900/30 font-black uppercase tracking-widest text-xs active:scale-95">
             <Plus size={18} />
             <span>Tambah Tenant</span>
           </button>
@@ -405,7 +405,7 @@ const TenantManagement = () => {
               placeholder="Cari tenant..."
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              className="pl-12 pr-4 py-3.5 w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all"
+              className="pl-12 pr-4 py-3.5 w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all"
             />
           </div>
         </div>
@@ -413,7 +413,7 @@ const TenantManagement = () => {
         {/* Loading State */}
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center py-20">
-            <Loader2 className="animate-spin text-blue-600" size={32} />
+            <Loader2 className="animate-spin text-emerald-600" size={32} />
           </div>
         ) : (
           <>
@@ -432,10 +432,10 @@ const TenantManagement = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
                   {currentData.length > 0 ? currentData.map((tenant) => (
-                    <tr key={tenant.id} className="hover:bg-blue-50/30 dark:hover:bg-slate-700/40 transition-colors group">
+                    <tr key={tenant.id} className="hover:bg-emerald-50/30 dark:hover:bg-slate-700/40 transition-colors group">
                       <td className="px-8 py-6">
                         <div className="flex items-center space-x-4">
-                          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-inner">
+                          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
                             <Building2 size={20} />
                           </div>
                           <span className="font-black text-gray-900 dark:text-white text-sm tracking-tight">{tenant.company_name}</span>
@@ -461,7 +461,7 @@ const TenantManagement = () => {
                         </button>
                         {activeDropdown === tenant.id && (
                           <div className="absolute right-12 top-16 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-700 z-50 overflow-hidden text-left ring-1 ring-black/5">
-                            <button onClick={() => openWebhookModal(tenant)} className="w-full px-5 py-3 text-xs text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-bold uppercase tracking-wider block">
+                            <button onClick={() => openWebhookModal(tenant)} className="w-full px-5 py-3 text-xs text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-bold uppercase tracking-wider block">
                               Kelola Webhook
                             </button>
                             <button onClick={() => openAdminModal(tenant)} className="w-full px-5 py-3 text-xs text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-bold uppercase tracking-wider block">
@@ -497,7 +497,7 @@ const TenantManagement = () => {
                   <div key={tenant.id} className="p-6 border-b border-gray-50 dark:border-slate-700 last:border-0">
                      <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center space-x-4">
-                           <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center"><Building2 size={24} /></div>
+                           <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center"><Building2 size={24} /></div>
                            <div>
                               <h4 className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{tenant.company_name}</h4>
                               <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${
@@ -511,7 +511,7 @@ const TenantManagement = () => {
                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Session WA: {tenant.session_id || '-'}</div>
                      {activeDropdown === tenant.id && (
                         <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-2 mb-4 animate-in fade-in zoom-in-95">
-                           <button onClick={() => openWebhookModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-blue-600 dark:text-blue-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
+                           <button onClick={() => openWebhookModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Kelola Webhook
                            </button>
                            <button onClick={() => openAdminModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-purple-600 dark:text-purple-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
@@ -544,7 +544,7 @@ const TenantManagement = () => {
                 onPageChange={setCurrentPage}
                 totalItems={filteredTenants.length}
                 itemsPerPage={itemsPerPage}
-                colorTheme="blue"
+                colorTheme="green"
               />
             )}
           </>
@@ -566,7 +566,7 @@ const TenantManagement = () => {
                     required
                     placeholder="Contoh: Toko Maju Jaya"
                     value={formData.company_name}
-                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     onChange={(e) => setFormData({...formData, company_name: e.target.value})}
                   />
                 </div>
@@ -576,7 +576,7 @@ const TenantManagement = () => {
                     required
                     placeholder="Contoh: Admin Toko"
                     value={formData.admin_name}
-                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     onChange={(e) => setFormData({...formData, admin_name: e.target.value})}
                   />
                 </div>
@@ -587,7 +587,7 @@ const TenantManagement = () => {
                     type="email"
                     placeholder="admin@tokomaju.com"
                     value={formData.admin_email}
-                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     onChange={(e) => setFormData({...formData, admin_email: e.target.value})}
                   />
                 </div>
@@ -599,7 +599,7 @@ const TenantManagement = () => {
                       type={showAdminPassword ? 'text' : 'password'}
                       placeholder="Minimal 6 karakter"
                       value={formData.admin_password}
-                      className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 pr-16"
+                      className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 pr-16"
                       onChange={(e) => setFormData({...formData, admin_password: e.target.value})}
                     />
                     <button
@@ -617,7 +617,7 @@ const TenantManagement = () => {
                     type="tel"
                     placeholder="62xxxxxxxxxx"
                     value={formData.admin_phone_number}
-                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     onChange={(e) => setFormData({...formData, admin_phone_number: e.target.value})}
                   />
                 </div>
@@ -627,7 +627,7 @@ const TenantManagement = () => {
                     required
                     placeholder="Contoh: 628123456789"
                     value={formData.session_id}
-                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     onChange={(e) => setFormData({...formData, session_id: e.target.value})}
                   />
                 </div>
@@ -637,7 +637,7 @@ const TenantManagement = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all"
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all"
                 >
                   {isSubmitting && <Loader2 className="animate-spin" size={16} />}
                   <span>{isSubmitting ? 'Menyimpan...' : 'Simpan'}</span>
@@ -667,12 +667,12 @@ const TenantManagement = () => {
                   placeholder="https://example.com/webhook"
                   value={webhookUrl}
                   onChange={(e) => setWebhookUrl(e.target.value)}
-                  className="flex-1 p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  className="flex-1 p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
                 <button
                   type="submit"
                   disabled={isWebhookSubmitting}
-                  className="px-6 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all"
+                  className="px-6 py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all"
                 >
                   {isWebhookSubmitting && <Loader2 className="animate-spin" size={16} />}
                   <span>{isWebhookSubmitting ? 'Menyimpan...' : 'Tambah'}</span>
@@ -685,7 +685,7 @@ const TenantManagement = () => {
               <h3 className="text-sm font-black text-gray-900 dark:text-white mb-3">Daftar Webhook</h3>
               {isWebhookLoading ? (
                 <div className="flex items-center justify-center py-10">
-                  <Loader2 className="animate-spin text-blue-600" size={24} />
+                  <Loader2 className="animate-spin text-emerald-600" size={24} />
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
@@ -765,7 +765,7 @@ const TenantManagement = () => {
 
             {isAdminLoading ? (
                <div className="flex justify-center py-10">
-                   <Loader2 className="animate-spin text-blue-600" size={32} />
+                   <Loader2 className="animate-spin text-emerald-600" size={32} />
                </div>
             ) : (
                 <form onSubmit={handleUpdateAdmin} className="space-y-4">
