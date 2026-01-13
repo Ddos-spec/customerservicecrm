@@ -253,11 +253,17 @@ async function postToWebhook(data) {
 
 // --- Session Management (via Go Gateway) ---
 function getSessionsDetails() {
-    return Array.from(sessions.values()).map(s => ({
-        sessionId: s.sessionId,
-        status: s.status || 'UNKNOWN',
-        qr: s.qr || null
-    }));
+    // Source of truth is sessionTokens (persisted sessions)
+    const allSessionIds = Array.from(sessionTokens.keys());
+    
+    return allSessionIds.map(id => {
+        const session = sessions.get(id);
+        return {
+            sessionId: id,
+            status: session?.status || 'UNKNOWN',
+            qr: session?.qr || null
+        };
+    });
 }
 
 async function refreshSession(sessionId) {
