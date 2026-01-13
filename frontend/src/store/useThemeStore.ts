@@ -13,20 +13,14 @@ export const useThemeStore = create<ThemeState>()(
       isDarkMode: false,
       toggleDarkMode: () => set((state) => {
         const newValue = !state.isDarkMode;
-        // Apply to document
-        if (newValue) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
+        // Apply to document + body to ensure all selectors react
+        document.documentElement.classList.toggle('dark', newValue);
+        document.body.classList.toggle('dark', newValue);
         return { isDarkMode: newValue };
       }),
       setDarkMode: (value) => set(() => {
-        if (value) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
+        document.documentElement.classList.toggle('dark', value);
+        document.body.classList.toggle('dark', value);
         return { isDarkMode: value };
       }),
     }),
