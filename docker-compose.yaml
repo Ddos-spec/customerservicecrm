@@ -97,6 +97,8 @@ services:
       WA_GATEWAY_URL: "http://wa-gateway:3001/api/v1/whatsapp"
       WA_GATEWAY_PASSWORD: ${WA_GATEWAY_PASSWORD}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+    volumes:
+      - ./backend/session_tokens.enc:/app/session_tokens.enc
     depends_on:
       redis:
         condition: service_healthy
