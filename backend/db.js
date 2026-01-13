@@ -836,16 +836,27 @@ async function getDashboardStats(tenantId = null) {
  * @returns {Promise<Object>} System-wide statistics
  */
 async function getSuperAdminStats() {
-    const [tenantStats, userStats, ticketStats] = await Promise.all([
+    const [tenantStats, userStats, ticketStats, sessionStats] = await Promise.all([
         query('SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = \'active\') as active FROM tenants'),
         query('SELECT COUNT(*) as total FROM users'),
-        query('SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = \'open\') as open FROM tickets')
+        query('SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = \'open\') as open FROM tickets'),
+        query(`SELECT
+                COUNT(*) FILTER (WHERE session_id IS NOT NULL) as total,
+                COUNT(*) FILTER (WHERE session_id IS NOT NULL) as with_session
+               FROM (
+                 SELECT session_id FROM tenants WHERE session_id IS NOT NULL
+                 UNION ALL
+                 SELECT session_id FROM users WHERE session_id IS NOT NULL
+               ) as all_sessions`)
     ]);
 
     return {
         tenants: tenantStats.rows[0],
         users: userStats.rows[0],
-        tickets: ticketStats.rows[0]
+        tickets: ticketStats.rows[0],
+        whatsapp_sessions: {
+            total: parseInt(sessionStats.rows[0]?.total || '0', 10)
+        }
     };
 }
 
