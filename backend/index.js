@@ -136,29 +136,38 @@ function saveTokens() {
     }
 }
 
-async function loadTokens() {
+function loadTokens() {
+    console.log('[System] Loading session tokens from disk...');
     if (fs.existsSync(ENCRYPTED_TOKENS_FILE)) {
         try {
-            const tokens = JSON.parse(decrypt(fs.readFileSync(ENCRYPTED_TOKENS_FILE, 'utf-8')));
+            const fileContent = fs.readFileSync(ENCRYPTED_TOKENS_FILE, 'utf-8');
+            const tokens = JSON.parse(decrypt(fileContent));
+            
+            let loadedCount = 0;
             for (const [k, v] of Object.entries(tokens)) {
                 sessionTokens.set(k, v);
+                loadedCount++;
             }
+            console.log(`[System] Successfully loaded ${loadedCount} tokens into memory.`);
 
-            // Re-authenticate gateway JWTs using session ids as username
+            // Re-authenticate gateway JWTs in background
             const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
-            await Promise.allSettled(Array.from(sessionTokens.keys()).map(async (sessionId) => {
+            // Don't await this, let it run in background
+            Promise.allSettled(Array.from(sessionTokens.keys()).map(async (sessionId) => {
                 try {
                     const auth = await waGateway.authenticate(sessionId, gatewayPassword);
                     if (auth.status && auth.data?.token) {
                         waGateway.setSessionToken(sessionId, auth.data.token);
                     }
                 } catch (err) {
-                    logger.warn(`Failed to refresh gateway token for ${sessionId}: ${err.message}`);
+                    // Silent fail or low-level warn is fine here, will be retried by refresh logic
                 }
             }));
         } catch (err) {
-            logger.warn('Failed to load tokens:', err.message);
+            console.error('[System] Failed to load/decrypt tokens:', err.message);
         }
+    } else {
+        console.log('[System] No token file found.');
     }
 }
 
@@ -253,6 +262,11 @@ async function postToWebhook(data) {
 
 // --- Session Management (via Go Gateway) ---
 function getSessionsDetails() {
+    // Self-healing: If memory is empty, try to load from disk immediately
+    if (sessionTokens.size === 0) {
+        loadTokens();
+    }
+
     // Source of truth is sessionTokens (persisted sessions)
     const allSessionIds = Array.from(sessionTokens.keys());
     
