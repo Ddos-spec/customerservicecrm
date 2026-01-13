@@ -16,6 +16,7 @@ dist/
 frontend/.env
 frontend/.env.local
 backend/.env
+.claude/
 
 # OS Files
 .DS_Store
