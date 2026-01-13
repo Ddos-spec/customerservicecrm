@@ -255,58 +255,44 @@ const AgentWorkspace = () => {
 
     setIsSending(true);
     const messageText = message.trim();
+    
     try {
-      await api.post('/internal/messages', {
+      // Single atomic call: Send WA + Save to DB
+      const res = await api.post('/internal/messages', {
         phone: selectedContact.phone,
         message_text: messageText,
         ticket_id: selectedContact.id
       });
-    } catch (error: any) {
-      console.error('Failed to send WhatsApp message:', error);
-      toast.error(error.response?.data?.message || 'Gagal mengirim pesan');
-      setIsSending(false);
-      return;
-    }
 
-    try {
-      const res = await api.post(`/admin/tickets/${selectedContact.id}/messages`, {
-        message_text: messageText
-      });
-      if (res.data.success) {
+      if (res.data.status === 'success') {
+        const dbMsg = res.data.db_message;
+        
+        // Use DB data if available (robust), else fallback to optimistic
         const newMsg: Message = {
-          id: res.data.message.id,
+          id: dbMsg?.id || Date.now(),
           sender: 'agent',
-          text: res.data.message.message_text,
-          time: formatMessageTime(res.data.message.created_at),
+          text: dbMsg?.message_text || messageText,
+          time: formatMessageTime(dbMsg?.created_at || new Date().toISOString()),
           status: 'sent'
         };
+
         setMessages((prev) => [...prev, newMsg]);
         setTickets((prev) => prev.map((ticket) => (
           ticket.id === selectedContact.id
-            ? { ...ticket, last_message: res.data.message.message_text, last_sender_type: 'agent', last_message_at: res.data.message.created_at }
+            ? { 
+                ...ticket, 
+                last_message: newMsg.text, 
+                last_sender_type: 'agent', 
+                last_message_at: dbMsg?.created_at || new Date().toISOString() 
+              }
             : ticket
         )));
-        // toast.success('Pesan terkirim'); // Gak usah toast biar clean ala WA
+        
         setMessage('');
       }
     } catch (error: any) {
-      console.error('Failed to log message:', error);
-      const fallbackTime = new Date().toISOString();
-      const newMsg: Message = {
-        id: Date.now(),
-        sender: 'agent',
-        text: messageText,
-        time: formatMessageTime(fallbackTime),
-        status: 'sent'
-      };
-      setMessages((prev) => [...prev, newMsg]);
-      setTickets((prev) => prev.map((ticket) => (
-        ticket.id === selectedContact.id
-          ? { ...ticket, last_message: messageText, last_sender_type: 'agent', last_message_at: fallbackTime }
-          : ticket
-      )));
-      setMessage('');
-      toast.error(error.response?.data?.error || 'Pesan terkirim, tapi gagal disimpan');
+      console.error('Failed to send message:', error);
+      toast.error(error.response?.data?.message || 'Gagal mengirim pesan');
     } finally {
       setIsSending(false);
     }

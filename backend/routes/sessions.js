@@ -17,6 +17,7 @@ function buildSessionsRouter(deps) {
         scheduleMessageSend,
         validateWhatsAppRecipient,
         validateToken,
+        refreshSession,
     } = deps;
 
     router.post('/sessions', async (req, res) => {
@@ -85,10 +86,23 @@ function buildSessionsRouter(deps) {
             role: req.session.userRole
         } : null;
 
+        let sessionsData = [];
         if (currentUser) {
-            return res.status(200).json(getSessionsDetails(currentUser.email, currentUser.role === 'admin'));
+            sessionsData = getSessionsDetails(currentUser.email, currentUser.role === 'admin');
+        } else {
+            sessionsData = getSessionsDetails();
         }
-        return res.status(200).json(getSessionsDetails());
+
+        // Trigger background refresh for stale sessions
+        if (refreshSession) {
+            sessionsData.forEach(session => {
+                if (session.status === 'UNKNOWN' || session.status === 'CONNECTING') {
+                    refreshSession(session.sessionId).catch(() => {});
+                }
+            });
+        }
+
+        return res.status(200).json(sessionsData);
     });
 
     router.delete('/sessions/:sessionId', async (req, res) => {

@@ -43,11 +43,25 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
   - [x] Bersihkan semua variabel tidak terpakai (Unused Vars).
   - [x] Refactor `backend/index.js` menjadi kode yang sangat bersih dan efisien.
 
-### 5. Next Steps / Pending Tasks (🚧 To Do)
-- [ ] **Deployment**: User perlu deploy Frontend ke Vercel & Backend ke VPS.
-- [ ] **Database**: Implementasi penyimpanan Chat History (saat ini masih Mock).
+### 5. Database & Features (✅ Selesai)
+- [x] **Database**: Implementasi penyimpanan Chat History (Backend Auto-Save).
+- [x] **Chat Architecture**: Refactor Frontend-Backend (Atomic Message Sending).
 - [x] **Webhook Handler**: Logic penyimpanan pesan masuk ke Database (Basic Text & Media Caption).
 - [x] **Real-time Chat**: Sinkronisasi pesan masuk ke UI via WebSocket/Polling.
+
+### 6. Security Hardening (✅ Selesai - Critical & High)
+- [x] **Critical Fixes**: 
+  - [x] Token Validation Bypass (Strict Session Matching)
+  - [x] Database Field Injection (Whitelist Columns)
+  - [x] Token Storage (File Permission 0600)
+  - [x] SSRF Prevention (Block Private IPs)
+  - [x] Tenant Isolation Hardening
+- [x] **High Priority Fixes**:
+  - [x] Rate Limiting (Login & Send Message)
+  - [x] Error Message Sanitization (No Leak)
+
+### 7. Next Steps / Pending Tasks (🚧 To Do)
+- [ ] **Deployment**: User perlu deploy Frontend ke Vercel & Backend ke VPS.
 
 ---
 

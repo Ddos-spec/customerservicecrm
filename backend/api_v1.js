@@ -94,7 +94,9 @@ function initializeApi(
     regenerateSessionToken,
     redisClientInstance,
     scheduleMessageSend,
-    validateWhatsAppRecipient
+    validateWhatsAppRecipient,
+    getSessionContacts,
+    refreshSession // New parameter
 ) {
     if (redisClientInstance) {
         setRedisClient(redisClientInstance);
@@ -117,7 +119,8 @@ function initializeApi(
         deleteWebhookUrl,
         scheduleMessageSend,
         validateWhatsAppRecipient,
-        validateToken
+        validateToken,
+        refreshSession // Add to deps
     };
 
     router.use(helmet());
