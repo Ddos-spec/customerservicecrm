@@ -46,7 +46,7 @@ function buildMessagesRouter(deps) {
 
         const rawPhone = (req.body?.phone || req.body?.to || '').toString().trim();
         const messageText = (req.body?.message_text || req.body?.text || '').toString().trim();
-        const ticketId = parseInt(req.body?.ticket_id || req.body?.ticketId, 10);
+        const ticketId = (req.body?.ticket_id || req.body?.ticketId || '').toString().trim();
 
         if (!rawPhone) return res.status(400).json({ status: 'error', message: 'Nomor tujuan wajib diisi' });
         if (!messageText) return res.status(400).json({ status: 'error', message: 'Pesan tidak boleh kosong' });

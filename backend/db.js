@@ -356,6 +356,19 @@ async function getTenantBySessionId(sessionId) {
 }
 
 /**
+ * Get tenant seat limit (max_active_members), default 100 if null
+ */
+async function getTenantSeatLimit(tenantId) {
+    const result = await query(
+        'SELECT max_active_members FROM tenants WHERE id = $1',
+        [tenantId]
+    );
+    const limit = result.rows[0]?.max_active_members;
+    const parsed = Number.parseInt(limit, 10);
+    return Number.isFinite(parsed) ? parsed : 100;
+}
+
+/**
  * Get tenant admin agent contact
  * @param {number} tenantId - Tenant ID
  * @returns {Promise<Object|null>} Admin agent user or null
@@ -833,6 +846,7 @@ module.exports = {
     deleteTenant, // Export deleteTenant
     getTenantBySessionId,
     getTenantAdmin,
+    getTenantSeatLimit,
     // Invites
     createUserInvite,
     getInviteByToken,
