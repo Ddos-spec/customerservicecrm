@@ -135,11 +135,23 @@ async function handleMessage(sessionId, data) {
     }
 
     try {
-        // 1. Identify Tenant
-        const tenant = await db.getTenantBySessionId(sessionId);
+        // 1. Identify Tenant or User (super admin)
+        // First check if it's a tenant session
+        let tenant = await db.getTenantBySessionId(sessionId);
+
+        // If not found, check if it's a super admin session
         if (!tenant) {
-            console.warn(`[Webhook] Received message for unknown session: ${sessionId}`);
-            return;
+            const user = await db.getUserBySessionId(sessionId);
+            if (user && user.role === 'super_admin') {
+                // For super admin, we don't have a tenant
+                // We can either skip message persistence or handle differently
+                console.log(`[Webhook] Received message for super admin session: ${sessionId}`);
+                // TODO: Handle super admin messages (maybe skip persistence or use a special tenant)
+                return;
+            } else {
+                console.warn(`[Webhook] Received message for unknown session: ${sessionId}`);
+                return;
+            }
         }
 
         // 2. Identify Contact & Create Ticket
@@ -363,8 +375,14 @@ async function notifySessionDisconnected(sessionId, status, reason) {
     // Jangan kirim jika session yang putus adalah notifier
     if (notifierSessionId === sessionId) return;
 
-    // Cari tenant terkait
-    const tenant = await db.getTenantBySessionId(sessionId);
+    // Cari tenant atau user terkait
+    let tenant = await db.getTenantBySessionId(sessionId);
+    let sessionOwner = null;
+
+    // If not a tenant session, check if it's a user (super admin) session
+    if (!tenant) {
+        sessionOwner = await db.getUserBySessionId(sessionId);
+    }
 
     // Kumpulkan penerima: admin_agent (tenant terkait) + super_admin
     const recipients = [];
@@ -390,8 +408,9 @@ async function notifySessionDisconnected(sessionId, status, reason) {
         throw new Error('Auth ke gateway (notifier) gagal');
     }
 
-    const tenantName = tenant?.company_name || 'Tanpa Tenant';
-    const message = `Session WA (${tenantName}) ${sessionId} status: ${status}${reason ? ` (reason: ${reason})` : ''}. Mohon cek dan login ulang jika perlu.`;
+    const ownerName = tenant?.company_name || sessionOwner?.name || 'Unknown';
+    const ownerType = tenant ? 'Tenant' : sessionOwner ? 'User' : 'Unknown';
+    const message = `Session WA (${ownerType}: ${ownerName}) ${sessionId} status: ${status}${reason ? ` (reason: ${reason})` : ''}. Mohon cek dan login ulang jika perlu.`;
 
     await Promise.allSettled(
         uniquePhones.map(async (phone) => {
