@@ -1,15 +1,14 @@
 import { useEffect, useState, useRef } from 'react';
-import { QrCode, RefreshCw, Smartphone, Loader2 } from 'lucide-react';
+import { Bell, RefreshCw, Loader2, CheckCircle2, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
 const SuperAdminSettings = () => {
   const NOTIFIER_ID = 'notifier';
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [isRefreshingQr, setIsRefreshingQr] = useState<boolean>(false);
-  const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [session, setSession] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const ws = useRef<WebSocket | null>(null);
 
   const fetchData = async () => {
@@ -17,7 +16,8 @@ const SuperAdminSettings = () => {
     try {
       const sessionRes = await api.get('/sessions');
       if (Array.isArray(sessionRes.data)) {
-        setSessions(sessionRes.data.filter((s) => s.sessionId === NOTIFIER_ID));
+        const notifier = sessionRes.data.find((s) => s.sessionId === NOTIFIER_ID);
+        setSession(notifier || null);
       }
     } catch (error) {
       console.error('Failed to fetch notifier settings:', error);
@@ -33,26 +33,22 @@ const SuperAdminSettings = () => {
   // WebSocket Connection
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL 
-      ? new URL(import.meta.env.VITE_API_URL).host 
+    const host = import.meta.env.VITE_API_URL
+      ? new URL(import.meta.env.VITE_API_URL).host
       : window.location.host;
-    
+
     const wsUrl = `${protocol}//${host}`;
-    
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        if (payload.type === 'session-update') {
-            // Filter only notifier session for this page
-            const notifierData = payload.data.filter((s: any) => s.sessionId === NOTIFIER_ID);
-            if (notifierData.length > 0) {
-                 setSessions(notifierData);
-                 if (notifierData[0].status === 'CONNECTED') {
-                     toast.success('Notifier Terhubung!');
-                 }
-            }
+        if (payload.type === 'session-update' && Array.isArray(payload.data)) {
+          const notifier = payload.data.find((s: any) => s.sessionId === NOTIFIER_ID);
+          setSession(notifier || null);
+          if (notifier?.status === 'CONNECTED') {
+            toast.success('Notifier terhubung ke WhatsApp!');
+          }
         }
       } catch (err) {
         console.error('WebSocket message error:', err);
@@ -60,9 +56,7 @@ const SuperAdminSettings = () => {
     };
 
     return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
+      if (ws.current) ws.current.close();
     };
   }, []);
 
@@ -71,147 +65,194 @@ const SuperAdminSettings = () => {
     return qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`;
   };
 
-  const handleConnectNotifier = async () => {
-    setIsConnecting(true);
+  const handleConnect = async () => {
+    setIsProcessing(true);
     try {
       await api.post('/sessions', { sessionId: NOTIFIER_ID });
       await api.post('/admin/notifier-session', { session_id: NOTIFIER_ID });
-      toast.success('Notifier dibuat, scan QR sekarang');
+      toast.success('Scan QR untuk menghubungkan notifier');
       await fetchData();
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Gagal membuat notifier';
-      toast.error(msg);
+      toast.error(error?.response?.data?.message || 'Gagal membuat notifier');
     } finally {
-      setIsConnecting(false);
+      setIsProcessing(false);
     }
   };
 
-  const handleRegenerateQr = async () => {
-    setIsRefreshingQr(true);
+  const handleRefreshQr = async () => {
+    setIsProcessing(true);
     try {
       await api.get(`/sessions/${NOTIFIER_ID}/qr`);
-      toast.success('QR diregenerate, tunggu sebentar');
+      toast.success('QR code diperbarui');
       await fetchData();
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Gagal regenerate QR';
-      toast.error(msg);
+      toast.error(error?.response?.data?.message || 'Gagal refresh QR');
     } finally {
-      setIsRefreshingQr(false);
+      setIsProcessing(false);
     }
   };
 
+  const isConnected = session?.status === 'CONNECTED';
+  const hasSession = !!session;
+  const hasQr = Boolean(session?.qr);
+  const statusLabel = isConnected ? 'Terhubung' : hasSession ? 'Menunggu Scan' : 'Belum Aktif';
+  const statusMessage = isConnected
+    ? 'Notifier aktif dan siap kirim pesan'
+    : hasSession
+    ? 'Scan QR dengan WhatsApp untuk menyelesaikan koneksi'
+    : 'Buat session baru untuk memulai';
+  const statusBadge = isConnected
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    : hasSession
+    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+    : 'bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-gray-300';
+
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="p-8 max-w-2xl mx-auto">
+      <div className="mb-8 flex items-center gap-3">
+        <div className="p-3 rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-200">
+          <Bell size={20} />
+        </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Pengaturan Notifier</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Kelola session WhatsApp khusus notifikasi super admin.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            WhatsApp khusus notifikasi otomatis ke super admin
+          </p>
         </div>
-        <button onClick={fetchData} className="p-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-600 dark:text-gray-300 transition-all">
-          <RefreshCw size={20} className={isLoading ? 'animate-spin' : ''} />
-        </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-gray-50 dark:border-slate-700 flex items-center justify-between">
-          <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
-            <Smartphone size={20} className="mr-2 text-blue-600 dark:text-blue-400" />
-            Session WhatsApp
-          </h3>
-          <span className="text-xs font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full">{sessions.length} Instance</span>
-        </div>
-        <div className="px-6 pb-4 flex flex-col md:flex-row gap-3 md:items-center">
-          <div className="flex-1">
-            <label className="text-xs text-gray-500 dark:text-gray-400 font-semibold">Notifier ID</label>
-            <div className="flex gap-2 mt-1 items-center">
-              <span className="px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-sm font-mono text-gray-900 dark:text-white">
-                notifier
-              </span>
-              <button
-                onClick={handleConnectNotifier}
-                disabled={isConnecting}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
-              >
-                <QrCode size={16} />
-                {isConnecting ? 'Memproses...' : 'Connect Notifier'}
-              </button>
-              <button
-                onClick={handleRegenerateQr}
-                disabled={isRefreshingQr}
-                className="px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-sm font-bold rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-60"
-              >
-                {isRefreshingQr ? 'Regenerating...' : 'Regenerate QR'}
-              </button>
+      {/* Main Card */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+
+        {/* Status Header */}
+        <div className={`px-6 py-4 flex items-center justify-between ${
+          isConnected
+            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-100 dark:border-emerald-800'
+            : 'bg-gray-50 dark:bg-slate-700/50 border-b border-gray-100 dark:border-slate-700'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${
+              isConnected
+                ? 'bg-emerald-100 dark:bg-emerald-800/50 text-emerald-600 dark:text-emerald-400'
+                : 'bg-gray-200 dark:bg-slate-600 text-gray-500 dark:text-gray-400'
+            }`}>
+              {isConnected ? <Wifi size={20} /> : <WifiOff size={20} />}
             </div>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Notifier dipakai khusus untuk notifikasi admin.</p>
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-white text-sm">{statusLabel}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{statusMessage}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`text-[11px] font-semibold px-3 py-1 rounded-full ${statusBadge}`}>
+              {statusLabel}
+            </span>
+            <button
+              onClick={fetchData}
+              disabled={isLoading}
+              className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50/50 dark:bg-slate-800/60 text-gray-400 dark:text-gray-500 text-[10px] uppercase font-bold tracking-widest">
-              <tr>
-                <th className="px-6 py-4">Session ID</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">QR Code</th>
-                <th className="px-6 py-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
-              {sessions.length > 0 ? sessions.map((s: any) => (
-                <tr key={s.sessionId} className="hover:bg-blue-50/30 dark:hover:bg-slate-700/40 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">{s.sessionId}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                      s.status === 'CONNECTED' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
-                    }`}>{s.status}</span>
-                    <span className="ml-2 text-[10px] font-bold text-emerald-600 dark:text-emerald-300">Notifier</span>
-                  </td>
-                  <td className="px-6 py-4">
-                        {s.qr ? (
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={asDataUrl(s.qr)}
-                          alt="QR"
-                          className="w-40 h-40 rounded-lg border border-gray-200 dark:border-slate-700 bg-white"
-                        />
-                        <button
-                        onClick={handleRegenerateQr}
-                        disabled={isRefreshingQr}
-                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-                      >
-                          {isRefreshingQr ? 'Mengambil...' : 'Regenerate QR'}
-                        </button>
-                      </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="animate-spin text-blue-500 mb-3" size={32} />
+              <p className="text-sm text-gray-500 dark:text-gray-400">Memuat data...</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-700/40 text-sm text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-slate-700">
+                <p className="font-semibold text-gray-900 dark:text-white">WhatsApp khusus notifikasi admin</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Dipakai untuk mengirim alert saat session tenant disconnect atau butuh perhatian.
+                </p>
+              </div>
+
+              {isConnected ? (
+                /* Connected State */
+                <div className="flex flex-col items-center py-6">
+                  <div className="w-20 h-20 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4">
+                    <CheckCircle2 className="text-emerald-500" size={40} />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Notifier Aktif</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-sm">
+                    Sistem akan otomatis memberi tahu super admin ketika ada session yang disconnect atau logout.
+                  </p>
+                </div>
+              ) : hasSession ? (
+                /* QR / Pending State */
+                <div className="flex flex-col items-center">
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 dark:border-slate-600 mb-4">
+                    {hasQr ? (
+                      <img
+                        src={asDataUrl(session.qr)}
+                        alt="QR Code"
+                        className="w-52 h-52"
+                      />
                     ) : (
-                      <button
-                        onClick={handleRegenerateQr}
-                        disabled={isRefreshingQr}
-                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 flex items-center gap-1"
-                      >
-                        <QrCode size={14} />
-                        {isRefreshingQr ? 'Mengambil...' : 'Tampilkan QR'}
-                      </button>
+                      <div className="w-52 h-52 rounded-lg bg-gray-50 dark:bg-slate-700 border border-dashed border-gray-300 dark:border-slate-500 flex items-center justify-center text-xs text-gray-400 dark:text-gray-500">
+                        Menunggu QR...
+                      </div>
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300">Notifier</span>
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-gray-400 dark:text-gray-500 text-sm">
-                    {isLoading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="animate-spin" size={16} /> Memuat sesi...
-                      </span>
-                    ) : 'Belum ada session.'}
-                  </td>
-                </tr>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-1 font-medium">
+                    Scan dengan WhatsApp
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+                    Buka WhatsApp &gt; Menu &gt; Linked Devices &gt; Link a Device
+                  </p>
+                  <button
+                    onClick={handleRefreshQr}
+                    disabled={isProcessing}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                  >
+                    <RefreshCw size={16} className={isProcessing ? 'animate-spin' : ''} />
+                    {isProcessing ? 'Memuat...' : 'Refresh QR'}
+                  </button>
+                </div>
+              ) : (
+                /* No Session State */
+                <div className="flex flex-col items-center py-6">
+                  <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4">
+                    <Bell className="text-gray-400 dark:text-gray-500" size={36} />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Setup Notifier</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-sm mb-6">
+                    Hubungkan WhatsApp untuk menerima notifikasi otomatis saat terjadi masalah pada session tenant.
+                  </p>
+                  <button
+                    onClick={handleConnect}
+                    disabled={isProcessing}
+                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-60"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        Memproses...
+                      </>
+                    ) : (
+                      <>
+                        <Wifi size={18} />
+                        Hubungkan WhatsApp
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
-            </tbody>
-          </table>
+            </div>
+          )}
+        </div>
+
+        {/* Info Footer */}
+        <div className="px-6 py-4 bg-gray-50 dark:bg-slate-700/30 border-t border-gray-100 dark:border-slate-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+            Notifier akan mengirim pesan ke nomor super admin yang terdaftar saat ada session disconnect.
+          </p>
         </div>
       </div>
     </div>

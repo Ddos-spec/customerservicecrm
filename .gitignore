@@ -20,6 +20,7 @@ backend/.env
 # OS Files
 .DS_Store
 Thumbs.db
+tmpclaude-*
 
 # VS Code / IDE
 .vscode/
@@ -33,6 +34,7 @@ backend/media/
 backend/*.log
 backend/*.enc
 backend/session_tokens.json
+wa-gateway/wa-gateway.exe
 
 # Logs
 logs

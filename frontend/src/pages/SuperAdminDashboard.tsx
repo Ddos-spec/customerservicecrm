@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, Server, Smartphone,
   Terminal, RefreshCw,
-  Globe, MessageSquare, Database, Building2, Plus
+  Globe, MessageSquare, Database, Building2, Plus,
+  Bell, Wifi, ArrowRight
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -177,60 +178,72 @@ const SuperAdminDashboard = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Real Active Sessions (WhatsApp Instances) */}
-        <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="p-6 flex items-center justify-between">
-                    <div>
-                        <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
-                            <Smartphone size={20} className="mr-2 text-blue-600 dark:text-blue-400" />
-                            Notifier WA (Super Admin)
-                        </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          Status dipakai hanya untuk notifikasi. Kelola QR di Pengaturan.
-                        </p>
-                    </div>
-                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                      (() => {
-                        const notifierSession = sessions.find(s => s.sessionId === notifierSessionId);
-                        if (!notifierSessionId) return 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300';
-                        if (notifierSession?.status === 'CONNECTED') return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300';
-                        return 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300';
-                      })()
-                    }`}>
-                      {(() => {
-                        const notifierSession = sessions.find(s => s.sessionId === notifierSessionId);
-                        if (!notifierSessionId) return 'Notifier belum dipilih';
-                        if (notifierSession?.status === 'CONNECTED') return 'Connected';
-                        return notifierSession ? notifierSession.status : 'Tidak terhubung';
-                      })()}
-                    </div>
+      {/* Notifier Status Card - Distinct CTA */}
+      {(() => {
+        const notifierSession = sessions.find(s => s.sessionId === notifierSessionId);
+        const isConnected = notifierSession?.status === 'CONNECTED';
+        const isSetup = !!notifierSessionId;
+        const statusTone = isConnected
+          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700'
+          : isSetup
+          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-700'
+          : 'bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-gray-300 border-gray-300 dark:border-slate-600';
+
+        return (
+          <div
+            onClick={() => navigate('/super-admin/settings')}
+            className={`relative overflow-hidden p-5 rounded-2xl border cursor-pointer transition-all hover:shadow-md ${
+              isConnected
+                ? 'bg-gradient-to-r from-emerald-50 via-white to-cyan-50 dark:from-emerald-900/30 dark:via-slate-800 dark:to-blue-900/10 border-emerald-200 dark:border-emerald-800'
+                : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700'
+            }`}
+          >
+            <div className="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-blue-50/80 to-transparent dark:from-blue-900/10 pointer-events-none" />
+            <div className="flex items-start justify-between relative">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-xl border ${
+                  isConnected
+                    ? 'bg-white/80 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 border-emerald-200/70 dark:border-emerald-700'
+                    : 'bg-gray-50 dark:bg-slate-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-600'
+                }`}>
+                  {isConnected ? <Wifi size={22} /> : <Bell size={22} />}
                 </div>
-                <div className="px-6 pb-6 flex flex-col gap-3">
-                  {notifierSessionId ? (
-                    <div className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200">
-                      <span className="font-mono text-blue-600 dark:text-blue-300">{notifierSessionId}</span>
-                      <button
-                        onClick={() => navigate('/super-admin/settings')}
-                        className="text-xs font-bold text-blue-600 dark:text-blue-300 hover:underline flex items-center gap-1"
-                      >
-                        Kelola di Pengaturan
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
-                      <span>Belum ada session notifier.</span>
-                      <button
-                        onClick={() => navigate('/super-admin/settings')}
-                        className="text-xs font-bold text-blue-600 dark:text-blue-300 hover:underline"
-                      >
-                        Pilih sekarang
-                      </button>
-                    </div>
-                  )}
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-emerald-600 dark:text-emerald-300">
+                    Notifier
+                  </p>
+                  <p className="font-semibold text-gray-900 dark:text-white text-lg">WhatsApp Admin Alerts</p>
                 </div>
+              </div>
+              <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] font-bold uppercase tracking-widest ${statusTone}`}>
+                <span className={`w-2 h-2 rounded-full ${
+                  isConnected ? 'bg-emerald-500' : isSetup ? 'bg-amber-500' : 'bg-gray-500'
+                }`} />
+                {isConnected ? 'Connected' : isSetup ? 'Menunggu Scan' : 'Belum Aktif'}
+              </span>
             </div>
+            <p className="relative mt-3 text-sm text-gray-600 dark:text-gray-300 max-w-3xl">
+              Dipakai untuk notifikasi admin ketika ada session WhatsApp tenant yang disconnect atau logout.
+            </p>
+            <div className="relative mt-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <div className={`w-2.5 h-2.5 rounded-full ${
+                  isConnected ? 'bg-emerald-500' : isSetup ? 'bg-amber-500' : 'bg-gray-400'
+                }`} />
+                <span>{isConnected ? 'Realtime status aktif' : isSetup ? 'Menunggu scan QR di pengaturan' : 'Belum dikonfigurasi'}</span>
+              </div>
+              <div className="flex items-center gap-1 text-sm font-semibold text-blue-600 dark:text-blue-400">
+                Kelola Notifier
+                <ArrowRight size={16} />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Tenant Overview */}
+        <div className="lg:col-span-2 space-y-6">
 
             {/* Tenant Overview - Real Data */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
