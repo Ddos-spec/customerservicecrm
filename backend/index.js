@@ -544,15 +544,39 @@ webhookHandler.on('connection', (sessionId, data) => {
             sock: createCompatSocket(sessionId)
         };
     }
-    session.status = data.status === 'connected' ? 'CONNECTED' :
+    
+    const newStatus = data.status === 'connected' ? 'CONNECTED' :
         data.status === 'disconnected' ? 'DISCONNECTED' :
         data.status === 'logged_out' ? 'LOGGED_OUT' : 'UNKNOWN';
+    
+    session.status = newStatus;
     session.qr = null;
+    
     // Ensure sock exists
     if (!session.sock) {
         session.sock = createCompatSocket(sessionId);
     }
     sessions.set(sessionId, session);
+    
+    // CRITICAL FIX: Persistence
+    // If Gateway says "Connected" but we don't have it in file, SAVE IT!
+    if (newStatus === 'CONNECTED') {
+        if (!sessionTokens.has(sessionId)) {
+            console.log(`[Auto-Recovery] Session ${sessionId} detected from Webhook. Saving to disk...`);
+            // Generate a token so it can be managed via API later
+            const recoveryToken = crypto.randomBytes(32).toString('hex');
+            sessionTokens.set(sessionId, recoveryToken);
+            saveTokens(); // Write to session_tokens.enc
+        }
+    } else if (newStatus === 'LOGGED_OUT') {
+        // If logged out, remove from disk
+        if (sessionTokens.has(sessionId)) {
+            console.log(`[Auto-Cleanup] Session ${sessionId} logged out. Removing from disk...`);
+            sessionTokens.delete(sessionId);
+            saveTokens();
+        }
+    }
+
     broadcastSessionUpdate();
 });
 
