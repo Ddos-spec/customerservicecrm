@@ -89,9 +89,21 @@ func (h *Handler) handleMessage(evt *events.Message) {
 		}
 	}
 
+	// Log incoming message
+	direction := "INCOMING"
+	if msg.IsFromMe {
+		direction = "OUTGOING"
+	}
+	chatType := "private"
+	if msg.IsGroup {
+		chatType = "group"
+	}
+	log.Print(nil).Infof("[%s] [%s] %s | from: %s | type: %s | session: %s",
+		direction, chatType, msg.PushName, msg.From, msg.Type, h.sessionID)
+
 	// Queue webhook
 	if err := webhook.QueueMessage(h.sessionID, msg); err != nil {
-		log.Print(nil).Errorf("Failed to queue message webhook: %v", err)
+		log.Print(nil).Errorf("[MESSAGE] Failed to queue webhook: %v", err)
 	}
 }
 
@@ -165,8 +177,10 @@ func (h *Handler) handleReceipt(evt *events.Receipt) {
 		"timestamp": evt.Timestamp.Unix(),
 	}
 
+	log.Print(nil).Debugf("[RECEIPT] %s | chat: %s | session: %s", evt.Type, evt.Chat.String(), h.sessionID)
+
 	if err := webhook.QueueEvent(h.sessionID, "receipt", data); err != nil {
-		log.Print(nil).Errorf("Failed to queue receipt webhook: %v", err)
+		log.Print(nil).Errorf("[RECEIPT] Failed to queue webhook: %v", err)
 	}
 }
 
@@ -209,52 +223,72 @@ func (h *Handler) handleChatPresence(evt *events.ChatPresence) {
 
 // handleConnected handles connection events
 func (h *Handler) handleConnected(evt *events.Connected) {
+	log.Print(nil).Infof("[CONNECTED] Session %s is now connected to WhatsApp", h.sessionID)
+
 	data := map[string]interface{}{
 		"status": "connected",
 	}
 
 	if err := webhook.QueueEvent(h.sessionID, "connection", data); err != nil {
-		log.Print(nil).Errorf("Failed to queue connection webhook: %v", err)
+		log.Print(nil).Errorf("[CONNECTED] Failed to queue webhook: %v", err)
+	} else {
+		log.Print(nil).Debugf("[CONNECTED] Webhook queued for session: %s", h.sessionID)
 	}
 }
 
 // handleDisconnected handles disconnection events
 func (h *Handler) handleDisconnected(evt *events.Disconnected) {
+	log.Print(nil).Warnf("[DISCONNECTED] Session %s disconnected from WhatsApp", h.sessionID)
+
 	data := map[string]interface{}{
 		"status": "disconnected",
 	}
 
 	if err := webhook.QueueEvent(h.sessionID, "connection", data); err != nil {
-		log.Print(nil).Errorf("Failed to queue disconnection webhook: %v", err)
+		log.Print(nil).Errorf("[DISCONNECTED] Failed to queue webhook: %v", err)
+	} else {
+		log.Print(nil).Debugf("[DISCONNECTED] Webhook queued for session: %s", h.sessionID)
 	}
 }
 
 // handleLoggedOut handles logout events
 func (h *Handler) handleLoggedOut(evt *events.LoggedOut) {
+	log.Print(nil).Warnf("[LOGGED_OUT] Session %s logged out | reason: %s", h.sessionID, evt.Reason.String())
+
 	data := map[string]interface{}{
 		"status": "logged_out",
 		"reason": evt.Reason.String(),
 	}
 
 	if err := webhook.QueueEvent(h.sessionID, "connection", data); err != nil {
-		log.Print(nil).Errorf("Failed to queue logout webhook: %v", err)
+		log.Print(nil).Errorf("[LOGGED_OUT] Failed to queue webhook: %v", err)
+	} else {
+		log.Print(nil).Debugf("[LOGGED_OUT] Webhook queued for session: %s", h.sessionID)
 	}
 }
 
 // handleHistorySync handles history sync events
 func (h *Handler) handleHistorySync(evt *events.HistorySync) {
+	syncType := evt.Data.GetSyncType().String()
+	progress := evt.Data.GetProgress()
+
+	log.Print(nil).Infof("[HISTORY_SYNC] Session %s | type: %s | progress: %d%%", h.sessionID, syncType, progress)
+
 	data := map[string]interface{}{
-		"type":     evt.Data.GetSyncType().String(),
-		"progress": evt.Data.GetProgress(),
+		"type":     syncType,
+		"progress": progress,
 	}
 
 	if err := webhook.QueueEvent(h.sessionID, "history_sync", data); err != nil {
-		log.Print(nil).Errorf("Failed to queue history sync webhook: %v", err)
+		log.Print(nil).Errorf("[HISTORY_SYNC] Failed to queue webhook: %v", err)
 	}
 }
 
 // handlePushName handles push name updates
 func (h *Handler) handlePushName(evt *events.PushName) {
+	log.Print(nil).Debugf("[PUSH_NAME] %s changed name: %s -> %s | session: %s",
+		evt.JID.String(), evt.OldPushName, evt.NewPushName, h.sessionID)
+
 	data := map[string]interface{}{
 		"jid":      evt.JID.String(),
 		"pushName": evt.NewPushName,
@@ -262,7 +296,7 @@ func (h *Handler) handlePushName(evt *events.PushName) {
 	}
 
 	if err := webhook.QueueEvent(h.sessionID, "push_name", data); err != nil {
-		log.Print(nil).Errorf("Failed to queue push name webhook: %v", err)
+		log.Print(nil).Errorf("[PUSH_NAME] Failed to queue webhook: %v", err)
 	}
 }
 

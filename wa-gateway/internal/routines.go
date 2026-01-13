@@ -8,22 +8,39 @@ import (
 )
 
 func Routines(cron *cron.Cron) {
-	log.Print(nil).Info("Running Routine Tasks")
+	log.Print(nil).Info("[ROUTINE] Background tasks initialized")
 
+	// Run every minute to check client status
 	cron.AddFunc("0 * * * * *", func() {
-		// If WhatsAppClient Connection is more than 0
-		if len(pkgWhatsApp.WhatsAppClient) > 0 {
-			// Check Every Authenticated MSISDN
-			for _, client := range pkgWhatsApp.WhatsAppClient {
-				// Get Real JID from Datastore
-				realJID := client.Store.ID.User
+		clientCount := len(pkgWhatsApp.WhatsAppClient)
+		if clientCount == 0 {
+			log.Print(nil).Debug("[HEARTBEAT] No active WhatsApp clients")
+			return
+		}
 
-				// Mask JID for Logging Information
-				maskJID := realJID[0:len(realJID)-4] + "xxxx"
+		log.Print(nil).Infof("[HEARTBEAT] Active clients: %d", clientCount)
 
-				// Print Log Show Information of Device Checking
-				log.Print(nil).Info("Checking WhatsApp Client for " + maskJID)
+		for jid, client := range pkgWhatsApp.WhatsAppClient {
+			// Get Real JID from Datastore
+			realJID := client.Store.ID.User
+
+			// Mask JID for Logging Information
+			maskJID := realJID[0:len(realJID)-4] + "xxxx"
+
+			// Check connection status
+			isConnected := client.IsConnected()
+			isLoggedIn := client.IsLoggedIn()
+
+			status := "UNKNOWN"
+			if isConnected && isLoggedIn {
+				status = "CONNECTED"
+			} else if isConnected && !isLoggedIn {
+				status = "CONNECTING"
+			} else {
+				status = "DISCONNECTED"
 			}
+
+			log.Print(nil).Infof("[HEARTBEAT] %s | %s | session: %s", maskJID, status, jid)
 		}
 	})
 
