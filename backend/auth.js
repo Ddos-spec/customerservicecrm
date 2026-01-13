@@ -194,7 +194,7 @@ async function notifyInviteWebhook(invitePayload) {
         .info-box { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #4F46E5; }
         .label { font-weight: bold; color: #6b7280; font-size: 12px; text-transform: uppercase; }
         .value { font-size: 16px; margin-top: 4px; }
-        .button { display: inline-block; background: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 15px; }
+        .button { display: inline-block; background: #4F46E5; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 15px; }
         .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
     </style>
 </head>
