@@ -157,6 +157,11 @@ async function ensureSuperAdmin() {
     }
 }
 
+function getFrontendBase() {
+    const raw = process.env.FRONTEND_URL || 'https://customerservicecrm.vercel.app';
+    return raw.replace(/\/+$/, '');
+}
+
 /**
  * Send invite payload to n8n webhook (email handled there)
  */
@@ -642,11 +647,11 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
         });
 
         // Notify n8n webhook (email sending handled there)
-        const frontendBase = process.env.FRONTEND_URL || '';
-        const baseUrl = (frontendBase || '').replace(/\/+$/, '');
-        const inviteLink = `${baseUrl || ''}/login`;
+        const baseUrl = getFrontendBase();
+        const inviteLink = `${baseUrl}/login`;
         await notifyInviteWebhook({
             invite_link: inviteLink,
+            login_link: inviteLink,
             invitee_email: email,
             invitee_name: name,
             invitee_role: role,
@@ -655,7 +660,9 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
             created_by_email: currentUser?.email || null,
             created_by_name: currentUser?.name || null,
             created_by_role: currentUser?.role || null,
-            expires_at: null
+            expires_at: null,
+            username: email,
+            initial_password: password
         });
 
         res.status(201).json({ success: true, user });
@@ -713,12 +720,13 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
         });
 
         // Build invite link for email
-        const frontendBase = process.env.FRONTEND_URL || '';
-        const baseUrl = (frontendBase || '').replace(/\/+$/, '');
-        const inviteLink = `${baseUrl || ''}/invite/${token}`;
+        const baseUrl = getFrontendBase();
+        const inviteLink = `${baseUrl}/invite/${token}`;
+        const loginLink = `${baseUrl}/login`;
 
         await notifyInviteWebhook({
             invite_link: inviteLink,
+            login_link: loginLink,
             invitee_email: email,
             invitee_name: name,
             invitee_role: 'agent',
@@ -728,6 +736,8 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
             created_by_name: currentUser?.name || null,
             created_by_role: currentUser?.role || null,
             expires_at: expiresAt.toISOString(),
+            username: email,
+            initial_password: null
         });
 
         res.status(201).json({ success: true, invite });
