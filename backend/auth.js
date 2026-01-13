@@ -167,9 +167,25 @@ function getFrontendBase() {
  */
 async function notifyInviteWebhook(invitePayload) {
     const webhookUrl = process.env.N8N_INVITE_WEBHOOK_URL;
-    if (!webhookUrl) return;
+    if (!webhookUrl) {
+        console.warn('N8N_INVITE_WEBHOOK_URL not set; skip invite webhook');
+        return;
+    }
     try {
-        await axios.post(webhookUrl, invitePayload, { timeout: 5000 });
+        const sanitized = {
+            invite_link: invitePayload.invite_link,
+            login_link: invitePayload.login_link,
+            invitee_email: invitePayload.invitee_email,
+            invitee_name: invitePayload.invitee_name,
+            invitee_role: invitePayload.invitee_role,
+            tenant_id: invitePayload.tenant_id,
+            created_by_email: invitePayload.created_by_email,
+            created_by_role: invitePayload.created_by_role,
+            expires_at: invitePayload.expires_at
+        };
+        console.log('Posting invite webhook to', webhookUrl, 'payload', sanitized);
+        const resp = await axios.post(webhookUrl, invitePayload, { timeout: 5000 });
+        console.log('Invite webhook sent, status', resp.status);
     } catch (err) {
         console.error('Failed to notify invite webhook:', err.message);
     }
@@ -365,6 +381,27 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
             );
 
             await client.query('COMMIT');
+
+            // Notify n8n webhook for new tenant admin
+            const currentUser = req.session.user;
+            const baseUrl = getFrontendBase();
+            const loginLink = `${baseUrl}/login`;
+            await notifyInviteWebhook({
+                invite_link: loginLink,
+                login_link: loginLink,
+                invitee_email: adminEmail,
+                invitee_name: adminName,
+                invitee_role: 'admin_agent',
+                tenant_id: tenant.id,
+                tenant_name: companyName,
+                created_by_email: currentUser?.email || null,
+                created_by_name: currentUser?.name || null,
+                created_by_role: currentUser?.role || null,
+                expires_at: null,
+                username: adminEmail,
+                initial_password: adminPassword
+            });
+
             res.status(201).json({ success: true, tenant, admin: adminResult.rows[0] });
         } catch (error) {
             await client.query('ROLLBACK');
