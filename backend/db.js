@@ -48,14 +48,16 @@ async function getClient() {
 /**
  * Ensure tenant webhooks table exists
  * This keeps setup minimal without a migration tool.
+ * NOTE: Table should be created with UUID from strukturdatabase.txt schema
  */
 async function ensureTenantWebhooksTable() {
+    // Check if table exists, if not create with UUID
     await query(
         `CREATE TABLE IF NOT EXISTS tenant_webhooks (
-            id SERIAL PRIMARY KEY,
-            tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
             url TEXT NOT NULL,
-            created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
         )`
     );
     await query(
@@ -107,20 +109,21 @@ async function ensureInvitePhoneColumn() {
 
 /**
  * Ensure user invites table exists
+ * NOTE: Table should be created with UUID from strukturdatabase.txt schema
  */
 async function ensureUserInvitesTable() {
     await query(
         `CREATE TABLE IF NOT EXISTS user_invites (
-            id SERIAL PRIMARY KEY,
-            tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             email TEXT NOT NULL,
             role VARCHAR(20) NOT NULL DEFAULT 'agent',
             token TEXT NOT NULL UNIQUE,
             status VARCHAR(20) NOT NULL DEFAULT 'pending',
-            created_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
-            created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-            expires_at TIMESTAMP NULL
+            created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+            expires_at TIMESTAMP WITH TIME ZONE
         )`
     );
     await query(
@@ -147,6 +150,7 @@ async function ensureUserInvitesTable() {
 async function findUserByEmail(email) {
     const result = await query(
         `SELECT u.id, u.tenant_id, u.name, u.email, u.password_hash, u.role, u.status, u.created_at, u.phone_number,
+                u.session_id as user_session_id,
                 t.company_name as tenant_name,
                 t.session_id as tenant_session_id
          FROM users u
@@ -159,12 +163,13 @@ async function findUserByEmail(email) {
 
 /**
  * Find user by ID
- * @param {number} id - User ID
+ * @param {string} id - User ID (UUID)
  * @returns {Promise<Object|null>} User object or null
  */
 async function findUserById(id) {
     const result = await query(
         `SELECT u.id, u.tenant_id, u.name, u.email, u.role, u.status, u.created_at, u.phone_number,
+                u.session_id as user_session_id,
                 t.company_name as tenant_name,
                 t.session_id as tenant_session_id
          FROM users u
@@ -192,7 +197,7 @@ async function createUser({ tenant_id, name, email, password_hash, role, status 
 
 /**
  * Get all users for a tenant
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @returns {Promise<Array>} List of users
  */
 async function getUsersByTenant(tenantId) {
@@ -208,7 +213,7 @@ async function getUsersByTenant(tenantId) {
 
 /**
  * Update user status
- * @param {number} userId - User ID
+ * @param {string} userId - User ID (UUID)
  * @param {string} status - New status
  * @returns {Promise<Object>} Updated user
  */
@@ -222,7 +227,7 @@ async function updateUserStatus(userId, status) {
 
 /**
  * Update user details (generic)
- * @param {number} userId - User ID
+ * @param {string} userId - User ID (UUID)
  * @param {Object} updates - Fields to update
  * @returns {Promise<Object>} Updated user
  */
@@ -244,7 +249,7 @@ async function updateUser(userId, updates) {
 
 /**
  * Delete user
- * @param {number} userId - User ID
+ * @param {string} userId - User ID (UUID)
  * @returns {Promise<boolean>} Success status
  */
 async function deleteUser(userId) {
@@ -290,7 +295,7 @@ async function getAllTenants() {
 
 /**
  * Get tenant by ID
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @returns {Promise<Object|null>} Tenant object or null
  */
 async function getTenantById(tenantId) {
@@ -303,7 +308,7 @@ async function getTenantById(tenantId) {
 
 /**
  * Update tenant status
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @param {string} status - New status
  * @returns {Promise<Object>} Updated tenant
  */
@@ -317,7 +322,7 @@ async function updateTenantStatus(tenantId, status) {
 
 /**
  * Set tenant session id
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @param {string|null} sessionId - Session ID
  * @returns {Promise<Object>} Updated tenant
  */
@@ -331,7 +336,7 @@ async function setTenantSessionId(tenantId, sessionId) {
 
 /**
  * Delete tenant
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @returns {Promise<boolean>} Success status
  */
 async function deleteTenant(tenantId) {
@@ -356,6 +361,33 @@ async function getTenantBySessionId(sessionId) {
 }
 
 /**
+ * Get user by session id (for super admin)
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<Object|null>} User object or null
+ */
+async function getUserBySessionId(sessionId) {
+    const result = await query(
+        'SELECT * FROM users WHERE session_id = $1',
+        [sessionId]
+    );
+    return result.rows[0] || null;
+}
+
+/**
+ * Set user session id (for super admin)
+ * @param {string} userId - User ID (UUID)
+ * @param {string|null} sessionId - Session ID
+ * @returns {Promise<Object>} Updated user
+ */
+async function setUserSessionId(userId, sessionId) {
+    const result = await query(
+        'UPDATE users SET session_id = $1 WHERE id = $2 RETURNING *',
+        [sessionId, userId]
+    );
+    return result.rows[0];
+}
+
+/**
  * Get tenant seat limit (max_active_members), default 100 if null
  */
 async function getTenantSeatLimit(tenantId) {
@@ -370,7 +402,7 @@ async function getTenantSeatLimit(tenantId) {
 
 /**
  * Get tenant admin agent contact
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @returns {Promise<Object|null>} Admin agent user or null
  */
 async function getTenantAdmin(tenantId) {
@@ -481,7 +513,7 @@ async function acceptInvite(token) {
 
 /**
  * Count pending invites for a tenant
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @returns {Promise<number>} Count
  */
 async function countPendingInvites(tenantId) {
@@ -498,7 +530,7 @@ async function countPendingInvites(tenantId) {
 
 /**
  * List webhooks for a tenant
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @returns {Promise<Array>} List of webhooks
  */
 async function getTenantWebhooks(tenantId) {
@@ -514,7 +546,7 @@ async function getTenantWebhooks(tenantId) {
 
 /**
  * Create webhook for a tenant
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @param {string} url - Webhook URL
  * @returns {Promise<Object>} Created webhook
  */
@@ -530,7 +562,7 @@ async function createTenantWebhook(tenantId, url) {
 
 /**
  * Get ticket by ID with last customer message timestamp (for guard)
- * @param {number} ticketId - Ticket ID
+ * @param {string} ticketId - Ticket ID (UUID)
  * @returns {Promise<Object|null>} Ticket with last_customer_message_at
  */
 async function getTicketWithLastCustomerMessage(ticketId) {
@@ -552,7 +584,7 @@ async function getTicketWithLastCustomerMessage(ticketId) {
 
 /**
  * Count messages for a tenant within a time window
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @param {number} minutes - Lookback window in minutes
  * @param {string|null} senderType - Optional sender_type filter
  * @returns {Promise<number>} Count of messages
@@ -579,8 +611,8 @@ async function countTenantMessagesSince(tenantId, minutes = 60, senderType = nul
 
 /**
  * Delete webhook for a tenant
- * @param {number} tenantId - Tenant ID
- * @param {number} webhookId - Webhook ID
+ * @param {string} tenantId - Tenant ID (UUID)
+ * @param {string} webhookId - Webhook ID (UUID)
  * @returns {Promise<boolean>} Success status
  */
 async function deleteTenantWebhook(tenantId, webhookId) {
@@ -638,7 +670,7 @@ async function getOrCreateTicket({ tenant_id, customer_name, customer_contact })
 
 /**
  * Get messages for a ticket
- * @param {number} ticketId - Ticket ID
+ * @param {string} ticketId - Ticket ID (UUID)
  * @returns {Promise<Array>} List of messages
  */
 async function getMessagesByTicket(ticketId) {
@@ -651,7 +683,7 @@ async function getMessagesByTicket(ticketId) {
 
 /**
  * Get tickets for a tenant with pagination
- * @param {number} tenantId - Tenant ID
+ * @param {string} tenantId - Tenant ID (UUID)
  * @param {number} limit - Number of tickets
  * @param {number} offset - Offset for pagination
  * @returns {Promise<Array>} List of tickets
@@ -675,7 +707,7 @@ async function getTicketsByTenant(tenantId, limit = 50, offset = 0) {
 
 /**
  * Update ticket status
- * @param {number} ticketId - Ticket ID
+ * @param {string} ticketId - Ticket ID (UUID)
  * @param {string} status - New status
  * @returns {Promise<Object>} Updated ticket
  */
@@ -689,8 +721,8 @@ async function updateTicketStatus(ticketId, status) {
 
 /**
  * Assign ticket to agent
- * @param {number} ticketId - Ticket ID
- * @param {number} agentId - Agent user ID
+ * @param {string} ticketId - Ticket ID (UUID)
+ * @param {string} agentId - Agent user ID (UUID)
  * @returns {Promise<Object>} Updated ticket
  */
 async function assignTicketToAgent(ticketId, agentId) {
@@ -703,7 +735,7 @@ async function assignTicketToAgent(ticketId, agentId) {
 
 /**
  * Add internal note to ticket (for escalation)
- * @param {number} ticketId - Ticket ID
+ * @param {string} ticketId - Ticket ID (UUID)
  * @param {string} note - Internal note
  * @returns {Promise<Object>} Updated ticket
  */
@@ -721,7 +753,7 @@ async function addTicketNote(ticketId, note) {
 
 /**
  * Escalate ticket (for n8n)
- * @param {number} ticketId - Ticket ID
+ * @param {string} ticketId - Ticket ID (UUID)
  * @param {string} reason - Escalation reason
  * @returns {Promise<Object>} Updated ticket
  */
@@ -742,7 +774,7 @@ async function escalateTicket(ticketId, reason) {
 
 /**
  * Get dashboard statistics for a tenant
- * @param {number} tenantId - Tenant ID (null for super admin = all tenants)
+ * @param {string} tenantId - Tenant ID (UUID, null for super admin = all tenants)
  * @returns {Promise<Object>} Statistics object
  */
 async function getDashboardStats(tenantId = null) {
@@ -837,6 +869,8 @@ module.exports = {
     updateUserStatus,
     updateUser,
     deleteUser,
+    getUserBySessionId,
+    setUserSessionId,
     // Tenants
     createTenant,
     getAllTenants,
