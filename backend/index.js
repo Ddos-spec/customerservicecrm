@@ -266,43 +266,57 @@ async function refreshSession(sessionId) {
     
     // Don't refresh if already connecting/connected recently
     const session = sessions.get(sessionId);
-    if (session && session.status === 'CONNECTED') return;
+    // Force check if needed, but throttle? For now, let aggressive logic handle it via route.
 
     try {
         const token = sessionTokens.get(sessionId);
         waGateway.setSessionToken(sessionId, token);
         
-        // "Login" acts as a status check
-        const response = await waGateway.login(sessionId);
-        
-        let currentSession = sessions.get(sessionId);
-        if (!currentSession) {
-            currentSession = { 
-                sessionId, 
-                sock: createCompatSocket(sessionId),
-                status: 'UNKNOWN'
-            };
+        // STRATEGY 1: Lightweight "Ping" via getGroups
+        // If this succeeds, we are definitely connected.
+        try {
+            const groupResp = await waGateway.getGroups(sessionId);
+            if (groupResp && (groupResp.status === true || groupResp.status === 'success')) {
+                // We are CONNECTED!
+                updateSessionStatus(sessionId, 'CONNECTED');
+                return;
+            }
+        } catch (pingErr) {
+            // Ping failed, likely disconnected or auth error. Fallback to Login.
         }
 
+        // STRATEGY 2: Login (Heavy Check / QR Gen)
+        const response = await waGateway.login(sessionId);
+        
         const msg = (response.message || '').toLowerCase();
         
         if (response.status && response.data?.qr) {
-            currentSession.status = 'DISCONNECTED';
-            currentSession.qr = response.data.qr;
+            updateSessionStatus(sessionId, 'DISCONNECTED', response.data.qr);
         } else if (msg.includes('reconnected') || msg.includes('already') || msg.includes('login')) {
-            // "Already logged in" or "Reconnected" -> CONNECTED
-            currentSession.status = 'CONNECTED';
-            currentSession.qr = null;
+            updateSessionStatus(sessionId, 'CONNECTED');
         } else if (response.code === 200 && !response.data?.qr) {
-             // Fallback: HTTP 200 without QR usually means connected
-             currentSession.status = 'CONNECTED';
-             currentSession.qr = null;
+             updateSessionStatus(sessionId, 'CONNECTED');
+        } else {
+             // Unknown state? keep as is or set to unknown
         }
         
-        sessions.set(sessionId, currentSession);
-        broadcastSessionUpdate();
     } catch (error) {
         console.warn(`[Refresh] Failed to refresh session ${sessionId}: ${error.message}`);
+    }
+}
+
+function updateSessionStatus(sessionId, status, qr = null) {
+    let current = sessions.get(sessionId);
+    if (!current) {
+        current = { sessionId, sock: createCompatSocket(sessionId), status: 'UNKNOWN' };
+    }
+    
+    // Only broadcast if changed
+    if (current.status !== status || current.qr !== qr) {
+        current.status = status;
+        current.qr = qr;
+        sessions.set(sessionId, current);
+        broadcastSessionUpdate();
     }
 }
 
