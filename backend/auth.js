@@ -763,6 +763,83 @@ router.patch('/users/:id/status', requireRole('super_admin', 'admin_agent'), asy
 });
 
 /**
+ * PATCH /api/v1/admin/users/:id
+ * Update user details (name, email, password, phone_number, role)
+ */
+router.patch('/users/:id', requireRole('super_admin', 'admin_agent'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, email, password, phone_number, role } = req.body;
+        const currentUser = req.session.user;
+
+        // 1. Get Target User
+        const targetUser = await db.findUserById(id);
+        if (!targetUser) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        // 2. Permission Check
+        // Super Admin can edit anyone.
+        // Admin Agent can only edit users in their own tenant.
+        if (currentUser.role !== 'super_admin' && targetUser.tenant_id !== currentUser.tenant_id) {
+            return res.status(403).json({ success: false, error: 'Cannot modify users from other tenant' });
+        }
+        
+        // Admin Agent cannot edit Super Admin
+        if (targetUser.role === 'super_admin' && currentUser.role !== 'super_admin') {
+             return res.status(403).json({ success: false, error: 'Forbidden' });
+        }
+
+        // 3. Prepare Updates
+        const updates = {};
+        if (name) updates.name = name;
+        if (email) {
+            // Check uniqueness if email changed
+            if (email !== targetUser.email) {
+                const existing = await db.findUserByEmail(email);
+                if (existing) {
+                    return res.status(409).json({ success: false, error: 'Email already exists' });
+                }
+                updates.email = email;
+            }
+        }
+        if (password && password.trim().length > 0) {
+            if (password.length < 6) {
+                 return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+            }
+            updates.password_hash = await bcrypt.hash(password, 12);
+        }
+        // Allow clearing phone number with empty string or null
+        if (phone_number !== undefined) { 
+             updates.phone_number = (phone_number && phone_number.toString().trim() !== '') ? phone_number.toString().trim() : null;
+        }
+        
+        // Only Super Admin can change role
+        if (role && currentUser.role === 'super_admin') {
+             if (['admin_agent', 'agent'].includes(role)) {
+                 updates.role = role;
+             }
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.json({ success: true, user: targetUser, message: 'No changes made' });
+        }
+
+        // 4. Perform Update
+        const updatedUser = await db.updateUser(id, updates);
+        
+        // Remove password hash from response
+        delete updatedUser.password_hash;
+        
+        res.json({ success: true, user: updatedUser });
+
+    } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({ success: false, error: 'Failed to update user' });
+    }
+});
+
+/**
  * DELETE /api/v1/admin/users/:id
  * Delete user
  */

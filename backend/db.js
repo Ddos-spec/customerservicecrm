@@ -221,6 +221,26 @@ async function updateUserStatus(userId, status) {
 }
 
 /**
+ * Update user details (generic)
+ * @param {number} userId - User ID
+ * @param {Object} updates - Fields to update
+ * @returns {Promise<Object>} Updated user
+ */
+async function updateUser(userId, updates) {
+    const fields = Object.keys(updates);
+    if (fields.length === 0) return null;
+
+    const setClause = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
+    const values = fields.map(f => updates[f]);
+    
+    const result = await query(
+        `UPDATE users SET ${setClause} WHERE id = $1 RETURNING *`,
+        [userId, ...values]
+    );
+    return result.rows[0];
+}
+
+/**
  * Delete user
  * @param {number} userId - User ID
  * @returns {Promise<boolean>} Success status
@@ -787,6 +807,7 @@ module.exports = {
     getUsersByTenantWithPhone,
     getSuperAdminsWithPhone,
     updateUserStatus,
+    updateUser,
     deleteUser,
     // Tenants
     createTenant,

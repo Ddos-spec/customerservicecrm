@@ -18,7 +18,7 @@ const { createClient } = require('redis');
 const { initializeApi, getWebhookUrl } = require('./api_v1');
 const { router: authRouter, ensureSuperAdmin } = require('./auth');
 const db = require('./db');
-const n8nRouter = require('./n8n-api');
+const { initializeN8nApi } = require('./n8n-api');
 require('dotenv').config();
 const session = require('express-session');
 const { RedisStore } = require('connect-redis');
@@ -436,7 +436,7 @@ app.get('/api/v1/gateway/health', async (req, res) => {
 app.use('/api/v1/admin', authRouter);
 
 // n8n integration
-app.use('/api/v1/n8n', n8nRouter);
+app.use('/api/v1/n8n', initializeN8nApi({ scheduleMessageSend, waGateway }));
 
 // Webhook handler for Go WhatsApp Gateway
 const webhookHandler = require('./webhook-handler');
