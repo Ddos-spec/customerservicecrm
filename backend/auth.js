@@ -163,7 +163,7 @@ function getFrontendBase() {
 }
 
 /**
- * Send invite payload to n8n webhook (email handled there)
+ * Send invite payload to n8n webhook (email format)
  */
 async function notifyInviteWebhook(invitePayload) {
     const webhookUrl = process.env.N8N_INVITE_WEBHOOK_URL;
@@ -172,19 +172,89 @@ async function notifyInviteWebhook(invitePayload) {
         return;
     }
     try {
-        const sanitized = {
-            invite_link: invitePayload.invite_link,
-            login_link: invitePayload.login_link,
-            invitee_email: invitePayload.invitee_email,
-            invitee_name: invitePayload.invitee_name,
-            invitee_role: invitePayload.invitee_role,
-            tenant_id: invitePayload.tenant_id,
-            created_by_email: invitePayload.created_by_email,
-            created_by_role: invitePayload.created_by_role,
-            expires_at: invitePayload.expires_at
+        const { invitee_email, invitee_name, invitee_role, invite_link, login_link, initial_password, tenant_name } = invitePayload;
+
+        // Determine subject based on role
+        const isAdmin = invitee_role === 'admin_agent';
+        const subject = isAdmin
+            ? `Selamat Datang Admin ${tenant_name || 'Tenant Baru'}`
+            : 'Undangan Bergabung sebagai Agent';
+
+        // Build HTML message
+        const message = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; }
+        .info-box { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #4F46E5; }
+        .label { font-weight: bold; color: #6b7280; font-size: 12px; text-transform: uppercase; }
+        .value { font-size: 16px; margin-top: 4px; }
+        .button { display: inline-block; background: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 15px; }
+        .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Selamat Datang!</h1>
+        </div>
+        <div class="content">
+            <p>Halo <strong>${invitee_name}</strong>,</p>
+            <p>Akun Anda telah berhasil dibuat. Berikut adalah informasi login Anda:</p>
+
+            <div class="info-box">
+                <div class="label">Username / Email</div>
+                <div class="value">${invitee_email}</div>
+            </div>
+
+            ${initial_password ? `
+            <div class="info-box">
+                <div class="label">Password</div>
+                <div class="value">${initial_password}</div>
+            </div>
+            ` : `
+            <div class="info-box">
+                <div class="label">Password</div>
+                <div class="value">Silakan set password melalui link undangan</div>
+            </div>
+            `}
+
+            <div class="info-box">
+                <div class="label">Role</div>
+                <div class="value">${isAdmin ? 'Admin Agent' : 'Agent'}</div>
+            </div>
+
+            ${tenant_name ? `
+            <div class="info-box">
+                <div class="label">Tenant</div>
+                <div class="value">${tenant_name}</div>
+            </div>
+            ` : ''}
+
+            <p style="text-align: center;">
+                <a href="${login_link || invite_link}" class="button">Login Sekarang</a>
+            </p>
+        </div>
+        <div class="footer">
+            <p>Email ini dikirim secara otomatis. Jangan bagikan informasi login Anda kepada siapapun.</p>
+        </div>
+    </div>
+</body>
+</html>`.trim();
+
+        const emailPayload = {
+            to: invitee_email,
+            subject,
+            message
         };
-        console.log('Posting invite webhook to', webhookUrl, 'payload', sanitized);
-        const resp = await axios.post(webhookUrl, invitePayload, { timeout: 5000 });
+
+        console.log('Posting invite webhook to', webhookUrl, 'to:', invitee_email);
+        const resp = await axios.post(webhookUrl, emailPayload, { timeout: 5000 });
         console.log('Invite webhook sent, status', resp.status);
     } catch (err) {
         console.error('Failed to notify invite webhook:', err.message);
