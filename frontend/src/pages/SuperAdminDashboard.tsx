@@ -114,14 +114,14 @@ const SuperAdminDashboard = () => {
       label: 'Total Tickets',
       value: stats?.tickets?.total || '0',
       icon: MessageSquare,
-      color: 'text-blue-600',
+      color: 'text-emerald-600',
       trend: `${stats?.tickets?.open || '0'} Open`
     },
     {
       label: 'Total Perusahaan (Tenants)',
       value: stats?.tenants?.total || '0',
       icon: Building2,
-      color: 'text-purple-600',
+      color: 'text-emerald-600',
       trend: `${stats?.tenants?.active || '0'} Active`
     },
     {
@@ -154,7 +154,7 @@ const SuperAdminDashboard = () => {
             </button>
             <button
                 onClick={() => navigate('/super-admin/tenants')}
-                className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 dark:shadow-blue-900/30 hover:bg-blue-700 transition-all"
+                className="flex items-center space-x-2 px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 dark:shadow-emerald-900/30 hover:bg-emerald-700 transition-all"
             >
                 <Plus size={18} />
                 <span>Tambah Tenant Baru</span>
@@ -194,11 +194,11 @@ const SuperAdminDashboard = () => {
             onClick={() => navigate('/super-admin/settings')}
             className={`relative overflow-hidden p-5 rounded-2xl border cursor-pointer transition-all hover:shadow-md ${
               isConnected
-                ? 'bg-gradient-to-r from-emerald-50 via-white to-cyan-50 dark:from-emerald-900/30 dark:via-slate-800 dark:to-blue-900/10 border-emerald-200 dark:border-emerald-800'
+                ? 'bg-gradient-to-r from-emerald-50 via-white to-cyan-50 dark:from-emerald-900/30 dark:via-slate-800 dark:to-emerald-900/20 border-emerald-200 dark:border-emerald-800'
                 : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700'
             }`}
           >
-            <div className="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-blue-50/80 to-transparent dark:from-blue-900/10 pointer-events-none" />
+            <div className="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-emerald-50/80 to-transparent dark:from-emerald-900/10 pointer-events-none" />
             <div className="flex items-start justify-between relative">
               <div className="flex items-center gap-3">
                 <div className={`p-3 rounded-xl border ${
@@ -232,7 +232,7 @@ const SuperAdminDashboard = () => {
                 }`} />
                 <span>{isConnected ? 'Realtime status aktif' : isSetup ? 'Menunggu scan QR di pengaturan' : 'Belum dikonfigurasi'}</span>
               </div>
-              <div className="flex items-center gap-1 text-sm font-semibold text-blue-600 dark:text-blue-400">
+              <div className="flex items-center gap-1 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
                 Kelola Notifier
                 <ArrowRight size={16} />
               </div>
@@ -253,9 +253,9 @@ const SuperAdminDashboard = () => {
                         <span className="text-xs font-bold bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-3 py-1 rounded-full">{tenants.length} Tenants</span>
                         <button
                             onClick={() => navigate('/super-admin/tenants')}
-                            className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                            className="text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:underline"
                         >
-                            Lihat Semua →
+                                                        Lihat Semua
                         </button>
                     </div>
                 </div>
@@ -292,7 +292,7 @@ const SuperAdminDashboard = () => {
         <div className="space-y-6">
             <div className="bg-gray-900 rounded-2xl shadow-xl overflow-hidden p-6 border border-gray-800">
                 <div className="flex items-center justify-between mb-6">
-                    <h3 className="font-bold text-blue-400 flex items-center text-sm">
+                    <h3 className="font-bold text-emerald-400 flex items-center text-sm">
                         <Terminal size={16} className="mr-2" />
                         Live System Logs
                     </h3>
