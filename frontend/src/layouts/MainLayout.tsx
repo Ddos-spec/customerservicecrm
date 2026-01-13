@@ -62,7 +62,7 @@ const MainLayout = () => {
           "w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all mb-1",
           isActive 
             ? (isSuperAdmin ? "bg-green-600 text-white shadow-lg shadow-green-500/20" : "bg-blue-600 text-white shadow-lg shadow-blue-500/20")
-            : "text-gray-400 hover:bg-gray-800 hover:text-white"
+            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
         )}
       >
         <Icon size={20} />
@@ -157,33 +157,33 @@ const MainLayout = () => {
 
 
       {/* ================= MOBILE HEADER ================= */}
-      <div className={clsx("lg:hidden fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center shadow-lg", isSuperAdmin ? "bg-green-900" : "bg-blue-900")}>
-        <div className="font-black text-lg flex items-center space-x-2 text-white uppercase tracking-tighter">
+      <div className="lg:hidden fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center shadow-lg border-b border-gray-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md">
+        <div className="font-black text-lg flex items-center space-x-2 text-gray-900 dark:text-white uppercase tracking-tighter">
           <img src="/logo.png" alt="CRM SaaS" className="h-8 w-8 rounded-lg object-contain" />
           <span>CRM SaaS</span>
         </div>
-        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 bg-white/10 rounded-xl text-white">
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 bg-gray-100 dark:bg-white/10 rounded-xl text-gray-900 dark:text-white">
           {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
 
       {/* ================= MOBILE SIDEBAR ================= */}
       <aside className={clsx(
-        "fixed inset-y-0 left-0 z-50 w-80 bg-gray-950 text-white transform transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) lg:hidden flex flex-col shadow-2xl",
+        "fixed inset-y-0 left-0 z-50 w-80 transform transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) lg:hidden flex flex-col shadow-2xl bg-white text-gray-900 dark:bg-gray-950 dark:text-white border-r border-gray-100 dark:border-slate-800",
         isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="p-8 border-b border-white/5 flex items-center space-x-4">
-          <div className={clsx("w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black shadow-2xl", isSuperAdmin ? "bg-green-600 shadow-green-900/50" : "bg-blue-600 shadow-blue-900/50")}>
+        <div className="p-8 border-b border-gray-100 dark:border-white/5 flex items-center space-x-4">
+          <div className={clsx("w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black shadow-2xl text-white", isSuperAdmin ? "bg-green-600 shadow-green-900/50" : "bg-blue-600 shadow-blue-900/50")}>
             {user?.name.charAt(0)}
           </div>
           <div className="overflow-hidden">
-             <p className="font-black text-lg truncate text-white leading-tight">{user?.name}</p>
-             <p className={clsx("text-xs font-bold uppercase tracking-widest mt-1 truncate", isSuperAdmin ? "text-green-400" : "text-blue-400")}>{user?.tenant_name || user?.role}</p>
+             <p className="font-black text-lg truncate text-gray-900 dark:text-white leading-tight">{user?.name}</p>
+             <p className={clsx("text-xs font-bold uppercase tracking-widest mt-1 truncate", isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400")}>{user?.tenant_name || user?.role}</p>
           </div>
         </div>
 
         <nav className="flex-1 px-6 py-8 overflow-y-auto">
-          <div className="mb-6 px-4 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
+          <div className="mb-6 px-4 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">
             Menu Navigasi
           </div>
           {getNavItems().map((item) => (
@@ -191,17 +191,17 @@ const MainLayout = () => {
           ))}
         </nav>
 
-        <div className="p-6 border-t border-white/5 bg-gray-950/50">
+        <div className="p-6 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-gray-950/50">
           <button
             onClick={toggleDarkMode}
-            className="w-full mb-3 flex items-center space-x-3 px-5 py-4 rounded-2xl bg-white/5 text-white hover:bg-white/10 transition-colors font-bold uppercase tracking-widest text-xs"
+            className="w-full mb-3 flex items-center space-x-3 px-5 py-4 rounded-2xl bg-gray-900 text-white dark:bg-white/10 hover:bg-gray-800 dark:hover:bg-white/20 transition-colors font-bold uppercase tracking-widest text-xs"
           >
             {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
           </button>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center space-x-3 px-5 py-4 text-red-400 hover:text-white hover:bg-red-500/20 rounded-2xl transition-all font-black uppercase tracking-widest text-xs"
+            className="w-full flex items-center space-x-3 px-5 py-4 text-red-500 hover:text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-2xl transition-all font-black uppercase tracking-widest text-xs"
           >
             <LogOut size={20} />
             <span>Keluar Sesi</span>
