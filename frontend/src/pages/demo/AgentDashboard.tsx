@@ -28,6 +28,26 @@ const toNumber = (value: any) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const DEMO_STATS = [
+  { label: 'Total Chat Hari Ini', value: '142', icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', trend: '+12%' },
+  { label: 'Waktu Respon Rata-rata', value: '1.5 mnt', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', trend: 'Target 2m' },
+  { label: 'Kepuasan Pelanggan', value: '4.9/5', icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: 'CSAT' },
+  { label: 'Chat Terselesaikan', value: '128', icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50', trend: 'Hari ini' },
+];
+
+const DEMO_RECENT_CHATS = [
+  { id: 1, name: 'Budi Santoso', message: 'Tanya stok batik kencana ungu kak...', time: '2 menit lalu', status: 'unread', avatar: 'BS' },
+  { id: 2, name: 'Siti Aminah', message: 'Terima kasih barang sudah sampai!', time: '15 menit lalu', status: 'read', avatar: 'SA' },
+  { id: 3, name: 'Dewi Lestari', message: 'Bisa minta list harga terupdate?', time: '1 jam lalu', status: 'read', avatar: 'DL' },
+  { id: 4, name: 'Agus Prayogo', message: 'Pesanan saya dengan kode #123 kok belum dikirim?', time: '3 jam lalu', status: 'unread', avatar: 'AP' },
+];
+
+const DEMO_ACTIVITY = [
+  { user: 'Siti Aminah', action: 'Membalas chat dari Andi', time: 'Just now' },
+  { user: 'Budi Santoso', action: 'Mengubah status pesanan #992', time: '5m ago' },
+  { user: 'System AI', action: 'Menjawab otomatis tanya jam operasional', time: '12m ago' },
+];
+
 const AgentDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
@@ -170,13 +190,6 @@ const AgentDashboard = () => {
     return () => clearInterval(interval);
   }, [isDemo, fetchSessionStatus]);
 
-  const demoStats = [
-    { label: 'Total Chat Hari Ini', value: '142', icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', trend: '+12%' },
-    { label: 'Waktu Respon Rata-rata', value: '1.5 mnt', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', trend: 'Target 2m' },
-    { label: 'Kepuasan Pelanggan', value: '4.9/5', icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: 'CSAT' },
-    { label: 'Chat Terselesaikan', value: '128', icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50', trend: 'Hari ini' },
-  ];
-
   const totalTickets = toNumber(stats?.tickets?.total_tickets);
   const openTickets = toNumber(stats?.tickets?.open_tickets);
   const pendingTickets = toNumber(stats?.tickets?.pending_tickets);
@@ -187,7 +200,7 @@ const AgentDashboard = () => {
   const satisfactionScore = totalTickets > 0 ? ((closedTickets / totalTickets) * 5).toFixed(1) : '0.0';
 
   const statCards = useMemo(() => (
-    isDemo ? demoStats : [
+    isDemo ? DEMO_STATS : [
       { label: 'Total Chat Hari Ini', value: String(todayTickets), icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', trend: `${totalTickets} Total` },
       { label: 'Waktu Respon Rata-rata', value: avgResponseLabel, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', trend: `${openTickets} Open` },
       { label: 'Kepuasan Pelanggan', value: `${satisfactionScore}/5`, icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: `${closedTickets} Closed` },
@@ -195,15 +208,8 @@ const AgentDashboard = () => {
     ]
   ), [isDemo, todayTickets, totalTickets, avgResponseLabel, openTickets, satisfactionScore, closedTickets, pendingTickets]);
 
-  const demoRecentChats = [
-    { id: 1, name: 'Budi Santoso', message: 'Tanya stok batik kencana ungu kak...', time: '2 menit lalu', status: 'unread', avatar: 'BS' },
-    { id: 2, name: 'Siti Aminah', message: 'Terima kasih barang sudah sampai!', time: '15 menit lalu', status: 'read', avatar: 'SA' },
-    { id: 3, name: 'Dewi Lestari', message: 'Bisa minta list harga terupdate?', time: '1 jam lalu', status: 'read', avatar: 'DL' },
-    { id: 4, name: 'Agus Prayogo', message: 'Pesanan saya dengan kode #123 kok belum dikirim?', time: '3 jam lalu', status: 'unread', avatar: 'AP' },
-  ];
-
   const recentChats = useMemo(() => (
-    isDemo ? demoRecentChats : recentTickets.slice(0, 4).map((t) => {
+    isDemo ? DEMO_RECENT_CHATS : recentTickets.slice(0, 4).map((t) => {
       const name = t.customer_name || t.customer_contact || `Customer #${t.id}`;
       const initials = name.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase();
       return {
@@ -217,14 +223,8 @@ const AgentDashboard = () => {
     })
   ), [isDemo, recentTickets]);
 
-  const demoActivity = [
-    { user: 'Siti Aminah', action: 'Membalas chat dari Andi', time: 'Just now' },
-    { user: 'Budi Santoso', action: 'Mengubah status pesanan #992', time: '5m ago' },
-    { user: 'System AI', action: 'Menjawab otomatis tanya jam operasional', time: '12m ago' },
-  ];
-
   const teamActivity = useMemo(() => (
-    isDemo ? demoActivity : recentTickets.slice(0, 3).map((t) => ({
+    isDemo ? DEMO_ACTIVITY : recentTickets.slice(0, 3).map((t) => ({
       user: t.agent_name || 'Unassigned',
       action: t.status === 'closed' ? `Menutup tiket #${t.id}` : `Update tiket #${t.id}`,
       time: formatRelativeTime(t.updated_at || t.created_at)
