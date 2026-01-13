@@ -304,9 +304,9 @@ const filteredContacts = contacts.filter(c =>
   );
 
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-white dark:bg-slate-900 overflow-hidden transition-colors duration-300">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] bg-white dark:bg-slate-900 overflow-hidden transition-colors duration-300">
       {/* Left Sidebar - Chat List */}
-      <div className="w-80 border-r border-gray-100 dark:border-slate-800 flex flex-col shrink-0 bg-white dark:bg-slate-900">
+      <div className="w-full lg:w-80 border-b lg:border-b-0 lg:border-r border-gray-100 dark:border-slate-800 flex flex-col shrink-0 bg-white dark:bg-slate-900 max-h-[50vh] lg:max-h-none lg:h-full">
         <div className="p-4 border-b border-gray-50 dark:border-slate-800">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -359,9 +359,9 @@ const filteredContacts = contacts.filter(c =>
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-gray-50/50 dark:bg-slate-900/50">
+      <div className="flex-1 min-w-0 flex flex-col bg-gray-50/50 dark:bg-slate-900/50">
         {/* Chat Header */}
-        <div className="h-16 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 flex items-center justify-between">
+        <div className="h-16 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-4 sm:px-6 flex items-center justify-between">
           {selectedContact ? (
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-xs">
@@ -386,7 +386,7 @@ const filteredContacts = contacts.filter(c =>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-w-0">
           {isLoadingMessages ? (
             <div className="flex justify-center py-10 text-gray-400 dark:text-gray-500">
               <Loader2 className="animate-spin" size={20} />
