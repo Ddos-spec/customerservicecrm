@@ -12,10 +12,11 @@ interface Stats {
   tenants: { total: string; active: string };
   users: { total: string };
   tickets: { total: string; open: string };
+  whatsapp_sessions?: { total: number };
 }
 
 interface Tenant {
-  id: number;
+  id: string; // UUID
   company_name: string;
   status: string;
   user_count: string;
@@ -109,6 +110,11 @@ const SuperAdminDashboard = () => {
   }, []);
 
   // Build stats from real data
+  const whatsappSessionCount = sessions.length > 0
+    ? sessions.length
+    : (stats?.whatsapp_sessions?.total || 0);
+  const connectedCount = sessions.filter(s => s.status === 'CONNECTED').length;
+
   const globalStats = [
     {
       label: 'Total Tickets',
@@ -133,10 +139,10 @@ const SuperAdminDashboard = () => {
     },
     {
       label: 'WhatsApp Sessions',
-      value: String(sessions.length),
+      value: String(whatsappSessionCount),
       icon: Smartphone,
       color: 'text-amber-600',
-      trend: sessions.filter(s => s.status === 'CONNECTED').length + ' Connected'
+      trend: connectedCount > 0 ? `${connectedCount} Connected` : 'No Active Sessions'
     },
   ];
 
