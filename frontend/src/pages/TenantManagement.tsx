@@ -127,6 +127,24 @@ const TenantManagement = () => {
     }
   };
 
+  const handleDeleteTenant = async (tenant: Tenant) => {
+    setActiveDropdown(null);
+    if (!confirm(`Yakin ingin menghapus tenant "${tenant.company_name}"? Semua data user dan chat akan hilang permanen.`)) {
+        return;
+    }
+
+    try {
+        const res = await api.delete(`/admin/tenants/${tenant.id}`);
+        if (res.data.success) {
+            setTenants(tenants.filter(t => t.id !== tenant.id));
+            toast.success('Tenant berhasil dihapus');
+        }
+    } catch (error: any) {
+        console.error('Failed to delete tenant:', error);
+        toast.error(error.response?.data?.error || 'Gagal menghapus tenant');
+    }
+  };
+
   const handleAddTenant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.company_name.trim()) {
@@ -455,6 +473,9 @@ const TenantManagement = () => {
                             <button onClick={() => handleStatusToggle(tenant)} className="w-full px-5 py-3 text-xs text-orange-600 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 font-bold uppercase tracking-wider block">
                               {tenant.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
                             </button>
+                            <button onClick={() => handleDeleteTenant(tenant)} className="w-full px-5 py-3 text-xs text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 font-bold uppercase tracking-wider block border-t border-gray-50 dark:border-slate-700">
+                              Hapus Tenant
+                            </button>
                           </div>
                         )}
                       </td>
@@ -499,8 +520,11 @@ const TenantManagement = () => {
                            <button onClick={() => openSessionModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Atur Session WA
                            </button>
-                           <button onClick={() => handleStatusToggle(tenant)} className="w-full p-3 text-center text-xs font-bold text-orange-600 dark:text-orange-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
+                           <button onClick={() => handleStatusToggle(tenant)} className="w-full p-3 text-center text-xs font-bold text-orange-600 dark:text-orange-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              {tenant.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
+                           </button>
+                           <button onClick={() => handleDeleteTenant(tenant)} className="w-full p-3 text-center text-xs font-bold text-rose-600 dark:text-rose-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
+                             Hapus Tenant
                            </button>
                         </div>
                      )}
@@ -626,7 +650,7 @@ const TenantManagement = () => {
       {/* MODAL: Tenant Webhooks */}
       {isWebhookModalOpen && webhookTenant && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl p-8">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-2xl font-black text-gray-900 dark:text-white">Webhook Tenant</h2>
@@ -692,7 +716,7 @@ const TenantManagement = () => {
       {/* MODAL: Tenant Session */}
       {isSessionModalOpen && sessionTenant && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-2xl font-black text-gray-900 dark:text-white">Session WA Tenant</h2>
@@ -730,7 +754,7 @@ const TenantManagement = () => {
       {/* MODAL: Manage Admin Agent */}
       {isAdminModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-2xl font-black text-gray-900 dark:text-white">Kelola Admin Agent</h2>

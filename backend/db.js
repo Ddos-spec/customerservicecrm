@@ -330,6 +330,19 @@ async function setTenantSessionId(tenantId, sessionId) {
 }
 
 /**
+ * Delete tenant
+ * @param {number} tenantId - Tenant ID
+ * @returns {Promise<boolean>} Success status
+ */
+async function deleteTenant(tenantId) {
+    const result = await query(
+        'DELETE FROM tenants WHERE id = $1',
+        [tenantId]
+    );
+    return result.rowCount > 0;
+}
+
+/**
  * Get tenant by session id
  * @param {string} sessionId - Session ID
  * @returns {Promise<Object|null>} Tenant object or null
@@ -817,6 +830,7 @@ module.exports = {
     getTenantById,
     updateTenantStatus,
     setTenantSessionId,
+    deleteTenant, // Export deleteTenant
     getTenantBySessionId,
     getTenantAdmin,
     // Invites

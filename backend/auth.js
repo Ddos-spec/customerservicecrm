@@ -420,6 +420,24 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
 });
 
 /**
+ * DELETE /api/v1/admin/tenants/:id
+ * Delete tenant
+ */
+router.delete('/tenants/:id', requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const deleted = await db.deleteTenant(id);
+        if (!deleted) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
+        res.json({ success: true, message: 'Tenant deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting tenant:', error);
+        res.status(500).json({ success: false, error: 'Failed to delete tenant' });
+    }
+});
+
+/**
  * GET /api/v1/admin/tenant-admin
  * Get admin agent info for tenant
  */
