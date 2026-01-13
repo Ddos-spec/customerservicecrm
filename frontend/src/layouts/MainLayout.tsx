@@ -4,9 +4,10 @@ import { useAuthStore } from '../store/useAuthStore';
 import {
   Menu, X, LogOut,
   LayoutDashboard, Users, MessageSquare,
-  Clock, ChevronDown, FileCode2
+  Clock, ChevronDown, FileCode2, Sun, Moon
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useThemeStore } from '../store/useThemeStore';
 
 const MainLayout = () => {
   const { user, logout } = useAuthStore();
@@ -14,6 +15,7 @@ const MainLayout = () => {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const { isDarkMode, toggleDarkMode } = useThemeStore();
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -113,33 +115,42 @@ const MainLayout = () => {
           </div>
 
           {/* User Profile (Desktop) */}
-          <div className="relative">
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-              className="flex items-center space-x-3 p-1.5 pr-4 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-800 border border-transparent hover:border-gray-100 dark:hover:border-slate-700 transition-all"
+              onClick={toggleDarkMode}
+              aria-label={isDarkMode ? "Matikan mode gelap" : "Nyalakan mode gelap"}
+              className="p-2 rounded-xl border border-gray-100 dark:border-slate-700 text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
             >
-              <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black shadow-lg", isSuperAdmin ? "bg-green-600 shadow-green-100 dark:shadow-green-900/50" : "bg-blue-600 shadow-blue-100 dark:shadow-blue-900/50")}>
-                {user?.name.charAt(0)}
-              </div>
-              <div className="text-left hidden xl:block">
-                <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{user?.name}</p>
-                <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest pt-1">{user?.tenant_name || user?.role}</p>
-              </div>
-              <ChevronDown size={14} className="text-gray-300 dark:text-gray-600" />
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-
-            {isProfileMenuOpen && (
-              <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-50 dark:border-slate-700 py-3 animate-in fade-in zoom-in-95 duration-200">
-                <div className="px-5 py-3 border-b border-gray-50 dark:border-slate-700 mb-2">
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest">Akun Terhubung</p>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white truncate mt-1">{user?.email}</p>
+            <div className="relative">
+              <button
+                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                className="flex items-center space-x-3 p-1.5 pr-4 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-800 border border-transparent hover:border-gray-100 dark:hover:border-slate-700 transition-all"
+              >
+                <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black shadow-lg", isSuperAdmin ? "bg-green-600 shadow-green-100 dark:shadow-green-900/50" : "bg-blue-600 shadow-blue-100 dark:shadow-blue-900/50")}>
+                  {user?.name.charAt(0)}
                 </div>
-                <button onClick={handleLogout} className="w-full text-left px-5 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold flex items-center space-x-2 transition-colors">
-                  <LogOut size={18} />
-                  <span>Keluar Aplikasi</span>
-                </button>
-              </div>
-            )}
+                <div className="text-left hidden xl:block">
+                  <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{user?.name}</p>
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest pt-1">{user?.tenant_name || user?.role}</p>
+                </div>
+                <ChevronDown size={14} className="text-gray-300 dark:text-gray-600" />
+              </button>
+
+              {isProfileMenuOpen && (
+                <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-50 dark:border-slate-700 py-3 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="px-5 py-3 border-b border-gray-50 dark:border-slate-700 mb-2">
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest">Akun Terhubung</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white truncate mt-1">{user?.email}</p>
+                  </div>
+                  <button onClick={handleLogout} className="w-full text-left px-5 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold flex items-center space-x-2 transition-colors">
+                    <LogOut size={18} />
+                    <span>Keluar Aplikasi</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -182,6 +193,13 @@ const MainLayout = () => {
 
         <div className="p-6 border-t border-white/5 bg-gray-950/50">
           <button
+            onClick={toggleDarkMode}
+            className="w-full mb-3 flex items-center space-x-3 px-5 py-4 rounded-2xl bg-white/5 text-white hover:bg-white/10 transition-colors font-bold uppercase tracking-widest text-xs"
+          >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+          </button>
+          <button
             onClick={handleLogout}
             className="w-full flex items-center space-x-3 px-5 py-4 text-red-400 hover:text-white hover:bg-red-500/20 rounded-2xl transition-all font-black uppercase tracking-widest text-xs"
           >
@@ -202,7 +220,7 @@ const MainLayout = () => {
 
       {/* ================= MAIN CONTENT AREA ================= */}
       <main className="flex-1 pt-24 lg:pt-0 overflow-x-hidden bg-gray-50/50 dark:bg-slate-900 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto p-6 lg:p-12 w-full">
+        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-12 py-6">
           <Outlet />
         </div>
       </main>
