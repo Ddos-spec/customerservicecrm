@@ -1,19 +1,91 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Users, MessageSquare, Clock, Shield, Settings, 
+import {
+  Users, MessageSquare, Clock, Shield, Settings,
   ExternalLink, ArrowUpRight, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import api from '../lib/api';
+
+interface Stats {
+  tickets?: {
+    open_tickets?: number;
+    closed_tickets?: number;
+    total_tickets?: number;
+    avg_response_minutes?: number;
+  };
+  users?: {
+    admin_count?: number;
+    agent_count?: number;
+    total_users?: number;
+  };
+}
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchStats = async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.get('/admin/stats');
+      if (res.data.success) {
+        setStats(res.data.stats);
+      }
+    } catch (error) {
+      console.error('Failed to fetch stats:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+    const interval = setInterval(fetchStats, 60000); // Refresh every 60s
+    return () => clearInterval(interval);
+  }, []);
 
   const quickStats = [
-    { label: 'Agent Aktif', value: '4', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Tiket Open', value: '12', icon: AlertCircle, color: 'text-rose-600', bg: 'bg-rose-50' },
-    { label: 'Tiket Selesai', value: '48', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Avg Response', value: '2.4m', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+    {
+      label: 'Agent Aktif',
+      value: stats?.users?.agent_count?.toString() || '0',
+      icon: Users,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      onClick: () => navigate('/admin/agents'),
+      description: 'Kelola tim agent'
+    },
+    {
+      label: 'Tiket Open',
+      value: stats?.tickets?.open_tickets?.toString() || '0',
+      icon: AlertCircle,
+      color: 'text-rose-600',
+      bg: 'bg-rose-50',
+      onClick: () => navigate('/admin/tickets?status=open'),
+      description: 'Lihat tiket open'
+    },
+    {
+      label: 'Tiket Selesai',
+      value: stats?.tickets?.closed_tickets?.toString() || '0',
+      icon: CheckCircle2,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
+      onClick: () => navigate('/admin/tickets?status=closed'),
+      description: 'Lihat tiket closed'
+    },
+    {
+      label: 'Avg Response',
+      value: stats?.tickets?.avg_response_minutes
+        ? `${Math.round(stats.tickets.avg_response_minutes)}m`
+        : '-',
+      icon: Clock,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
+      onClick: () => navigate('/admin/reports'),
+      description: 'Lihat laporan'
+    },
   ];
 
   return (
@@ -40,15 +112,22 @@ const AdminDashboard = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {quickStats.map((stat, i) => (
-          <div key={i} className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+          <div
+            key={i}
+            onClick={stat.onClick}
+            className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm cursor-pointer hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-700 transition-all group"
+          >
             <div className="flex justify-between items-start mb-4">
-              <div className={`p-3 rounded-xl ${stat.bg} dark:bg-opacity-10 ${stat.color}`}>
+              <div className={`p-3 rounded-xl ${stat.bg} dark:bg-opacity-10 ${stat.color} group-hover:scale-110 transition-transform`}>
                 <stat.icon size={24} />
               </div>
-              <ArrowUpRight size={16} className="text-gray-400" />
+              <ArrowUpRight size={16} className="text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
             </div>
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{stat.label}</p>
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stat.value}</h3>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              {stat.description} →
+            </p>
           </div>
         ))}
       </div>

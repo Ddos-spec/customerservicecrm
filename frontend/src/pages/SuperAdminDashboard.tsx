@@ -121,28 +121,36 @@ const SuperAdminDashboard = () => {
       value: stats?.tickets?.total || '0',
       icon: MessageSquare,
       color: 'text-emerald-600',
-      trend: `${stats?.tickets?.open || '0'} Open`
+      trend: `${stats?.tickets?.open || '0'} Open`,
+      onClick: () => navigate('/super-admin/tickets'),
+      description: 'Lihat semua tickets'
     },
     {
       label: 'Total Perusahaan (Tenants)',
       value: stats?.tenants?.total || '0',
       icon: Building2,
       color: 'text-emerald-600',
-      trend: `${stats?.tenants?.active || '0'} Active`
+      trend: `${stats?.tenants?.active || '0'} Active`,
+      onClick: () => navigate('/super-admin/tenants'),
+      description: 'Kelola tenants'
     },
     {
       label: 'Total Users',
       value: stats?.users?.total || '0',
       icon: Users,
       color: 'text-emerald-600',
-      trend: 'All Roles'
+      trend: 'All Roles',
+      onClick: () => navigate('/super-admin/users'),
+      description: 'Lihat semua users'
     },
     {
       label: 'WhatsApp Sessions',
       value: String(whatsappSessionCount),
       icon: Smartphone,
       color: 'text-amber-600',
-      trend: connectedCount > 0 ? `${connectedCount} Connected` : 'No Active Sessions'
+      trend: connectedCount > 0 ? `${connectedCount} Connected` : 'No Active Sessions',
+      onClick: () => navigate('/super-admin/sessions'),
+      description: 'Kelola sessions'
     },
   ];
 
@@ -171,15 +179,22 @@ const SuperAdminDashboard = () => {
       {/* Global Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {globalStats.map((stat, i) => (
-          <div key={i} className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+          <div
+            key={i}
+            onClick={stat.onClick}
+            className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm cursor-pointer hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-700 transition-all group"
+          >
             <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-xl bg-gray-50 dark:bg-slate-700/60 ${stat.color}`}>
+                <div className={`p-3 rounded-xl bg-gray-50 dark:bg-slate-700/60 ${stat.color} group-hover:scale-110 transition-transform`}>
                     <stat.icon size={24} />
                 </div>
                 <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-full">{stat.trend}</span>
             </div>
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{stat.label}</p>
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stat.value}</h3>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              {stat.description} →
+            </p>
           </div>
         ))}
       </div>
