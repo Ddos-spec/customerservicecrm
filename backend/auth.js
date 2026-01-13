@@ -61,7 +61,7 @@ function requireTenantAccess(req, res, next) {
     }
 
     // Others can only access their own tenant
-    const requestedTenantId = parseInt(req.params.tenantId || req.body.tenant_id || req.query.tenant_id);
+    const requestedTenantId = (req.params.tenantId || req.body.tenant_id || req.query.tenant_id || '').toString().trim();
     if (requestedTenantId && requestedTenantId !== req.session.user.tenant_id) {
         return res.status(403).json({ success: false, error: 'Forbidden - Cannot access other tenant data' });
     }
@@ -444,12 +444,9 @@ router.delete('/tenants/:id', requireRole('super_admin'), async (req, res) => {
 router.get('/tenant-admin', requireAuth, async (req, res) => {
     try {
         const user = req.session.user;
-        let tenantId;
-        if (user.role === 'super_admin') {
-            tenantId = req.query.tenant_id ? parseInt(req.query.tenant_id, 10) : null;
-        } else {
-            tenantId = user.tenant_id;
-        }
+        const tenantId = user.role === 'super_admin'
+            ? (req.query.tenant_id ? req.query.tenant_id.toString().trim() : null)
+            : user.tenant_id;
 
         if (!tenantId) {
             return res.status(400).json({ success: false, error: 'Tenant ID required' });
@@ -469,7 +466,7 @@ router.get('/tenant-admin', requireAuth, async (req, res) => {
  */
 router.get('/tenants/:id/webhooks', requireRole('super_admin'), async (req, res) => {
     try {
-        const tenantId = parseInt(req.params.id, 10);
+        const tenantId = req.params.id;
         if (!tenantId) {
             return res.status(400).json({ success: false, error: 'Tenant ID is required' });
         }
@@ -493,7 +490,7 @@ router.get('/tenants/:id/webhooks', requireRole('super_admin'), async (req, res)
  */
 router.post('/tenants/:id/webhooks', requireRole('super_admin'), async (req, res) => {
     try {
-        const tenantId = parseInt(req.params.id, 10);
+        const tenantId = req.params.id;
         const url = (req.body?.url || '').trim();
 
         if (!tenantId) {
@@ -528,8 +525,8 @@ router.post('/tenants/:id/webhooks', requireRole('super_admin'), async (req, res
  */
 router.delete('/tenants/:id/webhooks/:webhookId', requireRole('super_admin'), async (req, res) => {
     try {
-        const tenantId = parseInt(req.params.id, 10);
-        const webhookId = parseInt(req.params.webhookId, 10);
+        const tenantId = req.params.id;
+        const webhookId = req.params.webhookId;
 
         if (!tenantId || !webhookId) {
             return res.status(400).json({ success: false, error: 'Tenant ID and webhook ID are required' });
@@ -558,22 +555,19 @@ router.get('/users', requireAuth, async (req, res) => {
         const { tenant_id } = req.query;
         const user = req.session.user;
 
-        let targetTenantId;
-        if (user.role === 'super_admin') {
-            targetTenantId = tenant_id ? parseInt(tenant_id) : null;
-        } else {
-            targetTenantId = user.tenant_id;
-        }
+        const targetTenantId = user.role === 'super_admin'
+            ? (tenant_id ? tenant_id.toString().trim() : null)
+            : user.tenant_id;
 
         if (!targetTenantId && user.role !== 'super_admin') {
             return res.status(400).json({ success: false, error: 'Tenant ID required' });
         }
 
-        const users = targetTenantId
-            ? await db.getUsersByTenant(targetTenantId)
-            : []; // Super admin without filter gets empty (must specify tenant)
+        const users = await db.getUsersByTenant(targetTenantId);
+        const seatLimit = await db.getTenantSeatLimit(targetTenantId);
+        const pendingInvites = await db.countPendingInvites(targetTenantId);
 
-        res.json({ success: true, users });
+        res.json({ success: true, users, seat_limit: seatLimit, pending_invites: pendingInvites });
     } catch (error) {
         console.error('Error fetching users:', error);
         res.status(500).json({ success: false, error: 'Failed to fetch users' });
@@ -600,11 +594,10 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
         }
 
         // Tenant validation (super admin only)
-        let targetTenantId;
-        if (!tenant_id) {
+        const targetTenantId = tenant_id?.toString().trim();
+        if (!targetTenantId) {
             return res.status(400).json({ success: false, error: 'Tenant ID required for super admin' });
         }
-        targetTenantId = tenant_id;
 
         // Check if email already exists
         const existing = await db.findUserByEmail(email);
@@ -612,10 +605,13 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
             return res.status(409).json({ success: false, error: 'Email already exists' });
         }
 
-        // Check agent slot limit (4 max per tenant)
+        // Check seat limit using tenant max_active_members
+        const seatLimit = await db.getTenantSeatLimit(targetTenantId);
+        const limit = Number.isFinite(seatLimit) ? seatLimit : 100;
         const existingUsers = await db.getUsersByTenant(targetTenantId);
-        if (existingUsers.length >= 4) {
-            return res.status(400).json({ success: false, error: 'Agent slot limit reached (max 4)' });
+        const pendingInvites = await db.countPendingInvites(targetTenantId);
+        if (existingUsers.length + pendingInvites >= limit) {
+            return res.status(400).json({ success: false, error: `Seat limit reached (max ${limit})` });
         }
 
         // Create user
@@ -649,14 +645,11 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
             return res.status(400).json({ success: false, error: 'Name and email are required' });
         }
 
-        let targetTenantId;
-        if (currentUser.role === 'super_admin') {
-            if (!tenant_id) {
-                return res.status(400).json({ success: false, error: 'Tenant ID required for super admin' });
-            }
-            targetTenantId = tenant_id;
-        } else {
-            targetTenantId = currentUser.tenant_id;
+        const targetTenantId = currentUser.role === 'super_admin'
+            ? (tenant_id ? tenant_id.toString().trim() : null)
+            : currentUser.tenant_id;
+        if (!targetTenantId) {
+            return res.status(400).json({ success: false, error: 'Tenant ID required' });
         }
 
         const existing = await db.findUserByEmail(email);
@@ -664,10 +657,12 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
             return res.status(409).json({ success: false, error: 'Email already exists' });
         }
 
+        const seatLimit = await db.getTenantSeatLimit(targetTenantId);
+        const limit = Number.isFinite(seatLimit) ? seatLimit : 100;
         const existingUsers = await db.getUsersByTenant(targetTenantId);
         const pendingInvites = await db.countPendingInvites(targetTenantId);
-        if (existingUsers.length + pendingInvites >= 4) {
-            return res.status(400).json({ success: false, error: 'Agent slot limit reached (max 4)' });
+        if (existingUsers.length + pendingInvites >= limit) {
+            return res.status(400).json({ success: false, error: `Seat limit reached (max ${limit})` });
         }
 
         const token = crypto.randomBytes(24).toString('hex');
@@ -740,10 +735,12 @@ router.post('/invites/:token/accept', async (req, res) => {
             return res.status(409).json({ success: false, error: 'Email already exists' });
         }
 
+        const seatLimit = await db.getTenantSeatLimit(invite.tenant_id);
+        const limit = Number.isFinite(seatLimit) ? seatLimit : 100;
         const existingUsers = await db.getUsersByTenant(invite.tenant_id);
         const pendingInvites = await db.countPendingInvites(invite.tenant_id);
-        if (existingUsers.length + pendingInvites > 4) {
-            return res.status(400).json({ success: false, error: 'Agent slot limit reached (max 4)' });
+        if (existingUsers.length + pendingInvites > limit) {
+            return res.status(400).json({ success: false, error: `Seat limit reached (max ${limit})` });
         }
 
         const password_hash = await bcrypt.hash(password, 12);
@@ -921,12 +918,9 @@ router.get('/tickets', requireAuth, async (req, res) => {
         const offset = parseInt(req.query.offset || '0', 10);
         const statusFilter = (req.query.status || '').toString();
 
-        let tenantId;
-        if (user.role === 'super_admin') {
-            tenantId = req.query.tenant_id ? parseInt(req.query.tenant_id, 10) : null;
-        } else {
-            tenantId = user.tenant_id;
-        }
+        const tenantId = user.role === 'super_admin'
+            ? (req.query.tenant_id ? req.query.tenant_id.toString().trim() : null)
+            : user.tenant_id;
 
         if (!tenantId) {
             return res.status(400).json({ success: false, error: 'Tenant ID required' });
@@ -951,7 +945,7 @@ router.get('/tickets', requireAuth, async (req, res) => {
 router.get('/tickets/:id/messages', requireAuth, async (req, res) => {
     try {
         const user = req.session.user;
-        const ticketId = parseInt(req.params.id, 10);
+        const ticketId = req.params.id;
         if (!ticketId) {
             return res.status(400).json({ success: false, error: 'Ticket ID required' });
         }
@@ -980,7 +974,7 @@ router.get('/tickets/:id/messages', requireAuth, async (req, res) => {
 router.post('/tickets/:id/messages', requireAuth, async (req, res) => {
     try {
         const user = req.session.user;
-        const ticketId = parseInt(req.params.id, 10);
+        const ticketId = req.params.id;
         const messageText = (req.body?.message_text || '').trim();
 
         if (!ticketId) {

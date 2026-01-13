@@ -72,7 +72,7 @@ function initializeN8nApi(deps) {
 
             // Get or create ticket for this conversation
             const ticket = await db.getOrCreateTicket({
-                tenant_id: parseInt(tenant_id),
+                tenant_id: tenant_id,
                 customer_name: customer_name || phone_number,
                 customer_contact: phone_number
             });
@@ -119,7 +119,7 @@ function initializeN8nApi(deps) {
             for (const msg of messages) {
                 try {
                     const ticket = await db.getOrCreateTicket({
-                        tenant_id: parseInt(msg.tenant_id),
+                        tenant_id: msg.tenant_id,
                         customer_name: msg.customer_name || msg.phone_number,
                         customer_contact: msg.phone_number
                     });
@@ -274,7 +274,7 @@ function initializeN8nApi(deps) {
                  WHERE t.tenant_id = $1 AND t.status = 'escalated'
                  ORDER BY t.updated_at DESC
                  LIMIT $2`,
-                [tenant_id, parseInt(limit)]
+                [tenant_id, Number.parseInt(limit, 10)]
             );
 
             res.json({
@@ -343,7 +343,7 @@ function initializeN8nApi(deps) {
 
             // 4. Log to Database
             const ticket = await db.getOrCreateTicket({
-                tenant_id: parseInt(tenant_id),
+                tenant_id: tenant_id,
                 customer_name: phone_number,
                 customer_contact: phone_number
             });
@@ -410,7 +410,7 @@ function initializeN8nApi(deps) {
                     customer_contact: ticket.customer_contact,
                     created_at: ticket.created_at
                 },
-                messages: messages.slice(-parseInt(limit))
+                messages: messages.slice(-Number.parseInt(limit, 10))
             });
 
         } catch (error) {

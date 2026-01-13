@@ -5,7 +5,7 @@ import Pagination from '../components/Pagination';
 import api from '../lib/api';
 
 interface AgentUser {
-  id: number;
+  id: string;
   name: string;
   email: string;
   status: string;
@@ -20,7 +20,8 @@ const AgentManagement = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const maxAgents = 4; // Limit: 1 Admin Agent + 3 User Agent
+  const [seatLimit, setSeatLimit] = useState<number | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<number>(0);
   const [inviteLink, setInviteLink] = useState('');
   const [inviteRecipient, setInviteRecipient] = useState({ name: '', email: '' });
 
@@ -36,6 +37,9 @@ const AgentManagement = () => {
       const res = await api.get('/admin/users');
       if (res.data.success) {
         setAgents(res.data.users || []);
+        const parsedLimit = Number(res.data.seat_limit);
+        setSeatLimit(Number.isFinite(parsedLimit) ? parsedLimit : null);
+        setPendingInvites(Number(res.data.pending_invites || 0));
       }
     } catch (error) {
       console.error('Failed to fetch agents:', error);
@@ -49,6 +53,9 @@ const AgentManagement = () => {
     void fetchAgents();
   }, []);
 
+  const usedSlots = agents.length + pendingInvites;
+  const isAtLimit = seatLimit !== null ? usedSlots >= seatLimit : false;
+
   const totalPages = Math.ceil(agents.length / itemsPerPage);
   const currentData = useMemo(() => (
     agents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
@@ -56,8 +63,8 @@ const AgentManagement = () => {
 
   const handleAddAgent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (agents.length >= maxAgents) {
-      toast.error('Batas maksimum agen tercapai.');
+    if (isAtLimit) {
+      toast.error('Slot agen penuh. Hapus/aktifkan slot dulu.');
       return;
     }
     if (!formData.name.trim() || !formData.email.trim()) {
@@ -121,7 +128,7 @@ const AgentManagement = () => {
             setFormData({ name: '', email: '', phone_number: '' });
             setIsModalOpen(true);
           }}
-          disabled={agents.length >= maxAgents}
+          disabled={isAtLimit}
           className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-slate-800 dark:disabled:text-gray-500 text-white px-6 py-3.5 rounded-2xl transition-all shadow-xl shadow-blue-100 dark:shadow-blue-900/30 font-black uppercase tracking-widest text-xs active:scale-95"
         >
           <UserPlus size={18} />
@@ -135,10 +142,12 @@ const AgentManagement = () => {
             <Shield size={24} />
             <span className="font-black uppercase tracking-[0.2em] text-xs">Kapasitas Langganan</span>
           </div>
-          <p className="text-blue-100/80 text-sm font-medium">Anda menggunakan {agents.length} dari {maxAgents} slot agen yang tersedia.</p>
+          <p className="text-blue-100/80 text-sm font-medium">
+            Slot terpakai: {agents.length} user aktif{pendingInvites ? ` + ${pendingInvites} undangan` : ''}{seatLimit ? ` / ${seatLimit}` : ''}.
+          </p>
         </div>
         <div className="relative z-10 text-5xl font-black text-white tracking-tighter">
-          {agents.length} <span className="text-blue-300 text-2xl">/ {maxAgents}</span>
+          {agents.length + (pendingInvites || 0)} <span className="text-blue-300 text-2xl">{seatLimit ? `/ ${seatLimit}` : ''}</span>
         </div>
         <div className="absolute -right-10 -bottom-10 text-blue-500 opacity-20 transform rotate-12"><Shield size={240} /></div>
       </div>
