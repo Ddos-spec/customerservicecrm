@@ -142,13 +142,13 @@ function saveTokens() {
     }
 }
 
-function loadTokens() {
+async function loadTokens() {
     console.log('[System] Loading session tokens from disk...');
     if (fs.existsSync(ENCRYPTED_TOKENS_FILE)) {
         try {
             const fileContent = fs.readFileSync(ENCRYPTED_TOKENS_FILE, 'utf-8');
             const tokens = JSON.parse(decrypt(fileContent));
-            
+
             let loadedCount = 0;
             for (const [k, v] of Object.entries(tokens)) {
                 sessionTokens.set(k, v);
@@ -156,19 +156,28 @@ function loadTokens() {
             }
             console.log(`[System] Successfully loaded ${loadedCount} tokens into memory.`);
 
-            // Re-authenticate gateway JWTs in background
+            // Re-authenticate gateway JWTs - AWAIT this to ensure JWTs are ready before sync
             const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
-            // Don't await this, let it run in background
-            Promise.allSettled(Array.from(sessionTokens.keys()).map(async (sessionId) => {
-                try {
-                    const auth = await waGateway.authenticate(sessionId, gatewayPassword);
-                    if (auth.status && auth.data?.token) {
-                        waGateway.setSessionToken(sessionId, auth.data.token);
+            if (gatewayPassword) {
+                console.log('[System] Authenticating sessions with gateway...');
+                const results = await Promise.allSettled(Array.from(sessionTokens.keys()).map(async (sessionId) => {
+                    try {
+                        const auth = await waGateway.authenticate(sessionId, gatewayPassword);
+                        if (auth.status && auth.data?.token) {
+                            waGateway.setSessionToken(sessionId, auth.data.token);
+                            console.log(`[System] JWT obtained for session: ${sessionId}`);
+                            return { sessionId, success: true };
+                        }
+                        return { sessionId, success: false, reason: 'No token in response' };
+                    } catch (err) {
+                        console.warn(`[System] Auth failed for ${sessionId}: ${err.message}`);
+                        return { sessionId, success: false, reason: err.message };
                     }
-                } catch (err) {
-                    // Silent fail or low-level warn is fine here, will be retried by refresh logic
-                }
-            }));
+                }));
+
+                const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+                console.log(`[System] Gateway auth complete: ${successCount}/${sessionTokens.size} sessions authenticated`);
+            }
         } catch (err) {
             console.error('[System] Failed to load/decrypt tokens:', err.message);
         }
@@ -292,14 +301,35 @@ async function refreshSession(sessionId) {
         console.log(`[Refresh] Skip ${sessionId}: No token found`);
         return;
     }
-    
+
     // Debug Log: Start
     console.log(`[Refresh] Starting check for session: ${sessionId}`);
 
     try {
-        const token = sessionTokens.get(sessionId);
-        waGateway.setSessionToken(sessionId, token);
-        
+        // Check if we have a valid JWT, if not authenticate first
+        let hasJwt = !!waGateway.getSessionToken(sessionId);
+        if (!hasJwt) {
+            const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+            if (gatewayPassword) {
+                console.log(`[Refresh] No JWT for ${sessionId}, authenticating...`);
+                try {
+                    const auth = await waGateway.authenticate(sessionId, gatewayPassword);
+                    if (auth.status && auth.data?.token) {
+                        waGateway.setSessionToken(sessionId, auth.data.token);
+                        hasJwt = true;
+                        console.log(`[Refresh] JWT obtained for ${sessionId}`);
+                    }
+                } catch (authErr) {
+                    console.warn(`[Refresh] Auth failed for ${sessionId}: ${authErr.message}`);
+                }
+            }
+        }
+
+        if (!hasJwt) {
+            console.warn(`[Refresh] Cannot refresh ${sessionId}: No valid JWT`);
+            return;
+        }
+
         // STRATEGY 1: Lightweight "Ping" via getGroups
         try {
             console.log(`[Refresh] Attempting Strategy 1 (Groups) for ${sessionId}...`);
@@ -641,20 +671,43 @@ if (!isTest) {
             // Sync sessions with Gateway
             if (isHealthy) {
                 console.log('Syncing sessions with Gateway...');
-                for (const [sessionId, token] of sessionTokens.entries()) {
+                const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+
+                for (const sessionId of sessionTokens.keys()) {
                     try {
-                        // Ensure token is set
-                        waGateway.setSessionToken(sessionId, token);
-                        
+                        // Check if we have a valid JWT from loadTokens auth
+                        let hasJwt = !!waGateway.getSessionToken(sessionId);
+
+                        // If no JWT, try to authenticate now
+                        if (!hasJwt && gatewayPassword) {
+                            console.log(`[Sync] No JWT for ${sessionId}, authenticating...`);
+                            try {
+                                const auth = await waGateway.authenticate(sessionId, gatewayPassword);
+                                if (auth.status && auth.data?.token) {
+                                    waGateway.setSessionToken(sessionId, auth.data.token);
+                                    hasJwt = true;
+                                    console.log(`[Sync] JWT obtained for ${sessionId}`);
+                                }
+                            } catch (authErr) {
+                                console.warn(`[Sync] Auth failed for ${sessionId}: ${authErr.message}`);
+                            }
+                        }
+
+                        // Skip sync if we still don't have JWT
+                        if (!hasJwt) {
+                            console.warn(`[Sync] Skipping ${sessionId}: No valid JWT`);
+                            continue;
+                        }
+
                         // Check login status
                         // Calling login on an active session returns "Reconnected" message
                         // Calling on inactive returns QR
                         const response = await waGateway.login(sessionId);
-                        
+
                         let session = sessions.get(sessionId);
                         if (!session) {
-                            session = { 
-                                sessionId, 
+                            session = {
+                                sessionId,
                                 sock: createCompatSocket(sessionId),
                                 status: 'UNKNOWN'
                             };
@@ -663,11 +716,18 @@ if (!isTest) {
                         if (response.status && response.data?.qr) {
                             session.status = 'DISCONNECTED';
                             session.qr = response.data.qr;
+                            console.log(`[Sync] Session ${sessionId}: DISCONNECTED (needs QR)`);
                         } else if (response.message?.includes('Reconnected')) {
                             session.status = 'CONNECTED';
                             session.qr = null;
+                            console.log(`[Sync] Session ${sessionId}: CONNECTED`);
+                        } else {
+                            // Default to CONNECTED if no QR and response is OK
+                            session.status = response.status ? 'CONNECTED' : 'UNKNOWN';
+                            session.qr = null;
+                            console.log(`[Sync] Session ${sessionId}: ${session.status}`);
                         }
-                        
+
                         sessions.set(sessionId, session);
                     } catch (err) {
                         console.warn(`Failed to sync session ${sessionId}: ${err.message}`);
