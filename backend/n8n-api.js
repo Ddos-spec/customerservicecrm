@@ -8,6 +8,7 @@
  */
 const express = require('express');
 const db = require('./db');
+const { formatPhoneNumber } = require('./phone-utils');
 
 // ===== WEBHOOK AUTH (Simple API Key) =====
 
@@ -74,7 +75,7 @@ function initializeN8nApi(deps) {
             const ticket = await db.getOrCreateTicket({
                 tenant_id: tenant_id,
                 customer_name: customer_name || phone_number,
-                customer_contact: phone_number
+                customer_contact: phone_number ? formatPhoneNumber(phone_number) : phone_number
             });
 
             // Log the message
@@ -121,7 +122,7 @@ function initializeN8nApi(deps) {
                     const ticket = await db.getOrCreateTicket({
                         tenant_id: msg.tenant_id,
                         customer_name: msg.customer_name || msg.phone_number,
-                        customer_contact: msg.phone_number
+                        customer_contact: msg.phone_number ? formatPhoneNumber(msg.phone_number) : msg.phone_number
                     });
 
                     const message = await db.logMessage({
@@ -166,7 +167,7 @@ function initializeN8nApi(deps) {
                 `SELECT * FROM tickets
                  WHERE tenant_id = $1 AND customer_contact = $2 AND status NOT IN ('closed')
                  ORDER BY created_at DESC LIMIT 1`,
-                [tenant_id, phone_number]
+                [tenant_id, phone_number ? formatPhoneNumber(phone_number) : phone_number]
             );
 
             if (result.rows.length === 0) {
@@ -304,7 +305,7 @@ function initializeN8nApi(deps) {
      */
     router.post('/send-message', async (req, res) => {
         try {
-            const { tenant_id, phone_number, message_text } = req.body;
+            const { tenant_id, phone_number, message_text } = req.body;   
 
             if (!tenant_id || !phone_number || !message_text) {
                 return res.status(400).json({
@@ -325,7 +326,8 @@ function initializeN8nApi(deps) {
             const sessionId = tenant.session_id;
 
             // 2. Normalize Phone Number (Go Gateway handles this but good to ensure)
-            const destination = phone_number.includes('@') ? phone_number : `${phone_number}@s.whatsapp.net`;
+            const normalizedPhone = formatPhoneNumber(phone_number);
+            const destination = normalizedPhone.includes('@') ? normalizedPhone : `${normalizedPhone}@s.whatsapp.net`;
 
             // 3. Send via Gateway (Queue)
             // Using scheduleMessageSend to ensure it respects the queue
@@ -345,7 +347,7 @@ function initializeN8nApi(deps) {
             const ticket = await db.getOrCreateTicket({
                 tenant_id: tenant_id,
                 customer_name: phone_number,
-                customer_contact: phone_number
+                customer_contact: normalizedPhone
             });
 
             const message = await db.logMessage({
@@ -373,7 +375,7 @@ function initializeN8nApi(deps) {
      */
     router.get('/conversation', async (req, res) => {
         try {
-            const { phone_number, tenant_id, limit = 50 } = req.query;
+            const { phone_number, tenant_id, limit = 50 } = req.query;    
 
             if (!phone_number || !tenant_id) {
                 return res.status(400).json({
@@ -383,11 +385,12 @@ function initializeN8nApi(deps) {
             }
 
             // Find ticket
+            const normalizedPhone = formatPhoneNumber(phone_number);
             const ticketResult = await db.query(
                 `SELECT * FROM tickets
                  WHERE tenant_id = $1 AND customer_contact = $2
                  ORDER BY created_at DESC LIMIT 1`,
-                [tenant_id, phone_number]
+                [tenant_id, normalizedPhone]
             );
 
             if (ticketResult.rows.length === 0) {
