@@ -262,46 +262,55 @@ function getSessionsDetails() {
 
 async function refreshSession(sessionId) {
     // Only refresh if we have a token (known session)
-    if (!sessionTokens.has(sessionId)) return;
+    if (!sessionTokens.has(sessionId)) {
+        console.log(`[Refresh] Skip ${sessionId}: No token found`);
+        return;
+    }
     
-    // Don't refresh if already connecting/connected recently
-    const session = sessions.get(sessionId);
-    // Force check if needed, but throttle? For now, let aggressive logic handle it via route.
+    // Debug Log: Start
+    console.log(`[Refresh] Starting check for session: ${sessionId}`);
 
     try {
         const token = sessionTokens.get(sessionId);
         waGateway.setSessionToken(sessionId, token);
         
         // STRATEGY 1: Lightweight "Ping" via getGroups
-        // If this succeeds, we are definitely connected.
         try {
+            console.log(`[Refresh] Attempting Strategy 1 (Groups) for ${sessionId}...`);
             const groupResp = await waGateway.getGroups(sessionId);
+            console.log(`[Refresh] Strategy 1 Result for ${sessionId}:`, JSON.stringify(groupResp));
+            
             if (groupResp && (groupResp.status === true || groupResp.status === 'success')) {
-                // We are CONNECTED!
+                console.log(`[Refresh] Strategy 1 Success! Marking ${sessionId} as CONNECTED`);
                 updateSessionStatus(sessionId, 'CONNECTED');
                 return;
             }
         } catch (pingErr) {
-            // Ping failed, likely disconnected or auth error. Fallback to Login.
+            console.log(`[Refresh] Strategy 1 Failed for ${sessionId}: ${pingErr.message}`);
         }
 
         // STRATEGY 2: Login (Heavy Check / QR Gen)
+        console.log(`[Refresh] Attempting Strategy 2 (Login) for ${sessionId}...`);
         const response = await waGateway.login(sessionId);
+        console.log(`[Refresh] Strategy 2 Result for ${sessionId}:`, JSON.stringify(response));
         
         const msg = (response.message || '').toLowerCase();
         
         if (response.status && response.data?.qr) {
+            console.log(`[Refresh] Session ${sessionId} needs QR scan.`);
             updateSessionStatus(sessionId, 'DISCONNECTED', response.data.qr);
         } else if (msg.includes('reconnected') || msg.includes('already') || msg.includes('login')) {
+            console.log(`[Refresh] Session ${sessionId} is ALREADY CONNECTED.`);
             updateSessionStatus(sessionId, 'CONNECTED');
         } else if (response.code === 200 && !response.data?.qr) {
+             console.log(`[Refresh] Session ${sessionId} HTTP 200 OK.`);
              updateSessionStatus(sessionId, 'CONNECTED');
         } else {
-             // Unknown state? keep as is or set to unknown
+             console.log(`[Refresh] Session ${sessionId} Unknown State.`);
         }
         
     } catch (error) {
-        console.warn(`[Refresh] Failed to refresh session ${sessionId}: ${error.message}`);
+        console.error(`[Refresh] CRITICAL ERROR for ${sessionId}: ${error.message}`);
     }
 }
 
