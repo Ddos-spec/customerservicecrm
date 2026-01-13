@@ -64,44 +64,46 @@ function App() {
   }, [isDarkMode]);
 
   return (
-    <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <Toaster position="top-right" expand={true} richColors />
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/invite/:token" element={<InviteAccept />} />
-        
-        {/* Super Admin Routes */}
-        <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
-          <Route path="/super-admin" element={<MainLayout />}>
-            <Route index element={<SuperAdminDashboard />} />
-            <Route path="tenants" element={<TenantManagement />} />
-            <Route path="settings" element={<SuperAdminSettings />} />
-            <Route path="api-docs" element={<SuperAdminApiDocs />} />
+    <div className={isDarkMode ? 'dark' : ''}>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
+        <Toaster position="top-right" expand={true} richColors />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/invite/:token" element={<InviteAccept />} />
+          
+          {/* Super Admin Routes */}
+          <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
+            <Route path="/super-admin" element={<MainLayout />}>
+              <Route index element={<SuperAdminDashboard />} />
+              <Route path="tenants" element={<TenantManagement />} />
+              <Route path="settings" element={<SuperAdminSettings />} />
+              <Route path="api-docs" element={<SuperAdminApiDocs />} />
+            </Route>
           </Route>
-        </Route>
 
-        {/* Admin Agent Routes */}
-        <Route element={<ProtectedRoute allowedRoles={['admin_agent']} />}>
-          <Route path="/admin" element={<MainLayout />}>
-            <Route index element={<AgentDashboard />} /> {/* Home = Dashboard Statistik */}
-            <Route path="chat" element={<AgentWorkspace />} /> {/* Menu Chat terpisah */}
-            <Route path="history" element={<ChatHistory />} />
-            <Route path="agents" element={<AgentManagement />} />
+          {/* Admin Agent Routes */}
+          <Route element={<ProtectedRoute allowedRoles={['admin_agent']} />}>
+            <Route path="/admin" element={<MainLayout />}>
+              <Route index element={<AgentDashboard />} /> {/* Home = Dashboard Statistik */}
+              <Route path="chat" element={<AgentWorkspace />} /> {/* Menu Chat terpisah */}
+              <Route path="history" element={<ChatHistory />} />
+              <Route path="agents" element={<AgentManagement />} />
+            </Route>
           </Route>
-        </Route>
 
-        {/* Agent Routes */}
-        <Route element={<ProtectedRoute allowedRoles={['agent']} />}>
-          <Route path="/agent" element={<MainLayout />}>
-            <Route index element={<AgentDashboard />} /> {/* Home = Dashboard Statistik */}
-            <Route path="chat" element={<AgentWorkspace />} /> {/* Menu Chat terpisah */}
-            <Route path="history" element={<ChatHistory />} />
+          {/* Agent Routes */}
+          <Route element={<ProtectedRoute allowedRoles={['agent']} />}>
+            <Route path="/agent" element={<MainLayout />}>
+              <Route index element={<AgentDashboard />} /> {/* Home = Dashboard Statistik */}
+              <Route path="chat" element={<AgentWorkspace />} /> {/* Menu Chat terpisah */}
+              <Route path="history" element={<ChatHistory />} />
+            </Route>
           </Route>
-        </Route>
 
-        <Route path="/" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </BrowserRouter>
+          <Route path="/" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </div>
   );
 }
 
