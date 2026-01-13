@@ -27,6 +27,11 @@ const toNumber = (value: any) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const asDataUrl = (qr: string) => {
+  if (!qr) return '';
+  return qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`;
+};
+
 const AgentDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
@@ -99,7 +104,7 @@ const AgentDashboard = () => {
         if (mySession) {
           setWaStatus(mySession.status === 'CONNECTED' ? 'connected' : mySession.status === 'CONNECTING' ? 'connecting' : 'disconnected');
           if (mySession.qr) {
-            setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(mySession.qr)}`);
+            setQrUrl(asDataUrl(mySession.qr));
           } else {
             setQrUrl('');
           }
@@ -134,7 +139,7 @@ const AgentDashboard = () => {
             if (mySession) {
                 setWaStatus(mySession.status === 'CONNECTED' ? 'connected' : mySession.status === 'CONNECTING' ? 'connecting' : 'disconnected');
                 if (mySession.qr) {
-                    setQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(mySession.qr)}`);
+                    setQrUrl(asDataUrl(mySession.qr));
                 } else {
                     setQrUrl('');
                 }
