@@ -194,7 +194,8 @@ func processNextWebhook() {
 
 	// Try to deliver
 	if err := deliver(queued.Payload); err != nil {
-		log.Print(nil).Warnf("Webhook delivery failed: %v", err)
+		log.Print(nil).Warnf("[WEBHOOK] Delivery failed for %s (session: %s): %v",
+			queued.Payload.Event, queued.Payload.SessionID, err)
 
 		// Retry logic
 		queued.Retries++
@@ -204,15 +205,17 @@ func processNextWebhook() {
 			time.AfterFunc(retryDelay, func() {
 				pkgRedis.LPush(context.Background(), webhookQueueKey, string(retryData))
 			})
-			log.Print(nil).Debugf("Webhook re-queued for retry %d/%d", queued.Retries, maxRetries)
+			log.Print(nil).Infof("[WEBHOOK] Retry scheduled %d/%d for %s (session: %s)",
+				queued.Retries, maxRetries, queued.Payload.Event, queued.Payload.SessionID)
 		} else {
 			// Move to failed queue
 			failedData, _ := json.Marshal(queued)
 			pkgRedis.LPush(ctx, webhookFailedKey, string(failedData))
-			log.Print(nil).Errorf("Webhook moved to failed queue after %d retries", maxRetries)
+			log.Print(nil).Errorf("[WEBHOOK] FAILED after %d retries: %s (session: %s)",
+				maxRetries, queued.Payload.Event, queued.Payload.SessionID)
 		}
 	} else {
-		log.Print(nil).Debugf("Webhook delivered successfully: %s", queued.Payload.Event)
+		log.Print(nil).Infof("[WEBHOOK] Delivered: %s | session: %s", queued.Payload.Event, queued.Payload.SessionID)
 	}
 }
 
