@@ -114,7 +114,13 @@ const sessionTokens = new Map();
 
 // --- Encryption ---
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-const ENCRYPTED_TOKENS_FILE = path.join(__dirname, 'session_tokens.enc');
+const STORAGE_DIR = path.join(__dirname, 'storage');
+const ENCRYPTED_TOKENS_FILE = path.join(STORAGE_DIR, 'session_tokens.enc');
+
+// Ensure storage directory exists
+if (!fs.existsSync(STORAGE_DIR)) {
+    fs.mkdirSync(STORAGE_DIR, { recursive: true });
+}
 
 function encrypt(text) {
     const iv = crypto.randomBytes(16);
