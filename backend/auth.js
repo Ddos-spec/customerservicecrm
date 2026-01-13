@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const db = require('./db');
+const { formatPhoneNumber } = require('./phone-utils');
 
 const router = express.Router();
 
@@ -616,13 +617,14 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
 
         // Create user
         const password_hash = await bcrypt.hash(password, 12);
+        const normalizedPhone = phone_number ? formatPhoneNumber(phone_number) : null;
         const user = await db.createUser({
             tenant_id: targetTenantId,
             name,
             email,
             password_hash,
             role,
-            phone_number: phone_number && phone_number.toString().trim() !== '' ? phone_number.toString().trim() : null
+            phone_number: normalizedPhone
         });
 
         res.status(201).json({ success: true, user });
@@ -667,6 +669,7 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
 
         const token = crypto.randomBytes(24).toString('hex');
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const normalizedPhone = phone_number ? formatPhoneNumber(phone_number) : null;
         const invite = await db.createUserInvite({
             tenant_id: targetTenantId,
             name,
@@ -675,7 +678,7 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
             token,
             created_by: currentUser.id,
             expires_at: expiresAt,
-            phone_number: phone_number && phone_number.toString().trim() !== '' ? phone_number.toString().trim() : null
+            phone_number: normalizedPhone
         });
 
         res.status(201).json({ success: true, invite });
@@ -744,15 +747,16 @@ router.post('/invites/:token/accept', async (req, res) => {
         }
 
         const password_hash = await bcrypt.hash(password, 12);
+        const normalizedPhone = phone_number
+            ? formatPhoneNumber(phone_number)
+            : (invite.phone_number ? formatPhoneNumber(invite.phone_number) : null);
         const user = await db.createUser({
             tenant_id: invite.tenant_id,
             name: invite.name,
             email: invite.email,
             password_hash,
             role: invite.role || 'agent',
-            phone_number: (phone_number && phone_number.toString().trim() !== '')
-                ? phone_number.toString().trim()
-                : (invite.phone_number || null)
+            phone_number: normalizedPhone
         });
 
         await db.acceptInvite(token);
@@ -843,8 +847,10 @@ router.patch('/users/:id', requireRole('super_admin', 'admin_agent'), async (req
             updates.password_hash = await bcrypt.hash(password, 12);
         }
         // Allow clearing phone number with empty string or null
-        if (phone_number !== undefined) { 
-             updates.phone_number = (phone_number && phone_number.toString().trim() !== '') ? phone_number.toString().trim() : null;
+        if (phone_number !== undefined) {
+             updates.phone_number = (phone_number && phone_number.toString().trim() !== '')
+                 ? formatPhoneNumber(phone_number)
+                 : null;
         }
         
         // Only Super Admin can change role
