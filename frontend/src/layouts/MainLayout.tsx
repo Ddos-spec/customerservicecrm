@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import {
   Menu, X, LogOut,
   LayoutDashboard, Users, MessageSquare,
-  Clock, ChevronDown
+  Clock, ChevronDown, FileCode2
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -28,6 +28,7 @@ const MainLayout = () => {
         return [
           { to: '/super-admin', icon: LayoutDashboard, label: 'Dashboard' },
           { to: '/super-admin/tenants', icon: Users, label: 'Kelola Tenant' },
+          { to: '/super-admin/api-docs', icon: FileCode2, label: 'API Integrasi' },
         ];
       case 'admin_agent':
         return [

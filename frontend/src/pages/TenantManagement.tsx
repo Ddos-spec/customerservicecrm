@@ -19,6 +19,14 @@ interface TenantWebhook {
   created_at: string;
 }
 
+interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  phone_number?: string;
+  role: string;
+}
+
 const TenantManagement = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,6 +49,19 @@ const TenantManagement = () => {
   const [sessionTenant, setSessionTenant] = useState<Tenant | null>(null);
   const [sessionIdInput, setSessionIdInput] = useState('');
   const [isSessionSaving, setIsSessionSaving] = useState(false);
+
+  // Admin Management State
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [adminFormData, setAdminFormData] = useState({
+      name: '',
+      email: '',
+      password: '',
+      phone_number: ''
+  });
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
+  const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
+  const [showEditAdminPassword, setShowEditAdminPassword] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -273,6 +294,72 @@ const TenantManagement = () => {
     }
   };
 
+  const openAdminModal = async (tenant: Tenant) => {
+    setActiveDropdown(null);
+    setIsAdminLoading(true);
+    setIsAdminModalOpen(true);
+    setAdminUser(null);
+    setAdminFormData({ name: '', email: '', password: '', phone_number: '' });
+    
+    try {
+        const res = await api.get(`/admin/tenant-admin?tenant_id=${tenant.id}`);
+        if (res.data.success && res.data.admin) {
+            const admin = res.data.admin;
+            setAdminUser(admin);
+            setAdminFormData({
+                name: admin.name,
+                email: admin.email,
+                password: '',
+                phone_number: admin.phone_number || ''
+            });
+        } else {
+             toast.error('Admin agent tidak ditemukan');
+             setIsAdminModalOpen(false);
+        }
+    } catch (error) {
+        console.error('Failed to fetch admin:', error);
+        toast.error('Gagal memuat data admin');
+        setIsAdminModalOpen(false);
+    } finally {
+        setIsAdminLoading(false);
+    }
+  };
+
+  const handleUpdateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser) return;
+
+    if (!adminFormData.name.trim() || !adminFormData.email.trim()) {
+        toast.error('Nama dan Email harus diisi');
+        return;
+    }
+    
+    if (adminFormData.password && adminFormData.password.length < 6) {
+        toast.error('Password minimal 6 karakter');
+        return;
+    }
+
+    setIsAdminSubmitting(true);
+    try {
+        const res = await api.patch(`/admin/users/${adminUser.id}`, {
+            name: adminFormData.name,
+            email: adminFormData.email,
+            password: adminFormData.password, // Optional
+            phone_number: adminFormData.phone_number
+        });
+
+        if (res.data.success) {
+            toast.success('Data Admin Agent berhasil diperbarui');
+            setIsAdminModalOpen(false);
+        }
+    } catch (error: any) {
+        console.error('Failed to update admin:', error);
+        toast.error(error.response?.data?.error || 'Gagal memperbarui admin');
+    } finally {
+        setIsAdminSubmitting(false);
+    }
+  };
+
   return (
     <div className="animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
@@ -359,6 +446,9 @@ const TenantManagement = () => {
                             <button onClick={() => openWebhookModal(tenant)} className="w-full px-5 py-3 text-xs text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-bold uppercase tracking-wider block">
                               Kelola Webhook
                             </button>
+                            <button onClick={() => openAdminModal(tenant)} className="w-full px-5 py-3 text-xs text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-bold uppercase tracking-wider block">
+                              Kelola Admin Agent
+                            </button>
                             <button onClick={() => openSessionModal(tenant)} className="w-full px-5 py-3 text-xs text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-bold uppercase tracking-wider block">
                               Atur Session WA
                             </button>
@@ -402,6 +492,9 @@ const TenantManagement = () => {
                         <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-2 mb-4 animate-in fade-in zoom-in-95">
                            <button onClick={() => openWebhookModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-blue-600 dark:text-blue-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Kelola Webhook
+                           </button>
+                           <button onClick={() => openAdminModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-purple-600 dark:text-purple-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
+                             Kelola Admin Agent
                            </button>
                            <button onClick={() => openSessionModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Atur Session WA
@@ -630,6 +723,90 @@ const TenantManagement = () => {
                 <span>{isSessionSaving ? 'Menyimpan...' : 'Simpan'}</span>
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Manage Admin Agent */}
+      {isAdminModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-black text-gray-900 dark:text-white">Kelola Admin Agent</h2>
+                {adminUser && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">ID: {adminUser.id}</p>}
+              </div>
+              <button onClick={() => setIsAdminModalOpen(false)}><X className="text-gray-400 dark:text-gray-500" /></button>
+            </div>
+
+            {isAdminLoading ? (
+               <div className="flex justify-center py-10">
+                   <Loader2 className="animate-spin text-blue-600" size={32} />
+               </div>
+            ) : (
+                <form onSubmit={handleUpdateAdmin} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Nama Admin</label>
+                    <input
+                      required
+                      value={adminFormData.name}
+                      onChange={(e) => setAdminFormData({...adminFormData, name: e.target.value})}
+                      className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Email (Username)</label>
+                    <input
+                      required
+                      type="email"
+                      value={adminFormData.email}
+                      onChange={(e) => setAdminFormData({...adminFormData, email: e.target.value})}
+                      className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">No. WhatsApp (Opsional)</label>
+                    <input
+                      type="tel"
+                      value={adminFormData.phone_number}
+                      onChange={(e) => setAdminFormData({...adminFormData, phone_number: e.target.value})}
+                      className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                    />
+                  </div>
+                  
+                  <div className="pt-2">
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Reset Password</label>
+                    <div className="relative">
+                        <input
+                        type={showEditAdminPassword ? 'text' : 'password'}
+                        placeholder="Isi untuk mereset password"
+                        value={adminFormData.password}
+                        onChange={(e) => setAdminFormData({...adminFormData, password: e.target.value})}
+                        className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 pr-16"
+                        />
+                        <button
+                        type="button"
+                        onClick={() => setShowEditAdminPassword(!showEditAdminPassword)}
+                        className="absolute inset-y-0 right-3 flex items-center text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                        >
+                        {showEditAdminPassword ? 'Hide' : 'Show'}
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+                        Biarkan kosong jika tidak ingin mengganti password.
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isAdminSubmitting}
+                    className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all mt-4"
+                  >
+                    {isAdminSubmitting && <Loader2 className="animate-spin" size={16} />}
+                    <span>{isAdminSubmitting ? 'Simpan Perubahan' : 'Simpan Perubahan'}</span>
+                  </button>
+                </form>
+            )}
           </div>
         </div>
       )}

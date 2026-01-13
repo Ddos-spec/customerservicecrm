@@ -10,6 +10,7 @@ import AgentWorkspace from './pages/AgentWorkspace';
 import ChatHistory from './pages/ChatHistory';
 import InviteAccept from './pages/InviteAccept';
 import SuperAdminSettings from './pages/SuperAdminSettings';
+import SuperAdminApiDocs from './pages/SuperAdminApiDocs';
 import { Toaster } from 'sonner';
 import { useThemeStore } from './store/useThemeStore';
 
@@ -74,6 +75,7 @@ function App() {
             <Route index element={<SuperAdminDashboard />} />
             <Route path="tenants" element={<TenantManagement />} />
             <Route path="settings" element={<SuperAdminSettings />} />
+            <Route path="api-docs" element={<SuperAdminApiDocs />} />
           </Route>
         </Route>
 
