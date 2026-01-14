@@ -185,10 +185,11 @@ const AgentWorkspace = () => {
 
   const fetchGroups = useCallback(async () => {
     try {
-      // baseURL sudah /api/v1, jadi cukup /groups
-      const res = await api.get('/groups');
-      if (res.data.status === 'success' && Array.isArray(res.data.data)) {
-        setGroups(res.data.data);
+      // Admin-friendly endpoint (uses tenant session internally)
+      const res = await api.get('/admin/wa/groups');
+      const groupsData = res.data?.groups || res.data?.data;
+      if (res.data.success === true && Array.isArray(groupsData)) {
+        setGroups(groupsData);
       } else {
         setGroups([]);
       }
@@ -199,9 +200,10 @@ const AgentWorkspace = () => {
 
   const fetchContacts = useCallback(async () => {
     try {
-      const res = await api.get('/contacts');
-      if (res.data.status === 'success' && Array.isArray(res.data.data)) {
-        setRawContacts(res.data.data);
+      const res = await api.get('/admin/wa/contacts');
+      const contactsData = res.data?.contacts || res.data?.data;
+      if (res.data.success === true && Array.isArray(contactsData)) {
+        setRawContacts(contactsData);
       } else {
         setRawContacts([]);
       }
