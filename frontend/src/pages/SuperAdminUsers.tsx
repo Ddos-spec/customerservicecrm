@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Users, Search, RefreshCw, Shield, User, Building2,
-  Mail, Phone, Calendar, Filter
+  Mail, Phone, Calendar
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -19,9 +18,7 @@ interface UserItem {
 }
 
 const SuperAdminUsers = () => {
-  const navigate = useNavigate();
   const [users, setUsers] = useState<UserItem[]>([]);
-  const [tenants, setTenants] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -36,7 +33,6 @@ const SuperAdminUsers = () => {
 
       if (tenantsRes.data.success) {
         const tenantsList = tenantsRes.data.tenants || [];
-        setTenants(tenantsList);
 
         // Get all users from all tenants
         const allUsersPromises = tenantsList.map((tenant: any) =>
