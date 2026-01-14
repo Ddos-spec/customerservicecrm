@@ -573,6 +573,25 @@ app.get('/api/v1/gateway/health', async (req, res) => {
     }
 });
 
+// DEBUG: Check Session/Proxy Config
+app.get('/api/v1/debug/config', (req, res) => {
+    res.json({
+        env: process.env.NODE_ENV,
+        isProd: isProd,
+        protocol: req.protocol,
+        secure: req.secure,
+        trustProxy: app.get('trust proxy'),
+        headers: {
+            'x-forwarded-proto': req.headers['x-forwarded-proto'],
+            'host': req.headers['host']
+        },
+        cookieConfig: {
+            secure: isProd,
+            sameSite: isProd ? 'none' : 'lax'
+        }
+    });
+});
+
 // --- Routes ---
 
 // Admin authentication
