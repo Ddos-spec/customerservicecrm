@@ -249,6 +249,9 @@ function initializeApi(
 
     router.use(buildSessionsRouter(sharedDeps));
 
+    // Move Chat Router UP to verify isolation
+    router.use(buildChatRouter({ sessions, formatPhoneNumber, validateToken, db }));
+
     router.use(buildMediaRouter({ log, validateToken }));
     router.use(buildMessagesRouter({
         sessions,
@@ -271,7 +274,7 @@ function initializeApi(
         validateToken,
     }));
     router.use(buildGroupsRouter({ sessions, validateToken }));
-    router.use(buildChatRouter({ sessions, formatPhoneNumber, validateToken, db }));
+    // router.use(buildChatRouter({ sessions, formatPhoneNumber, validateToken, db })); // Moved up
     router.use(buildProfileRouter({ validateToken }));
     router.use(buildPresenceRouter({ validateToken }));
     router.use(buildChannelsRouter({ validateToken }));
