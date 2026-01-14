@@ -10,6 +10,7 @@ const db = require('./db');
 const { formatPhoneNumber } = require('./phone-utils');
 const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
+const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 
 const router = express.Router();
 
@@ -1310,6 +1311,12 @@ router.get('/wa/groups', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Session WA belum diatur' });
         }
 
+        try {
+            await ensureGatewayToken(sessionId);
+        } catch (err) {
+            return res.status(502).json({ success: false, error: err.message || 'Gagal autentikasi ke gateway' });
+        }
+
         const response = await waGateway.getGroups(sessionId);
         if (response.status === true || response.status === 'success') {
             return res.json({ success: true, groups: response.data });
@@ -1344,6 +1351,12 @@ router.get('/wa/contacts', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Session WA belum diatur' });
         }
 
+        try {
+            await ensureGatewayToken(sessionId);
+        } catch (err) {
+            return res.status(502).json({ success: false, error: err.message || 'Gagal autentikasi ke gateway' });
+        }
+
         const response = await waGateway.getContacts(sessionId);
         if (response.status === true || response.status === 'success') {
             return res.json({ success: true, contacts: response.data });
@@ -1355,6 +1368,18 @@ router.get('/wa/contacts', requireAuth, async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to fetch contacts' });
     }
 });
+
+async function ensureGatewayToken(sessionId) {
+    if (waGateway.getSessionToken(sessionId)) return true;
+    if (!gatewayPassword) throw new Error('Gateway password tidak dikonfigurasi');
+
+    const authResp = await waGateway.authenticate(sessionId, gatewayPassword);
+    if (authResp?.status && authResp.data?.token) {
+        waGateway.setSessionToken(sessionId, authResp.data.token);
+        return true;
+    }
+    throw new Error(authResp?.message || 'Autentikasi gateway gagal');
+}
 
 module.exports = {
     router,
