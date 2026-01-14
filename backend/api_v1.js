@@ -173,13 +173,10 @@ function initializeApi(
             // 3. Fix Notifier
             const setting = await client.query("SELECT value FROM system_settings WHERE key = 'notifier_session_id'");
             if (setting.rows.length > 0) {
-                 let clean = setting.rows[0].value.trim().replace(/\D/g, '');
-                 if (clean.startsWith('0')) clean = '62' + clean.slice(1);
-                 
-                 if (clean !== setting.rows[0].value) {
-                     await client.query("UPDATE system_settings SET value = $1 WHERE key = 'notifier_session_id'", [clean]);
-                     logs.push(`Updated Notifier: ${setting.rows[0].value} -> ${clean}`);
-                 }
+                 const oldValue = setting.rows[0].value;
+                 // We NULL it to stop the auto-reconnect loop if requested or if it's the "ghost" notifier
+                 await client.query("UPDATE system_settings SET value = NULL WHERE key = 'notifier_session_id'");
+                 logs.push(`Nuked Notifier: ${oldValue} -> NULL (to stop ghost sessions)`);
             }
 
             client.release();
