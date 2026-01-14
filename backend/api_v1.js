@@ -134,7 +134,7 @@ function initializeApi(
         skip: (req) => {
             return req.session && req.session.adminAuthed;
         },
-        trustProxy: true,
+        // trustProxy: true, // REMOVED: Managed globally via app.set('trust proxy', 1)
         standardHeaders: true,
         legacyHeaders: false
     });
