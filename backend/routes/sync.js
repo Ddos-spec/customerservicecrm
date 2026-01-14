@@ -44,26 +44,39 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
             const unifiedContacts = [];
 
             // Process Individual Contacts
+            // Gateway returns: JID, FirstName, FullName, PushName, BusinessName (capital letters)
             for (const c of contacts) {
-                if (!c.jid) continue;
+                const jid = c.JID || c.jid;
+                if (!jid) continue;
+
+                // Priority: FullName (saved contact) > FirstName (saved) > PushName (not saved)
+                const displayName = c.FullName || c.fullName || c.FirstName || c.firstName || c.PushName || c.pushName || null;
+
                 unifiedContacts.push({
-                    jid: c.jid,
-                    name: c.pushName || c.fullName || c.name || c.verifiedName,
-                    shortName: c.firstName || c.shortName,
-                    phone: c.jid.split('@')[0],
-                    isBusiness: c.isBusiness || false,
+                    jid: jid,
+                    fullName: c.FullName || c.fullName || null,
+                    firstName: c.FirstName || c.firstName || null,
+                    pushName: c.PushName || c.pushName || null,
+                    displayName: displayName,
+                    phone: jid.split('@')[0],
+                    isBusiness: !!(c.BusinessName || c.businessName),
+                    businessName: c.BusinessName || c.businessName || null,
                     isGroup: false
                 });
             }
 
             // Process Groups
             for (const g of groups) {
-                if (!g.jid) continue;
+                const jid = g.JID || g.jid;
+                if (!jid) continue;
+                const groupName = g.Subject || g.subject || g.Name || g.name || 'Unknown Group';
                 unifiedContacts.push({
-                    jid: g.jid,
-                    name: g.subject || g.name || 'Unknown Group',
-                    shortName: g.subject,
-                    phone: g.jid.split('@')[0], // Group ID
+                    jid: jid,
+                    fullName: groupName,
+                    firstName: null,
+                    pushName: null,
+                    displayName: groupName,
+                    phone: jid.split('@')[0], // Group ID
                     isBusiness: false,
                     isGroup: true
                 });
@@ -72,12 +85,11 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
             // 3. Sync to Database
             if (unifiedContacts.length > 0) {
                 await db.syncContacts(user.tenant_id, unifiedContacts);
-                
-                // Optional: Auto-create Chat entries for groups so they appear in list immediately
-                // For performance, we might only want to do this for groups or frequently contacted
+
+                // Auto-create Chat entries for groups so they appear in list immediately
                 for (const c of unifiedContacts) {
                     if (c.isGroup) {
-                       await db.getOrCreateChat(user.tenant_id, c.jid, c.name);
+                       await db.getOrCreateChat(user.tenant_id, c.jid, c.displayName);
                     }
                 }
             }
