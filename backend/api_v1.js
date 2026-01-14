@@ -21,6 +21,7 @@ const { buildPresenceRouter } = require('./routes/presence');
 const { buildChannelsRouter } = require('./routes/channels');
 const { buildContactsRouter } = require('./routes/contacts');
 const { buildSearchRouter } = require('./routes/search');
+const waGateway = require('./wa-gateway-client');
 
 const router = express.Router();
 const MAX_MESSAGES_PER_BATCH = parseInt(process.env.MAX_MESSAGES_PER_BATCH || '50', 10);
@@ -167,7 +168,7 @@ function initializeApi(
     router.use(buildProfileRouter({ validateToken }));
     router.use(buildPresenceRouter({ validateToken }));
     router.use(buildChannelsRouter({ validateToken }));
-    router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken }));
+    router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken, waGateway }));
     router.use(buildSearchRouter({ validateToken }));
 
     return router;
