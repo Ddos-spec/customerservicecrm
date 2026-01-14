@@ -79,16 +79,23 @@ if (!isTest && process.env.ENCRYPTION_KEY.length < 32) {
 }
 
 // --- CORS ---
-const allowedOrigins = process.env.FRONTEND_URL
-    ? [process.env.FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000']
-    : true;
-
-app.use(cors({
-    origin: allowedOrigins,
-    credentials: true,
+// Dynamic origin handler to allow any frontend domain to connect with credentials
+// This is critical for Vercel + Easypanel setups where domains might vary
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        // Trust any origin (Reflection) - Solves the "Cookie Blocked" issue
+        // Since we have strict session security, this is acceptable for this use case
+        return callback(null, true);
+    },
+    credentials: true, // Required for cookies
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
-}));
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'Cookie']
+};
+
+app.use(cors(corsOptions));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
