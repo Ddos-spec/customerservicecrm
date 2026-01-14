@@ -3,15 +3,14 @@ const router = express.Router();
 
 function buildContactsRouter(deps) {
     // deps: { sessions, validateToken, waGateway, db, ... }
-    const { validateToken, waGateway } = deps;
+    const { validateToken, waGateway, db } = deps;
 
     // Middleware: Validasi Token Login (Session Admin/Agent)
     router.use(validateToken);
 
     /**
      * GET /api/v1/contacts
-     * NOTE: Gateway Go (whatsmeow) belum mengekspos endpoint /contacts.
-     *       Jadi endpoint ini sementara return kosong atau error.
+     * Fetch from Gateway AND Sync to Backend Database (Postgres)
      */
     router.get('/contacts', async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
@@ -22,18 +21,16 @@ function buildContactsRouter(deps) {
 
         try {
             const response = await waGateway.getContacts(sessionId);
+            
             if (response.status === true || response.status === 'success') {
-                // Map contacts to use Full Name / Push Name priority
                 const rawContacts = response.data || [];
                 const formattedContacts = rawContacts.map(c => {
-                    // Normalize property names (Go might return JID, Node might expect jid)
                     const jid = c.JID || c.jid || '';
                     const firstName = c.FirstName || c.firstName || '';
                     const fullName = c.FullName || c.fullName || '';
                     const pushName = c.PushName || c.pushName || '';
                     const businessName = c.BusinessName || c.businessName || '';
 
-                    // Priority: BusinessName > FullName > PushName > FirstName > JID User
                     const name = businessName || fullName || pushName || firstName || (typeof jid === 'string' ? jid.split('@')[0] : 'Unknown');
                     const phone = typeof jid === 'string' ? jid.split('@')[0] : '';
                     
@@ -46,6 +43,20 @@ function buildContactsRouter(deps) {
                         isBusiness: !!businessName
                     };
                 });
+
+                // --- SYNC TO BACKEND DB (BACKGROUND) ---
+                if (db && formattedContacts.length > 0) {
+                    db.getTenantBySessionId(sessionId).then(tenant => {
+                        if (tenant) {
+                            db.syncContacts(tenant.id, formattedContacts).catch(err => 
+                                console.error(`[Sync] Failed to sync contacts for ${sessionId}:`, err.message)
+                            );
+                        } else {
+                            console.warn(`[Sync] Skipping DB sync: No tenant found for session ${sessionId}`);
+                        }
+                    }).catch(err => console.error(`[Sync] Tenant lookup failed:`, err.message));
+                }
+                // ---------------------------------------
 
                 return res.json({ success: true, contacts: formattedContacts });
             }

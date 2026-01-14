@@ -214,7 +214,7 @@ function initializeApi(
     router.use(buildProfileRouter({ validateToken }));
     router.use(buildPresenceRouter({ validateToken }));
     router.use(buildChannelsRouter({ validateToken }));
-    router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken, waGateway }));
+    router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken, waGateway, db }));
     router.use(buildSearchRouter({ validateToken }));
 
     return router;

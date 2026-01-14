@@ -875,6 +875,75 @@ async function getSuperAdminStats() {
     };
 }
 
+/**
+ * Sync contacts from Gateway to Backend Database
+ * @param {string} tenantId - Tenant ID
+ * @param {Array} contacts - Array of contacts from Gateway
+ */
+async function syncContacts(tenantId, contacts) {
+    if (!contacts || contacts.length === 0) return;
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        for (const c of contacts) {
+            // Data from Gateway (already mapped in routes/contacts.js)
+            // c = { jid, name, shortName, pushName, phone, isBusiness }
+            
+            const phone = c.phone || c.jid.split('@')[0];
+            const displayName = c.name || c.pushName || phone;
+
+            if (!phone) continue;
+
+            // 1. Check if identifier exists
+            const existingRes = await client.query(
+                `SELECT contact_id FROM contact_identifiers 
+                 WHERE tenant_id = $1 AND kind = 'phone' AND value = $2`,
+                [tenantId, phone]
+            );
+
+            let contactId;
+
+            if (existingRes.rows.length > 0) {
+                // UPDATE existing contact
+                contactId = existingRes.rows[0].contact_id;
+                // Optional: Update display name if it was empty or raw phone
+                // For now, we prefer NOT to overwrite if user manually edited it in CRM
+                // So we only update if push_name changed
+                await client.query(
+                    `UPDATE contacts SET push_name = $1 WHERE id = $2`,
+                    [c.pushName, contactId]
+                );
+            } else {
+                // INSERT new contact
+                const contactRes = await client.query(
+                    `INSERT INTO contacts (tenant_id, display_name, push_name)
+                     VALUES ($1, $2, $3)
+                     RETURNING id`,
+                    [tenantId, displayName, c.pushName]
+                );
+                contactId = contactRes.rows[0].id;
+
+                // INSERT identifier
+                await client.query(
+                    `INSERT INTO contact_identifiers (tenant_id, contact_id, kind, value, is_primary)
+                     VALUES ($1, $2, 'phone', $3, true)`,
+                    [tenantId, contactId, phone]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        // console.log(`[DB] Synced ${contacts.length} contacts for tenant ${tenantId}`);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('[DB] Error syncing contacts:', error.message);
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
     query,
     getClient,
@@ -934,4 +1003,5 @@ module.exports = {
     // Statistics
     getDashboardStats,
     getSuperAdminStats,
+    syncContacts
 };
