@@ -52,6 +52,7 @@ func Routes(e *echo.Echo) {
 	e.POST(router.BaseURL+"/group/leave", ctlWhatsApp.LeaveGroup, middleware.JWTWithConfig(authJWTConfig))
 
 	e.GET(router.BaseURL+"/contact", ctlWhatsApp.GetContacts, middleware.JWTWithConfig(authJWTConfig))
+	e.GET(router.BaseURL+"/contact/db", ctlWhatsApp.GetContactsFromDB, middleware.JWTWithConfig(authJWTConfig))
 
 	e.POST(router.BaseURL+"/send/text", ctlWhatsApp.SendText, middleware.JWTWithConfig(authJWTConfig))
 	e.POST(router.BaseURL+"/send/location", ctlWhatsApp.SendLocation, middleware.JWTWithConfig(authJWTConfig))
