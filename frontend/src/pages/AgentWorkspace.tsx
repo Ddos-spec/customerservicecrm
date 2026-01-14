@@ -8,8 +8,10 @@ import { toast } from 'sonner';
 import api from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 
+type ContactKind = 'ticket' | 'group';
+
 interface Contact {
-  id: number;
+  id: string;
   name: string;
   lastMsg: string;
   time: string;
@@ -18,6 +20,8 @@ interface Contact {
   phone?: string;
   status?: string;
   totalMessages?: number;
+  kind: ContactKind;
+  ticketId?: string;
 }
 
 interface Message {
@@ -62,15 +66,17 @@ const AgentWorkspace = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [groups, setGroups] = useState<any[]>([]);
   
   const ws = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const contacts: Contact[] = useMemo(() => (
-    tickets.map((ticket) => {
+  const contacts: Contact[] = useMemo(() => {
+    const ticketContacts: Contact[] = tickets.map((ticket) => {
       const name = ticket.customer_name || ticket.customer_contact || `Customer #${ticket.id}`;
       return {
-        id: ticket.id,
+        id: String(ticket.id),
+        ticketId: String(ticket.id),
         name,
         lastMsg: ticket.last_message || 'Belum ada pesan',
         time: formatRelativeTime(ticket.last_message_at || ticket.updated_at || ticket.created_at),
@@ -78,10 +84,36 @@ const AgentWorkspace = () => {
         online: false,
         phone: ticket.customer_contact,
         status: ticket.status,
-        totalMessages: ticket.message_count
+        totalMessages: ticket.message_count,
+        kind: 'ticket'
       };
-    })
-  ), [tickets]);
+    });
+
+    const groupContacts: Contact[] = groups.map((group) => {
+      const gid = group.id || group.gid || group.groupid || group.GID || group.jid || group.groupId;
+      if (!gid) return null;
+      const matchedTicket = tickets.find(
+        (t) => (t.customer_contact && t.customer_contact.toString() === gid.toString())
+      );
+      return {
+        id: `group-${gid}`,
+        ticketId: matchedTicket ? String(matchedTicket.id) : undefined,
+        name: group.subject || group.name || `Group ${gid}`,
+        lastMsg: matchedTicket?.last_message || 'Grup WhatsApp',
+        time: matchedTicket
+          ? formatRelativeTime(matchedTicket.last_message_at || matchedTicket.updated_at || matchedTicket.created_at)
+          : '-',
+        unread: matchedTicket && matchedTicket.last_sender_type === 'customer' ? 1 : 0,
+        online: false,
+        phone: gid,
+        status: matchedTicket?.status || 'group',
+        totalMessages: matchedTicket?.message_count,
+        kind: 'group'
+      };
+    }).filter(Boolean) as Contact[];
+
+    return [...ticketContacts, ...groupContacts];
+  }, [tickets, groups]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -106,7 +138,7 @@ const AgentWorkspace = () => {
     }
   }, []);
 
-  const fetchMessages = useCallback(async (ticketId: number) => {
+  const fetchMessages = useCallback(async (ticketId: string | number) => {
     setIsLoadingMessages(true);
     try {
       const res = await api.get(`/admin/tickets/${ticketId}/messages`);
@@ -125,6 +157,19 @@ const AgentWorkspace = () => {
       toast.error('Gagal memuat pesan');
     } finally {
       setIsLoadingMessages(false);
+    }
+  }, []);
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await api.get('/api/v1/groups');
+      if (res.data.status === 'success' && Array.isArray(res.data.data)) {
+        setGroups(res.data.data);
+      } else {
+        setGroups([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch groups:', error);
     }
   }, []);
 
@@ -221,7 +266,8 @@ const AgentWorkspace = () => {
 
   useEffect(() => {
     void fetchTickets();
-  }, [fetchTickets]);
+    void fetchGroups();
+  }, [fetchTickets, fetchGroups]);
 
   useEffect(() => {
     if (contacts.length === 0) {
@@ -245,7 +291,12 @@ const AgentWorkspace = () => {
 
   const handleSelectContact = (contact: Contact) => {
     setSelectedContact(contact);
-    void fetchMessages(contact.id);
+    if (contact.ticketId) {
+      void fetchMessages(contact.ticketId);
+    } else {
+      setMessages([]);
+      toast.info('Belum ada percakapan untuk grup ini.');
+    }
   };
 
   const handleSendMessage = async () => {
@@ -253,6 +304,10 @@ const AgentWorkspace = () => {
     if (!selectedContact) return;
     if (!selectedContact.phone) {
       toast.error('Nomor pelanggan tidak tersedia');
+      return;
+    }
+    if (selectedContact.kind === 'group' && !selectedContact.ticketId) {
+      toast.error('Grup belum punya percakapan. Mulai dulu dari sisi customer.');
       return;
     }
 
