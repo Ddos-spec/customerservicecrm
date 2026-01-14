@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Send, Paperclip, Smile, MoreVertical, Search,
-  Phone, Video, Info, CheckCheck, Clock, User, X, Loader2
+  Info, CheckCheck, Clock, User, X, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
@@ -65,7 +64,6 @@ const formatMessageTime = (value?: string) => {
 
 const AgentWorkspace = () => {
   const { user } = useAuthStore();
-  const location = useLocation();
   const [messageText, setMessageText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isInfoOpen, setIsInfoOpen] = useState(false);
