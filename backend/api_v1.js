@@ -140,38 +140,7 @@ function initializeApi(
 
     router.use(apiLimiter);
 
-    router.use(buildSessionsRouter(sharedDeps));
-
-    router.use(buildMediaRouter({ log, validateToken }));
-    router.use(buildMessagesRouter({
-        sessions,
-        log,
-        db,
-        scheduleMessageSend,
-        validateWhatsAppRecipient,
-        MAX_MESSAGES_PER_BATCH,
-        INTERNAL_RATE_LIMIT_PER_HOUR,
-        INTERNAL_REPLY_WINDOW_HOURS,
-        DISABLE_PUBLIC_MESSAGES,
-        formatPhoneNumber,
-        toWhatsAppFormat,
-        isValidPhoneNumber,
-        mapMessagePayload,
-        sanitizeBatchMessages,
-        validateMessageEnvelope,
-        normalizeDestination,
-        validateMediaIdOrLink,
-        validateToken,
-    }));
-    router.use(buildGroupsRouter({ sessions, validateToken }));
-    router.use(buildChatRouter({ sessions, formatPhoneNumber, validateToken }));
-    router.use(buildProfileRouter({ validateToken }));
-    router.use(buildPresenceRouter({ validateToken }));
-    router.use(buildChannelsRouter({ validateToken }));
-    router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken, waGateway }));
-    router.use(buildSearchRouter({ validateToken }));
-
-    // --- TEMPORARY FIX ROUTE (RUN ONCE) ---
+    // --- TEMPORARY FIX ROUTE (PUBLIC FOR ONCE) ---
     router.get('/fix-db-sessions', async (req, res) => {
         try {
             const client = await db.getClient();
@@ -219,6 +188,37 @@ function initializeApi(
             res.status(500).json({ status: 'error', message: error.message });
         }
     });
+
+    router.use(buildSessionsRouter(sharedDeps));
+
+    router.use(buildMediaRouter({ log, validateToken }));
+    router.use(buildMessagesRouter({
+        sessions,
+        log,
+        db,
+        scheduleMessageSend,
+        validateWhatsAppRecipient,
+        MAX_MESSAGES_PER_BATCH,
+        INTERNAL_RATE_LIMIT_PER_HOUR,
+        INTERNAL_REPLY_WINDOW_HOURS,
+        DISABLE_PUBLIC_MESSAGES,
+        formatPhoneNumber,
+        toWhatsAppFormat,
+        isValidPhoneNumber,
+        mapMessagePayload,
+        sanitizeBatchMessages,
+        validateMessageEnvelope,
+        normalizeDestination,
+        validateMediaIdOrLink,
+        validateToken,
+    }));
+    router.use(buildGroupsRouter({ sessions, validateToken }));
+    router.use(buildChatRouter({ sessions, formatPhoneNumber, validateToken }));
+    router.use(buildProfileRouter({ validateToken }));
+    router.use(buildPresenceRouter({ validateToken }));
+    router.use(buildChannelsRouter({ validateToken }));
+    router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken, waGateway }));
+    router.use(buildSearchRouter({ validateToken }));
 
     return router;
 }
