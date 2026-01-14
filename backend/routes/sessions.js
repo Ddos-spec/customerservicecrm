@@ -1,3 +1,5 @@
+const express = require('express');
+
 function buildSessionsRouter(deps) {
     const router = express.Router();
     const {
