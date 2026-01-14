@@ -540,11 +540,12 @@ app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    proxy: true, // Essential for secure cookies behind a proxy
     cookie: {
-        secure: isProd,
+        secure: isProd, // Must be true in production (HTTPS)
         httpOnly: true,
-        sameSite: isProd ? 'none' : 'lax',
-        maxAge: 24 * 60 * 60 * 1000
+        sameSite: isProd ? 'none' : 'lax', // Must be 'none' for cross-site (Vercel -> Backend)
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
 
