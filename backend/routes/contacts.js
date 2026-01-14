@@ -14,10 +14,38 @@ function buildContactsRouter(deps) {
      *       Jadi endpoint ini sementara return kosong atau error.
      */
     router.get('/contacts', async (req, res) => {
-        return res.status(501).json({
-            status: 'error',
-            message: 'Fitur Sync Contacts belum tersedia di Gateway versi ini. Kontak akan muncul otomatis saat ada interaksi chat.'
-        });
+        const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
+
+        if (!sessionId) {
+            return res.status(400).json({ status: 'error', message: 'Session ID (WhatsApp) tidak ditemukan untuk user ini.' });
+        }
+
+        try {
+            const response = await waGateway.getContacts(sessionId);
+            if (response.status === true || response.status === 'success') {
+                return res.status(200).json({
+                    status: 'success',
+                    data: response.data
+                });
+            }
+
+            return res.status(502).json({
+                status: 'error',
+                message: response.message || 'Gagal mengambil kontak dari Gateway.'
+            });
+        } catch (error) {
+            console.error('[API] Error fetching contacts:', error.message);
+            if (error.message.includes('401')) {
+                return res.status(401).json({ status: 'error', message: 'Gateway Unauthorized: Token expired or invalid.' });
+            }
+            if (error.message.includes('404')) {
+                return res.status(404).json({ status: 'error', message: 'Session WhatsApp tidak ditemukan atau belum connect.' });
+            }
+            return res.status(500).json({
+                status: 'error',
+                message: `Internal Error: ${error.message}`
+            });
+        }
     });
 
     /**
