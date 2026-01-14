@@ -171,6 +171,55 @@ function initializeApi(
     router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken, waGateway }));
     router.use(buildSearchRouter({ validateToken }));
 
+    // --- TEMPORARY FIX ROUTE (RUN ONCE) ---
+    router.get('/fix-db-sessions', async (req, res) => {
+        try {
+            const client = await db.getClient();
+            const logs = [];
+            
+            // 1. Fix Tenants
+            const tenants = await client.query('SELECT id, company_name, session_id FROM tenants WHERE session_id IS NOT NULL');
+            for (const t of tenants.rows) {
+                let clean = t.session_id.trim().replace(/\D/g, '');
+                if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+                
+                if (clean !== t.session_id) {
+                    await client.query('UPDATE tenants SET session_id = $1 WHERE id = $2', [clean, t.id]);
+                    logs.push(`Updated Tenant ${t.company_name}: ${t.session_id} -> ${clean}`);
+                }
+            }
+
+            // 2. Fix Users
+            const users = await client.query('SELECT id, name, session_id FROM users WHERE session_id IS NOT NULL');
+            for (const u of users.rows) {
+                let clean = u.session_id.trim().replace(/\D/g, '');
+                if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+
+                if (clean !== u.session_id) {
+                    await client.query('UPDATE users SET session_id = $1 WHERE id = $2', [clean, u.id]);
+                    logs.push(`Updated User ${u.name}: ${u.session_id} -> ${clean}`);
+                }
+            }
+            
+            // 3. Fix Notifier
+            const setting = await client.query("SELECT value FROM system_settings WHERE key = 'notifier_session_id'");
+            if (setting.rows.length > 0) {
+                 let clean = setting.rows[0].value.trim().replace(/\D/g, '');
+                 if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+                 
+                 if (clean !== setting.rows[0].value) {
+                     await client.query("UPDATE system_settings SET value = $1 WHERE key = 'notifier_session_id'", [clean]);
+                     logs.push(`Updated Notifier: ${setting.rows[0].value} -> ${clean}`);
+                 }
+            }
+
+            client.release();
+            res.json({ status: 'success', message: 'Database normalized to 62...', logs });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
     return router;
 }
 

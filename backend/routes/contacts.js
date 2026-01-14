@@ -23,29 +23,32 @@ function buildContactsRouter(deps) {
         try {
             const response = await waGateway.getContacts(sessionId);
             if (response.status === true || response.status === 'success') {
-                return res.status(200).json({
-                    status: 'success',
-                    data: response.data
+                // Map contacts to use Full Name / Push Name priority
+                const rawContacts = response.data || [];
+                const formattedContacts = rawContacts.map(c => {
+                    // Whatsmeow usually returns: Found, FirstName, FullName, PushName, BusinessName
+                    // Priority: BusinessName > FullName > PushName > FirstName > JID User
+                    const name = c.BusinessName || c.FullName || c.PushName || c.FirstName || c.JID?.User || 'Unknown';
+                    const phone = c.JID?.User || c.JID?.split('@')[0] || '';
+                    
+                    return {
+                        jid: c.JID,
+                        name: name,
+                        shortName: c.FirstName,
+                        pushName: c.PushName,
+                        phone: phone,
+                        isBusiness: !!c.BusinessName
+                    };
                 });
-            }
 
-            return res.status(502).json({
-                status: 'error',
-                message: response.message || 'Gagal mengambil kontak dari Gateway.'
-            });
-        } catch (error) {
-            console.error('[API] Error fetching contacts:', error.message);
-            if (error.message.includes('401')) {
-                return res.status(401).json({ status: 'error', message: 'Gateway Unauthorized: Token expired or invalid.' });
+                return res.json({ success: true, contacts: formattedContacts });
             }
-            if (error.message.includes('404')) {
-                return res.status(404).json({ status: 'error', message: 'Session WhatsApp tidak ditemukan atau belum connect.' });
-            }
-            return res.status(500).json({
-                status: 'error',
-                message: `Internal Error: ${error.message}`
-            });
+        } catch (gwError) {
+            console.warn(`[Contacts] Gateway fetch failed for ${sessionId}:`, gwError.message);
         }
+
+        // Fallback: return empty list instead of crashing
+        return res.json({ success: true, contacts: [] });
     });
 
     /**

@@ -426,7 +426,16 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         const adminEmail = (req.body?.admin_email || '').trim();
         const adminPassword = req.body?.admin_password || '';
         const sessionIdRaw = req.body?.session_id;
-        const sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : '';
+        
+        // Normalize Session ID (Force 62 format)
+        let sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : '';
+        if (sessionId) {
+            sessionId = sessionId.replace(/\D/g, ''); // Remove non-digits
+            if (sessionId.startsWith('0')) {
+                sessionId = '62' + sessionId.slice(1);
+            }
+        }
+        
         const normalizedSessionId = sessionId === '' ? null : sessionId;
 
         if (!companyName) {
@@ -541,7 +550,13 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
     try {
         const { id } = req.params;
         const rawSessionId = req.body?.session_id;
-        const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+        
+        let sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+        if (sessionId) {
+            sessionId = sessionId.replace(/\D/g, '');
+            if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
+        }
+        
         const normalized = sessionId === '' ? null : sessionId;
 
         const tenant = await db.setTenantSessionId(id, normalized);
