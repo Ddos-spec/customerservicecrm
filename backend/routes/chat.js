@@ -19,7 +19,8 @@ function buildChatRouter(deps) {
         res.status(501).json({ status: 'error', message });
     };
 
-    router.use(validateToken);
+    // Removed global validateToken to allow session-based access for UI
+    // router.use(validateToken);
 
     /**
      * GET /api/v1/chats
@@ -65,7 +66,8 @@ function buildChatRouter(deps) {
     router.post('/block', unsupported('Block contact belum didukung di gateway Go.'));
 
     router.get('/profile-picture/:jid', async (req, res) => {
-        const sessionId = req.sessionId || req.query.sessionId;
+        // Fallback to session user's tenant session if available
+        const sessionId = req.sessionId || req.query.sessionId || req.session?.user?.tenant_session_id;
         const { jid } = req.params;
         const { type } = req.query;
 
