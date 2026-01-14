@@ -285,15 +285,25 @@ function getSessionsDetails() {
     // Source of truth is sessionTokens (persisted sessions)
     const allSessionIds = Array.from(sessionTokens.keys());
 
-    return allSessionIds.map(id => {
-        const session = sessions.get(id);
-        return {
-            sessionId: id,
-            status: session?.status || 'UNKNOWN',
-            qr: session?.qr || null,
-            connectedNumber: session?.connectedNumber || null
-        };
-    });
+    return allSessionIds
+        .map(id => {
+            const session = sessions.get(id);
+            return {
+                sessionId: id,
+                status: session?.status || 'UNKNOWN',
+                qr: session?.qr || null,
+                connectedNumber: session?.connectedNumber || null
+            };
+        })
+        .filter(s => {
+            // Only return active sessions (CONNECTED, CONNECTING, or has QR)
+            // Filter out DISCONNECTED, LOGGED_OUT, and UNKNOWN without QR
+            const isActive = s.status === 'CONNECTED' ||
+                           s.status === 'CONNECTING' ||
+                           s.status === 'SCAN_QR_CODE' ||
+                           (s.qr && s.qr.length > 0);
+            return isActive;
+        });
 }
 
 async function refreshSession(sessionId) {
@@ -613,13 +623,21 @@ webhookHandler.on('connection', (sessionId, data) => {
             sessionTokens.set(sessionId, recoveryToken);
             saveTokens(); // Write to session_tokens.enc
         }
-    } else if (newStatus === 'LOGGED_OUT') {
-        // If logged out, remove from disk
-        if (sessionTokens.has(sessionId)) {
-            console.log(`[Auto-Cleanup] Session ${sessionId} logged out. Removing from disk...`);
-            sessionTokens.delete(sessionId);
-            saveTokens();
-        }
+    } else if (newStatus === 'LOGGED_OUT' || newStatus === 'DISCONNECTED') {
+        // If logged out or disconnected, remove from disk after delay
+        // Wait 5 minutes before cleanup (in case of temporary disconnect)
+        setTimeout(() => {
+            const currentSession = sessions.get(sessionId);
+            // Only cleanup if still DISCONNECTED/LOGGED_OUT after delay
+            if (currentSession?.status === 'DISCONNECTED' || currentSession?.status === 'LOGGED_OUT') {
+                if (sessionTokens.has(sessionId)) {
+                    console.log(`[Auto-Cleanup] Session ${sessionId} disconnected/logged out. Removing from disk...`);
+                    sessionTokens.delete(sessionId);
+                    saveTokens();
+                    broadcastSessionUpdate();
+                }
+            }
+        }, 5 * 60 * 1000); // 5 minutes delay
     }
 
     broadcastSessionUpdate();
