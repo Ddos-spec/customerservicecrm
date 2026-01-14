@@ -127,13 +127,6 @@ async function handleMessage(sessionId, data) {
     const { message } = data;
     if (!message) return;
 
-    // Skip messages from self unless specifically needed
-    if (message.isFromMe) {
-        console.log(`[Webhook] Skipping self message: ${message.id}`);
-        // TODO: Handle self message storage (outgoing messages)
-        return;
-    }
-
     try {
         // 1. Identify Tenant or User (super admin)
         // First check if it's a tenant session
@@ -154,9 +147,38 @@ async function handleMessage(sessionId, data) {
             }
         }
 
-        // 2. Identify Contact & Create Ticket
-        const contactNumber = message.from.split('@')[0];
-        const contactName = message.pushName || contactNumber;
+        // 2. Identify Target Chat (Ticket ID) & Create Ticket
+        // Logic:
+        // - Group: Ticket ID = Group JID (message.to)
+        // - Private Incoming: Ticket ID = Sender JID (message.from)
+        // - Private Outgoing: Ticket ID = Receiver JID (message.to)
+        
+        let targetJid;
+        const isGroup = message.isGroup;
+        const isFromMe = message.isFromMe;
+
+        if (isGroup) {
+            // For groups, the 'chat' is always in 'to' field (from Go Gateway logic)
+            targetJid = message.to;
+        } else {
+            // For private
+            targetJid = isFromMe ? message.to : message.from;
+        }
+
+        // Cleanup JID (remove domain part if standard number, keep for groups if needed but usually we split)
+        // Standardize: Store number only if possible, or full JID for groups
+        const contactNumber = targetJid.split('@')[0];
+        
+        // Determine Contact Name
+        let contactName = message.pushName || contactNumber;
+        if (isGroup) {
+            contactName = `Group ${contactNumber}`; // Default name for group until we have subject
+        } else if (isFromMe) {
+            // If outgoing private message, we need the name of the receiver, not us
+            // But usually we don't have the receiver's name in the outgoing message payload
+            // So we default to number. The UI/DB might update it later if it exists.
+            contactName = contactNumber;
+        }
         
         const ticket = await db.getOrCreateTicket({
             tenant_id: tenant.id,
@@ -170,8 +192,6 @@ async function handleMessage(sessionId, data) {
 
         // Handle simple media types (image/document with caption)
         if (message.type === 'image' || message.type === 'video' || message.type === 'document') {
-             // Jika ada caption, jadikan text. URL media idealnya di-upload dulu, 
-             // tapi untuk sekarang kita simpan type-nya aja atau URL mock jika ada dari gateway
              messageText = message.caption || `[${message.type}]`;
              // TODO: Handle media upload/storage retrieval from Gateway
         } else if (message.type === 'sticker') {
@@ -180,17 +200,18 @@ async function handleMessage(sessionId, data) {
             messageText = '[Audio]';
         }
 
+        const senderType = isFromMe ? 'agent' : 'customer';
+
         const savedMessage = await db.logMessage({
             ticket_id: ticket.id,
-            sender_type: 'customer',
+            sender_type: senderType,
             message_text: messageText,
             file_url: fileUrl
         });
 
-        console.log(`[Webhook] Saved message ID ${savedMessage.id} for Ticket ${ticket.id}`);
+        console.log(`[Webhook] Saved ${senderType} message ID ${savedMessage.id} for Ticket ${ticket.id} (${contactNumber})`);
 
         // 4. Broadcast to WebSocket (UI Update)
-        // Kirim struktur yang sesuai dengan yang diharapkan Frontend
         broadcast({
             type: 'message',
             sessionId,
@@ -198,21 +219,25 @@ async function handleMessage(sessionId, data) {
                 ...message,
                 db_id: savedMessage.id,
                 ticket_id: ticket.id,
-                tenant_id: tenant.id
+                tenant_id: tenant.id,
+                sender_type: senderType // Add explicit sender type for frontend
             },
         });
 
         // 5. Forward to external webhooks (Legacy/Integration)
-        const webhooks = await db.getTenantWebhooks(tenant.id);
-        if (webhooks && webhooks.length > 0) {
-            await forwardToTenantWebhooks(webhooks, {
-                event: 'message',
-                sessionId,
-                tenantId: tenant.id,
-                tenantName: tenant.company_name,
-                message,
-                ticketId: ticket.id
-            });
+        // Only forward incoming customer messages to external webhooks (usually)
+        if (!isFromMe) {
+            const webhooks = await db.getTenantWebhooks(tenant.id);
+            if (webhooks && webhooks.length > 0) {
+                await forwardToTenantWebhooks(webhooks, {
+                    event: 'message',
+                    sessionId,
+                    tenantId: tenant.id,
+                    tenantName: tenant.company_name,
+                    message,
+                    ticketId: ticket.id
+                });
+            }
         }
 
     } catch (error) {
