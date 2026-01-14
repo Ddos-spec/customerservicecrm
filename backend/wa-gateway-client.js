@@ -26,24 +26,36 @@ const gatewayClient = axios.create({
 const sessionTokens = new Map();
 
 /**
+ * Normalize JID to ensure consistency (e.g. 0812... -> 62812...)
+ */
+function normalizeJid(jid) {
+    if (!jid) return '';
+    let clean = jid.toString().replace(/\D/g, ''); // Remove non-digits
+    if (clean.startsWith('0')) {
+        clean = '62' + clean.slice(1);
+    }
+    return clean;
+}
+
+/**
  * Set the JWT token for a session
  */
 function setSessionToken(jid, token) {
-    sessionTokens.set(jid, token);
+    sessionTokens.set(normalizeJid(jid), token);
 }
 
 /**
  * Get the JWT token for a session
  */
 function getSessionToken(jid) {
-    return sessionTokens.get(jid);
+    return sessionTokens.get(normalizeJid(jid));
 }
 
 /**
  * Remove session token
  */
 function removeSessionToken(jid) {
-    sessionTokens.delete(jid);
+    sessionTokens.delete(normalizeJid(jid));
 }
 
 /**
@@ -61,9 +73,10 @@ function unwrap(response) {
  * Get authorization header for a session
  */
 function getAuthHeader(jid) {
-    const token = sessionTokens.get(jid);
+    const cleanJid = normalizeJid(jid);
+    const token = sessionTokens.get(cleanJid);
     if (!token) {
-        throw new Error(`No token found for session ${jid}`);
+        throw new Error(`No token found for session ${jid} (normalized: ${cleanJid})`);
     }
     return { Authorization: `Bearer ${token}` };
 }
