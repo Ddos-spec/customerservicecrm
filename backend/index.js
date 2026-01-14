@@ -33,7 +33,8 @@ const waGateway = require('./wa-gateway-client');
 const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 
 const app = express();
-const isProd = process.env.NODE_ENV === 'production';
+// Detect production if NODE_ENV is set OR if FRONTEND_URL is https (common in deployments)
+const isProd = process.env.NODE_ENV === 'production' || (process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith('https'));
 
 // Test environment defaults
 if (isTest) {
@@ -62,7 +63,8 @@ const scheduleGC = () => {
 scheduleGC();
 
 // Trust proxy for rate limiting behind reverse proxy
-app.set('trust proxy', 1);
+// Setting to true is safer for PaaS like Easypanel/Heroku/Railway
+app.set('trust proxy', true);
 
 // --- SECURITY ---
 const requiredEnvVars = ['SESSION_SECRET', 'ENCRYPTION_KEY', 'WA_GATEWAY_PASSWORD'];
