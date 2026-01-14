@@ -35,7 +35,7 @@ async function findUserByEmail(email) {
 }
 
 async function findUserById(id) {
-    const result = await query(`SELECT * FROM users WHERE id = $1`, [id]);
+    const result = await query('SELECT * FROM users WHERE id = $1', [id]);
     return result.rows[0] || null;
 }
 
@@ -175,8 +175,8 @@ async function getDashboardStats(tenantId) {
 async function getSuperAdminStats() {
     const [tenantStats, userStats, chatStats] = await Promise.all([
         query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'active') as active FROM tenants"),
-        query("SELECT COUNT(*) as total FROM users"),
-        query("SELECT COUNT(*) as total, SUM(unread_count) as total_unread FROM chats")
+        query('SELECT COUNT(*) as total FROM users'),
+        query('SELECT COUNT(*) as total, SUM(unread_count) as total_unread FROM chats')
     ]);
     return {
         tenants: tenantStats.rows[0],
@@ -209,15 +209,15 @@ module.exports = {
     deleteTenant: async (id) => (await query('DELETE FROM tenants WHERE id = $1 RETURNING id', [id])).rows[0],
     setUserSessionId: async (id, sid) => (await query('UPDATE users SET session_id = $1 WHERE id = $2 RETURNING *', [sid, id])).rows[0],
     getTenantAdmin: async (tid) => (await query("SELECT * FROM users WHERE tenant_id = $1 AND role = 'admin_agent' LIMIT 1", [tid])).rows[0],
-    ensureTenantWebhooksTable: async () => query(`CREATE TABLE IF NOT EXISTS tenant_webhooks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, url TEXT NOT NULL, created_at TIMESTAMP DEFAULT now(), UNIQUE(tenant_id, url))`),
-    ensureTenantSessionColumn: async () => query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_id TEXT UNIQUE`),
-    ensureUserSessionColumn: async () => query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS session_id TEXT, ADD COLUMN IF NOT EXISTS user_session_id TEXT, ADD COLUMN IF NOT EXISTS tenant_session_id TEXT`),
-    ensureUserInvitesTable: async () => query(`CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT 'pending', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())`),
-    ensureSystemSettingsTable: async () => query(`CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`),
-    ensureUserPhoneColumn: async () => query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT`),
-    ensureInvitePhoneColumn: async () => query(`ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS phone_number TEXT`),
+    ensureTenantWebhooksTable: async () => query('CREATE TABLE IF NOT EXISTS tenant_webhooks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, url TEXT NOT NULL, created_at TIMESTAMP DEFAULT now(), UNIQUE(tenant_id, url))'),
+    ensureTenantSessionColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_id TEXT UNIQUE'),
+    ensureUserSessionColumn: async () => query('ALTER TABLE users ADD COLUMN IF NOT EXISTS session_id TEXT, ADD COLUMN IF NOT EXISTS user_session_id TEXT, ADD COLUMN IF NOT EXISTS tenant_session_id TEXT'),
+    ensureUserInvitesTable: async () => query('CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT \'pending\', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())'),
+    ensureSystemSettingsTable: async () => query('CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
+    ensureUserPhoneColumn: async () => query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT'),
+    ensureInvitePhoneColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS phone_number TEXT'),
     createUserInvite: async (i) => (await query('INSERT INTO user_invites (tenant_id, email, token, role, created_by, expires_at, phone_number, name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *', [i.tenant_id, i.email, i.token, i.role, i.created_by, i.expires_at, i.phone_number, i.name])).rows[0],
-    getInviteByToken: async (t) => (await query(`SELECT i.*, t.company_name as tenant_name FROM user_invites i JOIN tenants t ON i.tenant_id = t.id WHERE i.token = $1`, [t])).rows[0],
+    getInviteByToken: async (t) => (await query('SELECT i.*, t.company_name as tenant_name FROM user_invites i JOIN tenants t ON i.tenant_id = t.id WHERE i.token = $1', [t])).rows[0],
     acceptInvite: async (t) => await query("UPDATE user_invites SET status = 'accepted' WHERE token = $1", [t]),
     // Contacts
     syncContacts, getContactsByTenant,
