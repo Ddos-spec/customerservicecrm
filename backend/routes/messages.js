@@ -56,37 +56,9 @@ function buildMessagesRouter(deps) {
 
         try {
             const formattedPhone = formatPhoneNumber(rawPhone);
-            const ticket = await db.getTicketWithLastCustomerMessage(ticketId);
-            
-            if (!ticket) return res.status(404).json({ status: 'error', message: 'Tiket tidak ditemukan' });
-            if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
-                return res.status(403).json({ status: 'error', message: 'Akses ditolak' });
-            }
+            const destination = toWhatsAppFormat(formattedPhone);
 
-            // Validate match between phone and ticket
-            const formattedTicketNumber = formatPhoneNumber(ticket.customer_contact || '');
-            if (!formattedTicketNumber || formattedTicketNumber !== formattedPhone) {
-                return res.status(400).json({ status: 'error', message: 'Nomor tujuan tidak sesuai dengan tiket' });
-            }
-
-            // Internal Reply Window Logic
-            if (INTERNAL_REPLY_WINDOW_HOURS > 0) {
-                const lastCustomerAt = ticket.last_customer_message_at ? new Date(ticket.last_customer_message_at) : null;
-                const tooOld = !lastCustomerAt || Number.isNaN(lastCustomerAt.getTime()) || (Date.now() - lastCustomerAt.getTime()) > INTERNAL_REPLY_WINDOW_HOURS * 60 * 60 * 1000;
-                if (tooOld) {
-                    return res.status(400).json({ status: 'error', message: `Sesi berakhir (${INTERNAL_REPLY_WINDOW_HOURS} jam). Tunggu balasan pelanggan.` });
-                }
-            }
-
-            // Internal Rate Limit (Tenant level)
-            if (INTERNAL_RATE_LIMIT_PER_HOUR > 0 && ticket.tenant_id) {
-                const sentCount = await db.countTenantMessagesSince(ticket.tenant_id, 60, 'agent');
-                if (sentCount >= INTERNAL_RATE_LIMIT_PER_HOUR) {
-                    return res.status(429).json({ status: 'error', message: 'Limit pesan per jam tercapai untuk tenant ini' });
-                }
-            }
-
-            // Session Lookup
+            // 1. Get or Create Chat Room
             let sessionId = user.tenant_session_id || null;
             if (user.tenant_id && !sessionId) {
                 const tenant = await db.getTenantById(user.tenant_id);
@@ -95,12 +67,15 @@ function buildMessagesRouter(deps) {
 
             if (!sessionId) return res.status(400).json({ status: 'error', message: 'Session WA belum diatur' });
 
+            const chat = await db.getOrCreateChat(user.tenant_id, destination);
+
+            // Internal Rate Limit (Tenant level)
+            // (Optional: can be re-implemented for Chats if needed)
+
             const session = sessions.get(sessionId);
             if (!session || !session.sock || session.status !== 'CONNECTED') {
                 return res.status(409).json({ status: 'error', message: 'WhatsApp Offline' });
             }
-
-            const destination = toWhatsAppFormat(formattedPhone);
 
             // Send to WhatsApp
             const result = await scheduleMessageSend(sessionId, async () => {
@@ -120,17 +95,22 @@ function buildMessagesRouter(deps) {
                 throw new Error(result?.message || 'Gagal mengirim pesan ke gateway');
             }
 
-            // AUTO-SAVE to Database (Robustness Fix)
+            // AUTO-SAVE to Database (V2)
             const savedMsg = await db.logMessage({
-                ticket_id: ticketId,
-                sender_type: 'agent',
-                message_text: messageText
+                chatId: chat.id,
+                senderType: 'agent',
+                senderId: user.id,
+                senderName: user.name,
+                messageType: 'text',
+                body: messageText,
+                waMessageId: result.messageId,
+                isFromMe: true
             });
 
             return res.status(200).json({ 
                 status: 'success', 
                 messageId: result.messageId,
-                db_message: savedMsg // Return saved DB record
+                db_message: savedMsg
             });
 
         } catch (error) {

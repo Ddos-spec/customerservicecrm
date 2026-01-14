@@ -128,88 +128,48 @@ async function handleMessage(sessionId, data) {
     if (!message) return;
 
     try {
-        // 1. Identify Tenant or User (super admin)
-        // First check if it's a tenant session
+        // 1. Identify Tenant
         let tenant = await db.getTenantBySessionId(sessionId);
-
-        // If not found, check if it's a super admin session
         if (!tenant) {
-            const user = await db.getUserBySessionId(sessionId);
-            if (user && user.role === 'super_admin') {
-                // For super admin, we don't have a tenant
-                // We can either skip message persistence or handle differently
-                console.log(`[Webhook] Received message for super admin session: ${sessionId}`);
-                // TODO: Handle super admin messages (maybe skip persistence or use a special tenant)
-                return;
-            } else {
-                console.warn(`[Webhook] Received message for unknown session: ${sessionId}`);
-                return;
-            }
+            console.warn(`[Webhook] Received message for unknown session: ${sessionId}`);
+            return;
         }
 
-        // 2. Identify Target Chat (Ticket ID) & Create Ticket
-        // Logic:
-        // - Group: Ticket ID = Group JID (message.to)
-        // - Private Incoming: Ticket ID = Sender JID (message.from)
-        // - Private Outgoing: Ticket ID = Receiver JID (message.to)
+        // 2. Identify Target Chat
+        let targetJid = message.isFromMe ? message.to : message.from;
         
-        let targetJid;
-        const isGroup = message.isGroup;
-        const isFromMe = message.isFromMe;
+        // Ensure we have a valid JID
+        if (!targetJid) return;
 
-        if (isGroup) {
-            // For groups, the 'chat' is always in 'to' field (from Go Gateway logic)
-            targetJid = message.to;
-        } else {
-            // For private
-            targetJid = isFromMe ? message.to : message.from;
-        }
-
-        // Cleanup JID (remove domain part if standard number, keep for groups if needed but usually we split)
-        // Standardize: Store number only if possible, or full JID for groups
-        const contactNumber = targetJid.split('@')[0];
-        
-        // Determine Contact Name
-        let contactName = message.pushName || contactNumber;
-        if (isGroup) {
-            contactName = `Group ${contactNumber}`; // Default name for group until we have subject
-        } else if (isFromMe) {
-            // If outgoing private message, we need the name of the receiver, not us
-            // But usually we don't have the receiver's name in the outgoing message payload
-            // So we default to number. The UI/DB might update it later if it exists.
-            contactName = contactNumber;
-        }
-        
-        const ticket = await db.getOrCreateTicket({
-            tenant_id: tenant.id,
-            customer_name: contactName,
-            customer_contact: contactNumber
-        });
+        const chat = await db.getOrCreateChat(tenant.id, targetJid, message.pushName);
 
         // 3. Persist Message
         let messageText = message.body || '';
-        let fileUrl = null;
+        let mediaUrl = null;
 
-        // Handle simple media types (image/document with caption)
-        if (message.type === 'image' || message.type === 'video' || message.type === 'document') {
-             messageText = message.caption || `[${message.type}]`;
-             // TODO: Handle media upload/storage retrieval from Gateway
+        // Simplify media types
+        if (message.type === 'image' || message.type === 'video' || message.type === 'document' || message.type === 'audio') {
+             messageText = message.caption || `[${message.type.toUpperCase()}]`;
+             // mediaUrl = message.url; // Optional: if provided by gateway
         } else if (message.type === 'sticker') {
-            messageText = '[Sticker]';
-        } else if (message.type === 'audio' || message.type === 'ptt') {
-            messageText = '[Audio]';
+            messageText = '[STICKER]';
         }
 
-        const senderType = isFromMe ? 'agent' : 'customer';
+        const senderType = message.isFromMe ? 'agent' : 'customer';
 
         const savedMessage = await db.logMessage({
-            ticket_id: ticket.id,
-            sender_type: senderType,
-            message_text: messageText,
-            file_url: fileUrl
+            chatId: chat.id,
+            senderType: senderType,
+            senderId: message.from,
+            senderName: message.pushName || 'Customer',
+            messageType: message.type,
+            body: messageText,
+            mediaUrl: mediaUrl,
+            waMessageId: message.id,
+            isFromMe: message.isFromMe
         });
 
-        console.log(`[Webhook] Saved ${senderType} message ID ${savedMessage.id} for Ticket ${ticket.id} (${contactNumber})`);
+        console.log(`[Webhook] Saved ${senderType} message ID ${savedMessage.id} for Chat ${chat.id} (${targetJid})`);
 
         // 4. Broadcast to WebSocket (UI Update)
         broadcast({
@@ -218,15 +178,14 @@ async function handleMessage(sessionId, data) {
             data: {
                 ...message,
                 db_id: savedMessage.id,
-                ticket_id: ticket.id,
+                chat_id: chat.id,
                 tenant_id: tenant.id,
-                sender_type: senderType // Add explicit sender type for frontend
+                sender_type: senderType
             },
         });
 
-        // 5. Forward to external webhooks (Legacy/Integration)
-        // Only forward incoming customer messages to external webhooks (usually)
-        if (!isFromMe) {
+        // 5. Forward to external webhooks
+        if (!message.isFromMe) {
             const webhooks = await db.getTenantWebhooks(tenant.id);
             if (webhooks && webhooks.length > 0) {
                 await forwardToTenantWebhooks(webhooks, {
@@ -235,7 +194,7 @@ async function handleMessage(sessionId, data) {
                     tenantId: tenant.id,
                     tenantName: tenant.company_name,
                     message,
-                    ticketId: ticket.id
+                    chatId: chat.id
                 });
             }
         }

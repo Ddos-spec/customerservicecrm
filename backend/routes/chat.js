@@ -21,6 +21,42 @@ function buildChatRouter(deps) {
 
     router.use(validateToken);
 
+    /**
+     * GET /api/v1/chats
+     * List all chat rooms for the tenant (Inbox)
+     */
+    router.get('/chats', async (req, res) => {
+        const user = req.session?.user;
+        if (!user || !user.tenant_id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+
+        try {
+            const limit = parseInt(req.query.limit) || 50;
+            const offset = parseInt(req.query.offset) || 0;
+            const chats = await db.getChatsByTenant(user.tenant_id, limit, offset);
+            res.json({ status: 'success', data: chats });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    /**
+     * GET /api/v1/chats/:chatId/messages
+     * Fetch message history for a specific chat room
+     */
+    router.get('/chats/:chatId/messages', async (req, res) => {
+        const user = req.session?.user;
+        if (!user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+
+        try {
+            const { chatId } = req.params;
+            const limit = parseInt(req.query.limit) || 100;
+            const messages = await db.getMessagesByChat(chatId, limit);
+            res.json({ status: 'success', data: messages });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
     router.get('/business-profile/:number', unsupported('Business profile belum didukung di gateway Go.'));
     router.post('/archive', unsupported('Archive chat belum didukung di gateway Go.'));
     router.post('/mute', unsupported('Mute chat belum didukung di gateway Go.'));
