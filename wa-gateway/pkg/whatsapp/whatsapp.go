@@ -1372,9 +1372,15 @@ func WhatsAppContactsGet(jid string) ([]types.ContactInfo, error) {
 			return nil, err
 		}
 
-		contacts, err := WhatsAppClient[jid].Store.Contacts.GetAllContacts(context.Background())
+		contactMap, err := WhatsAppClient[jid].Store.Contacts.GetAllContacts(context.Background())
 		if err != nil {
 			return nil, err
+		}
+
+		// Convert map to slice
+		contacts := make([]types.ContactInfo, 0, len(contactMap))
+		for _, c := range contactMap {
+			contacts = append(contacts, c)
 		}
 
 		return contacts, nil
