@@ -453,7 +453,8 @@ async function joinGroup(jid, link) {
  */
 async function leaveGroup(jid, groupId) {
     try {
-        const form = buildUrlEncoded({ group_id: groupId });
+        // Gateway expects "groupid" (no underscore)
+        const form = buildUrlEncoded({ groupid: groupId });
         return await postUrlEncoded('/group/leave', form, getAuthHeader(jid));
     } catch (error) {
         throw new Error(`Leave group failed: ${error.message}`);
