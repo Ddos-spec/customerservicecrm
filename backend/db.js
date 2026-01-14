@@ -62,21 +62,28 @@ async function syncContacts(tenantId, contacts) {
             const jid = c.jid || c.JID;
             if (!jid) continue;
             const phone = c.phone || jid.split('@')[0];
-            
+
+            // Priority for display_name: fullName (saved) > firstName (saved) > pushName (not saved)
+            const displayName = c.displayName || c.fullName || c.firstName || c.pushName || null;
+
             await client.query(`
                 INSERT INTO contacts (tenant_id, jid, phone_number, display_name, push_name, full_name, is_business)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
                 ON CONFLICT (tenant_id, jid) DO UPDATE SET
-                    phone_number = EXCLUDED.phone_number,
-                    push_name = EXCLUDED.push_name,
-                    full_name = EXCLUDED.full_name,
+                    phone_number = COALESCE(EXCLUDED.phone_number, contacts.phone_number),
+                    display_name = COALESCE(EXCLUDED.display_name, contacts.display_name),
+                    push_name = COALESCE(EXCLUDED.push_name, contacts.push_name),
+                    full_name = COALESCE(EXCLUDED.full_name, contacts.full_name),
+                    is_business = EXCLUDED.is_business,
                     updated_at = now()
-            `, [tenantId, jid, phone, c.name, c.pushName, c.fullName, c.isBusiness || false]);
+            `, [tenantId, jid, phone, displayName, c.pushName, c.fullName, c.isBusiness || false]);
         }
         await client.query('COMMIT');
+        console.log(`[DB] Synced ${contacts.length} contacts for tenant ${tenantId}`);
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('[DB] Sync Contacts Error:', error.message);
+        throw error;
     } finally { client.release(); }
 }
 
