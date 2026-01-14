@@ -48,7 +48,7 @@ const AdminDashboard = () => {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const ws = useRef<WebSocket | null>(null);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const res = await api.get('/admin/stats');
       if (res.data.success) {
@@ -57,9 +57,9 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     }
-  };
+  }, []);
 
-  const fetchRecentTickets = async () => {
+  const fetchRecentTickets = useCallback(async () => {
     try {
       const res = await api.get('/admin/tickets?limit=3&offset=0');
       if (res.data.success) {
@@ -68,7 +68,7 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Failed to fetch recent tickets:', error);
     }
-  };
+  }, []);
 
   const fetchSessionStatus = useCallback(async () => {
     if (!sessionId) {
@@ -159,15 +159,20 @@ const AdminDashboard = () => {
   }, [sessionId]);
 
   useEffect(() => {
-    fetchStats();
-    fetchRecentTickets();
-    fetchSessionStatus();
+    const runInitialFetch = () => {
+      void fetchStats();
+      void fetchRecentTickets();
+      void fetchSessionStatus();
+    };
+    runInitialFetch();
+
     const interval = setInterval(() => {
-      fetchStats();
-      fetchRecentTickets();
+      void fetchStats();
+      void fetchRecentTickets();
     }, 60000);
+
     return () => clearInterval(interval);
-  }, [fetchSessionStatus]);
+  }, [fetchStats, fetchRecentTickets, fetchSessionStatus]);
 
   const quickStats = [
     {

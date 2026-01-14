@@ -159,13 +159,15 @@ const AgentWorkspace = () => {
            }
 
            const incomingTicketId = msgData.ticket_id;
-           const newMessage: Message = {
-             id: msgData.db_id || Date.now(),
-             sender: 'customer',
-             text: msgData.body || msgData.caption || '[Media]',
-             time: formatMessageTime(new Date().toISOString()),
-             status: 'read'
-           };
+           const senderType = msgData.sender_type || (msgData.isFromMe ? 'agent' : 'customer');
+           const isGroup = Boolean(msgData.isGroup);
+            const newMessage: Message = {
+              id: msgData.db_id || Date.now(),
+              sender: senderType === 'agent' ? 'agent' : 'customer',
+              text: msgData.body || msgData.caption || '[Media]',
+              time: formatMessageTime(new Date().toISOString()),
+              status: senderType === 'agent' ? 'sent' : 'read'
+            };
 
            // 1. Update Messages list if chat is open
            // Note: Kita pake functional update state biar dapet value terbaru selectedContact tanpa dependency
@@ -174,7 +176,8 @@ const AgentWorkspace = () => {
                 setMessages((prev) => [...prev, newMessage]);
                 // Mark as read (optional API call here)
              } else {
-                toast.info(`Pesan baru dari ${msgData.pushName || msgData.from}`);
+                const fromLabel = isGroup ? (msgData.to || msgData.from || 'Grup') : (msgData.pushName || msgData.from || 'Kontak');
+                toast.info(`Pesan baru dari ${fromLabel}`);
              }
              return currentSelected;
            });
@@ -188,7 +191,7 @@ const AgentWorkspace = () => {
                return prev.map(t => t.id === incomingTicketId ? {
                  ...t,
                  last_message: newMessage.text,
-                 last_sender_type: 'customer',
+                 last_sender_type: newMessage.sender === 'agent' ? 'agent' : 'customer',
                  last_message_at: new Date().toISOString(),
                  message_count: (parseInt(t.message_count || '0') + 1).toString()
                } : t).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   MessageSquare, Search, RefreshCw,
@@ -32,7 +32,7 @@ const AdminTickets = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
 
-  const fetchTickets = async () => {
+  const fetchTickets = useCallback(async () => {
     setIsLoading(true);
     try {
       const params: any = {};
@@ -47,11 +47,11 @@ const AdminTickets = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [statusFilter]);
 
   useEffect(() => {
-    fetchTickets();
-  }, [statusFilter]);
+    void fetchTickets();
+  }, [fetchTickets]);
 
   const filteredTickets = tickets.filter(ticket => {
     if (!searchQuery) return true;

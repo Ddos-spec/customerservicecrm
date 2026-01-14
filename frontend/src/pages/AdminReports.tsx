@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   BarChart3, TrendingUp, Clock, Users, MessageSquare,
   CheckCircle2, AlertCircle, Calendar, Download
@@ -28,20 +28,21 @@ const AdminReports = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [dateRange, setDateRange] = useState('7days');
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
-      const res = await api.get('/admin/stats');
+      const res = await api.get('/admin/stats', { params: { range: dateRange } });
       if (res.data.success) {
         setStats(res.data.stats);
       }
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     }
-  };
+  }, [dateRange]);
 
   useEffect(() => {
-    fetchStats();
-  }, [dateRange]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchStats();
+  }, [fetchStats]);
 
   const kpiCards = [
     {
