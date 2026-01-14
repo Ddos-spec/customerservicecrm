@@ -162,7 +162,8 @@ const AgentWorkspace = () => {
 
   const fetchGroups = useCallback(async () => {
     try {
-      const res = await api.get('/api/v1/groups');
+      // baseURL sudah /api/v1, jadi cukup /groups
+      const res = await api.get('/groups');
       if (res.data.status === 'success' && Array.isArray(res.data.data)) {
         setGroups(res.data.data);
       } else {
