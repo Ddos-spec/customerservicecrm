@@ -140,49 +140,109 @@ function initializeApi(
 
     router.use(apiLimiter);
 
-    // --- TEMPORARY FIX ROUTE (PUBLIC FOR ONCE) ---
-    router.get('/fix-db-sessions', async (req, res) => {
+    // --- DATABASE V2 MIGRATION (NUKE & REBUILD SIMPLIFIED SCHEMA) ---
+    router.get('/migrate-v2', async (req, res) => {
+        const client = await db.getClient();
         try {
-            const client = await db.getClient();
+            await client.query('BEGIN');
             const logs = [];
-            
-            // 1. Fix Tenants
-            const tenants = await client.query('SELECT id, company_name, session_id FROM tenants WHERE session_id IS NOT NULL');
-            for (const t of tenants.rows) {
-                let clean = t.session_id.trim().replace(/\D/g, '');
-                if (clean.startsWith('0')) clean = '62' + clean.slice(1);
-                
-                if (clean !== t.session_id) {
-                    await client.query('UPDATE tenants SET session_id = $1 WHERE id = $2', [clean, t.id]);
-                    logs.push(`Updated Tenant ${t.company_name}: ${t.session_id} -> ${clean}`);
-                }
-            }
 
-            // 2. Fix Users
-            const users = await client.query('SELECT id, name, session_id FROM users WHERE session_id IS NOT NULL');
-            for (const u of users.rows) {
-                let clean = u.session_id.trim().replace(/\D/g, '');
-                if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+            logs.push('🚀 Starting Migration to V2...');
 
-                if (clean !== u.session_id) {
-                    await client.query('UPDATE users SET session_id = $1 WHERE id = $2', [clean, u.id]);
-                    logs.push(`Updated User ${u.name}: ${u.session_id} -> ${clean}`);
-                }
-            }
-            
-            // 3. Fix Notifier
-            const setting = await client.query("SELECT value FROM system_settings WHERE key = 'notifier_session_id'");
-            if (setting.rows.length > 0) {
-                 const oldValue = setting.rows[0].value;
-                 // We NULL it to stop the auto-reconnect loop if requested or if it's the "ghost" notifier
-                 await client.query("UPDATE system_settings SET value = NULL WHERE key = 'notifier_session_id'");
-                 logs.push(`Nuked Notifier: ${oldValue} -> NULL (to stop ghost sessions)`);
-            }
+            // 1. Drop Old Tables (In order of dependency)
+            logs.push('Dropping old tables...');
+            await client.query('DROP TABLE IF EXISTS public.conversation_events CASCADE');
+            await client.query('DROP TABLE IF EXISTS public.conversations CASCADE');
+            await client.query('DROP TABLE IF EXISTS public.contact_identifiers CASCADE');
+            await client.query('DROP TABLE IF EXISTS public.messages CASCADE');
+            await client.query('DROP TABLE IF EXISTS public.tickets CASCADE');
+            await client.query('DROP TABLE IF EXISTS public.contacts CASCADE');
+            await client.query('DROP TABLE IF EXISTS public.tenant_integrations CASCADE');
+            await client.query('DROP TABLE IF EXISTS public.tenant_members CASCADE');
 
-            client.release();
-            res.json({ status: 'success', message: 'Database normalized to 62...', logs });
+            // 2. Create New Tables (V2)
+            logs.push('Creating new V2 tables...');
+
+            // CONTACTS
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS public.contacts (
+                    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id       UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+                    jid             TEXT NOT NULL,
+                    phone_number    TEXT,
+                    display_name    TEXT,
+                    push_name       TEXT,
+                    full_name       TEXT,
+                    profile_pic_url TEXT,
+                    is_business     BOOLEAN DEFAULT false,
+                    about_status    TEXT,
+                    created_at      TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                    updated_at      TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                    UNIQUE (tenant_id, jid)
+                )
+            `);
+            await client.query('CREATE INDEX IF NOT EXISTS idx_contacts_tenant_jid ON public.contacts (tenant_id, jid)');
+
+            // CHATS
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS public.chats (
+                    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id       UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+                    contact_id      UUID NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
+                    assigned_to     UUID REFERENCES public.users(id) ON DELETE SET NULL,
+                    status          VARCHAR(20) DEFAULT 'open',
+                    unread_count    INT DEFAULT 0,
+                    last_message_preview TEXT,
+                    last_message_time    TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                    last_message_type    VARCHAR(20) DEFAULT 'text',
+                    created_at      TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                    updated_at      TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                    UNIQUE (tenant_id, contact_id)
+                )
+            `);
+            await client.query('CREATE INDEX IF NOT EXISTS idx_chats_tenant_updated ON public.chats (tenant_id, updated_at DESC)');
+
+            // MESSAGES
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS public.messages (
+                    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    chat_id         UUID NOT NULL REFERENCES public.chats(id) ON DELETE CASCADE,
+                    sender_type     VARCHAR(20) NOT NULL,
+                    sender_id       TEXT,
+                    sender_name     TEXT,
+                    message_type    VARCHAR(20) DEFAULT 'text',
+                    body            TEXT,
+                    media_url       TEXT,
+                    wa_message_id   TEXT,
+                    is_from_me      BOOLEAN DEFAULT false,
+                    status          VARCHAR(20) DEFAULT 'sent',
+                    created_at      TIMESTAMP WITH TIME ZONE DEFAULT now()
+                )
+            `);
+            await client.query('CREATE INDEX IF NOT EXISTS idx_messages_chat_time ON public.messages (chat_id, created_at ASC)');
+            await client.query('CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON public.messages (wa_message_id)');
+
+            // 3. Normalize Session IDs in existing Tenants/Users (Just in case)
+            logs.push('Normalizing session IDs...');
+            await client.query(`
+                UPDATE tenants 
+                SET session_id = '62' || SUBSTRING(REPLACE(session_id, ' ', '') FROM 2)
+                WHERE session_id LIKE '0%'
+            `);
+            await client.query(`
+                UPDATE users 
+                SET session_id = '62' || SUBSTRING(REPLACE(session_id, ' ', '') FROM 2)
+                WHERE session_id LIKE '0%'
+            `);
+
+            await client.query('COMMIT');
+            logs.push('✅ Migration V2 Successful!');
+            res.json({ status: 'success', logs });
         } catch (error) {
+            await client.query('ROLLBACK');
             res.status(500).json({ status: 'error', message: error.message });
+        } finally {
+            client.release();
         }
     });
 
