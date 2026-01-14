@@ -11,7 +11,7 @@ import api from '../lib/api';
 interface Stats {
   tenants: { total: string; active: string };
   users: { total: string };
-  tickets: { total: string; open: string };
+  chats: { total: string; total_unread: string };
   whatsapp_sessions?: { total: number };
 }
 
@@ -117,13 +117,13 @@ const SuperAdminDashboard = () => {
 
   const globalStats = [
     {
-      label: 'Total Tickets',
-      value: stats?.tickets?.total || '0',
+      label: 'Total Percakapan (Chats)',
+      value: stats?.chats?.total || '0',
       icon: MessageSquare,
       color: 'text-emerald-600',
-      trend: `${stats?.tickets?.open || '0'} Open`,
-      onClick: () => navigate('/super-admin/tickets'),
-      description: 'Lihat semua tickets'
+      trend: `${stats?.chats?.total_unread || '0'} Unread`,
+      onClick: () => navigate('/super-admin/chats'), // Nanti bisa diarahkan ke global chat log jika ada
+      description: 'Lihat semua percakapan'
     },
     {
       label: 'Total Perusahaan (Tenants)',
