@@ -925,10 +925,11 @@ async function syncContacts(tenantId, contacts) {
                 );
                 contactId = contactRes.rows[0].id;
 
-                // INSERT identifier
+                // INSERT identifier (Safe Insert)
                 await client.query(
                     `INSERT INTO contact_identifiers (tenant_id, contact_id, kind, value, is_primary)
-                     VALUES ($1, $2, 'phone', $3, true)`,
+                     VALUES ($1, $2, 'phone', $3, true)
+                     ON CONFLICT (tenant_id, kind, value) DO NOTHING`,
                     [tenantId, contactId, phone]
                 );
             }
