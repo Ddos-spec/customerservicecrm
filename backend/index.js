@@ -16,7 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const { createClient } = require('redis');
 const { initializeApi, getWebhookUrl } = require('./api_v1');
-const { router: authRouter, ensureSuperAdmin } = require('./auth');
+const { router: authRouter, ensureSuperAdmin, syncContactsForTenant } = require('./auth');
 const db = require('./db');
 const { initializeN8nApi } = require('./n8n-api');
 require('dotenv').config();
@@ -768,6 +768,41 @@ if (!isTest) {
         }
 
         console.log(`CRM Backend running on port ${PORT}`);
+
+        // --- Periodic Contact Sync (every 5 minutes) ---
+        const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+        setInterval(async () => {
+            try {
+                // Get all active tenants with session_id
+                const tenantsResult = await db.query(`
+                    SELECT id, company_name, session_id
+                    FROM tenants
+                    WHERE status = 'active' AND session_id IS NOT NULL
+                `);
+                const tenants = tenantsResult.rows;
+
+                if (tenants.length === 0) return;
+
+                console.log(`[Cron] Starting periodic sync for ${tenants.length} tenants...`);
+
+                for (const tenant of tenants) {
+                    try {
+                        const result = await syncContactsForTenant(tenant.id, tenant.session_id);
+                        if (result.synced > 0) {
+                            console.log(`[Cron] Synced ${result.synced} contacts for ${tenant.company_name}`);
+                        }
+                    } catch (err) {
+                        console.warn(`[Cron] Sync failed for ${tenant.company_name}: ${err.message}`);
+                    }
+                    // Small delay between tenants to avoid overwhelming gateway
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            } catch (err) {
+                console.error('[Cron] Periodic sync error:', err.message);
+            }
+        }, SYNC_INTERVAL);
+
+        console.log(`[Cron] Periodic contact sync enabled (every ${SYNC_INTERVAL / 60000} minutes)`);
     });
 }
 
