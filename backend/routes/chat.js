@@ -27,6 +27,7 @@ function buildChatRouter(deps) {
      * List all chat rooms for the tenant (Inbox)
      */
     router.get('/chats', async (req, res) => {
+        console.log(`[Chat] GET /chats accessed by user: ${req.session?.user?.email || 'Guest'}`);
         const user = req.session?.user;
 
         // Check session first
