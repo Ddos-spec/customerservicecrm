@@ -1,8 +1,7 @@
 const express = require('express');
 
-const router = express.Router();
-
 function buildChatRouter(deps) {
+    const router = express.Router();
     const { sessions, formatPhoneNumber, validateToken, db } = deps;
 
     const getSession = (sessionId) => {
