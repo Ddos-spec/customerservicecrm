@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 
 function buildChatRouter(deps) {
-    const { sessions, formatPhoneNumber, validateToken } = deps;
+    const { sessions, formatPhoneNumber, validateToken, db } = deps;
 
     const getSession = (sessionId) => {
         const session = sessions.get(sessionId);

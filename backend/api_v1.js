@@ -21,6 +21,7 @@ const { buildPresenceRouter } = require('./routes/presence');
 const { buildChannelsRouter } = require('./routes/channels');
 const { buildContactsRouter } = require('./routes/contacts');
 const { buildSearchRouter } = require('./routes/search');
+const { buildSyncRouter } = require('./routes/sync'); // Import Sync Router
 const waGateway = require('./wa-gateway-client');
 
 const router = express.Router();
@@ -270,11 +271,12 @@ function initializeApi(
         validateToken,
     }));
     router.use(buildGroupsRouter({ sessions, validateToken }));
-    router.use(buildChatRouter({ sessions, formatPhoneNumber, validateToken }));
+    router.use(buildChatRouter({ sessions, formatPhoneNumber, validateToken, db }));
     router.use(buildProfileRouter({ validateToken }));
     router.use(buildPresenceRouter({ validateToken }));
     router.use(buildChannelsRouter({ validateToken }));
     router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken, waGateway, db }));
+    router.use('/sync', buildSyncRouter({ waGateway, db, validateToken })); // Mount Sync Router
     router.use(buildSearchRouter({ validateToken }));
 
     return router;

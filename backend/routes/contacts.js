@@ -54,7 +54,7 @@ function buildContactsRouter(deps) {
                         } else {
                             console.warn(`[Sync] Skipping DB sync: No tenant found for session ${sessionId}`);
                         }
-                    }).catch(err => console.error(`[Sync] Tenant lookup failed:`, err.message));
+                    }).catch(err => console.error('[Sync] Tenant lookup failed:', err.message));
                 }
                 // ---------------------------------------
 

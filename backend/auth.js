@@ -1166,7 +1166,19 @@ router.get('/tickets', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Tenant ID required' });
         }
 
-        let tickets = await db.getTicketsByTenant(tenantId, limit, offset);
+        const chats = await db.getChatsByTenant(tenantId, limit, offset);
+        let tickets = chats.map(c => ({
+            id: c.id,
+            status: c.status || 'open',
+            customer_name: c.display_name || c.push_name || 'Customer',
+            customer_contact: c.phone_number,
+            last_message: c.last_message_preview,
+            message_count: 0, // Simplified for compatibility
+            updated_at: c.last_message_time,
+            agent_name: c.agent_name,
+            unread_count: c.unread_count
+        }));
+
         if (statusFilter) {
             tickets = tickets.filter((t) => t.status === statusFilter);
         }
@@ -1190,16 +1202,16 @@ router.get('/tickets/:id/messages', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Ticket ID required' });
         }
 
-        const ticketResult = await db.query('SELECT * FROM tickets WHERE id = $1', [ticketId]);
-        const ticket = ticketResult.rows[0];
-        if (!ticket) {
-            return res.status(404).json({ success: false, error: 'Ticket not found' });
+        const chatResult = await db.query('SELECT * FROM chats WHERE id = $1', [ticketId]);
+        const chat = chatResult.rows[0];
+        if (!chat) {
+            return res.status(404).json({ success: false, error: 'Ticket (Chat) not found' });
         }
-        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+        if (user.role !== 'super_admin' && chat.tenant_id !== user.tenant_id) {
             return res.status(403).json({ success: false, error: 'Forbidden' });
         }
 
-        const messages = await db.getMessagesByTicket(ticketId);
+        const messages = await db.getMessagesByChat(ticketId);
         res.json({ success: true, messages });
     } catch (error) {
         console.error('Error fetching messages:', error);
@@ -1224,19 +1236,22 @@ router.post('/tickets/:id/messages', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Message text required' });
         }
 
-        const ticketResult = await db.query('SELECT * FROM tickets WHERE id = $1', [ticketId]);
-        const ticket = ticketResult.rows[0];
-        if (!ticket) {
-            return res.status(404).json({ success: false, error: 'Ticket not found' });
+        const chatResult = await db.query('SELECT * FROM chats WHERE id = $1', [ticketId]);
+        const chat = chatResult.rows[0];
+        if (!chat) {
+            return res.status(404).json({ success: false, error: 'Ticket (Chat) not found' });
         }
-        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+        if (user.role !== 'super_admin' && chat.tenant_id !== user.tenant_id) {
             return res.status(403).json({ success: false, error: 'Forbidden' });
         }
 
         const message = await db.logMessage({
-            ticket_id: ticketId,
-            sender_type: 'agent',
-            message_text: messageText
+            chatId: ticketId,
+            senderType: 'agent',
+            senderId: user.id,
+            senderName: user.name,
+            body: messageText,
+            isFromMe: true
         });
 
         res.status(201).json({ success: true, message });
