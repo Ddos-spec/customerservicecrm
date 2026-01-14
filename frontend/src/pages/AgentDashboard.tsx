@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Clock, Star, Wifi, X, RefreshCw, Activity, Settings,
-  CheckCircle2, MessageSquare, Shield, LogOut, Send, MessageCircle
+  CheckCircle2, MessageSquare, Shield, LogOut, Send, MessageCircle, Smartphone
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
@@ -44,6 +44,7 @@ const AgentDashboard = () => {
 
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [qrUrl, setQrUrl] = useState('');
+  const [connectedNumber, setConnectedNumber] = useState<string>('');
   const [adminContact, setAdminContact] = useState<{ name: string; email: string } | null>(null);
 
   // UI States
@@ -94,6 +95,7 @@ const AgentDashboard = () => {
     if (!sessionId) {
       setWaStatus('disconnected');
       setQrUrl('');
+      setConnectedNumber('');
       return;
     }
 
@@ -108,9 +110,11 @@ const AgentDashboard = () => {
           } else {
             setQrUrl('');
           }
+          setConnectedNumber(mySession.connectedNumber || '');
         } else {
           setWaStatus('disconnected');
           setQrUrl('');
+          setConnectedNumber('');
         }
       }
     } catch (error) {
@@ -143,7 +147,8 @@ const AgentDashboard = () => {
                 } else {
                     setQrUrl('');
                 }
-                
+                setConnectedNumber(mySession.connectedNumber || '');
+
                 if (mySession.status === 'CONNECTED') {
                     toast.success('WhatsApp Terhubung!');
                     setIsQrModalOpen(false);
@@ -288,13 +293,23 @@ Terima kasih.`);
         </div>
 
         <div className="flex items-center space-x-3">
-          <div className={`flex items-center space-x-2 px-4 py-2 rounded-full border ${ 
-            waStatus === 'connected' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' :
-            waStatus === 'connecting' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse' :
-            'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400'
-          }`}>
-            <Wifi size={16} />
-            <span className="text-sm font-bold capitalize">WhatsApp: {waStatus}</span>
+          <div className="flex flex-col items-end gap-2">
+            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full border ${
+              waStatus === 'connected' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' :
+              waStatus === 'connecting' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse' :
+              'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400'
+            }`}>
+              <Wifi size={16} />
+              <span className="text-sm font-bold capitalize">WhatsApp: {waStatus}</span>
+            </div>
+            {waStatus === 'connected' && connectedNumber && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                <Smartphone className="text-emerald-600 dark:text-emerald-400" size={14} />
+                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  {connectedNumber}
+                </span>
+              </div>
+            )}
           </div>
           <button
             onClick={() => setIsSettingsOpen(true)}
@@ -468,6 +483,14 @@ Terima kasih.`);
                     <div>
                       <h4 className="font-bold text-gray-900 dark:text-white text-sm">Koneksi WhatsApp</h4>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Status: <span className={waStatus === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}>{waStatus}</span></p>
+                      {waStatus === 'connected' && connectedNumber && (
+                        <div className="flex items-center gap-2 mt-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg inline-flex">
+                          <Smartphone className="text-emerald-600 dark:text-emerald-400" size={14} />
+                          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                            {connectedNumber}
+                          </span>
+                        </div>
+                      )}
                       {!sessionId && (
                         <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Session belum diatur oleh Super Admin.</p>
                       )}
