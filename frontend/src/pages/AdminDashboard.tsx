@@ -25,10 +25,8 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
   const fetchStats = async () => {
-    setIsLoading(true);
     try {
       const res = await api.get('/admin/stats');
       if (res.data.success) {
@@ -36,8 +34,6 @@ const AdminDashboard = () => {
       }
     } catch (error) {
       console.error('Failed to fetch stats:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 

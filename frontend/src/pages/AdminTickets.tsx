@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  MessageSquare, Search, Filter, RefreshCw,
+  MessageSquare, Search, RefreshCw,
   AlertCircle, CheckCircle2, Clock, User, X
 } from 'lucide-react';
 import api from '../lib/api';
