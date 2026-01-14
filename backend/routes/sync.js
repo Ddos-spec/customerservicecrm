@@ -24,20 +24,22 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
             console.log(`[Sync] Starting full contact sync for session ${sessionId}...`);
 
             // 1. Fetch from Gateway
+            // Use getContactsFromDB for contacts (queries database directly - more reliable)
+            // Use getGroups for groups (from memory)
             const [contactsRes, groupsRes] = await Promise.allSettled([
-                waGateway.getContacts(sessionId),
+                waGateway.getContactsFromDB(sessionId),
                 waGateway.getGroups(sessionId)
             ]);
 
-            const contacts = contactsRes.status === 'fulfilled' && contactsRes.value?.status === 'success' 
-                ? (contactsRes.value.data || []) 
-                : [];
-            
-            const groups = groupsRes.status === 'fulfilled' && groupsRes.value?.status === 'success' 
-                ? (groupsRes.value.data || []) 
+            const contacts = contactsRes.status === 'fulfilled' && contactsRes.value?.status === 'success'
+                ? (contactsRes.value.data || [])
                 : [];
 
-            console.log(`[Sync] Gateway returned ${contacts.length} contacts and ${groups.length} groups.`);
+            const groups = groupsRes.status === 'fulfilled' && groupsRes.value?.status === 'success'
+                ? (groupsRes.value.data || [])
+                : [];
+
+            console.log(`[Sync] Gateway DB returned ${contacts.length} contacts and ${groups.length} groups.`);
 
             // 2. Prepare Data for DB
             // Combine both into a unified list for insertion

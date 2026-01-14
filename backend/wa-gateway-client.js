@@ -446,7 +446,7 @@ async function getGroups(jid) {
 }
 
 /**
- * Get contacts from gateway
+ * Get contacts from gateway (memory)
  * @param {string} jid - Session JID
  */
 async function getContacts(jid) {
@@ -455,6 +455,19 @@ async function getContacts(jid) {
         return payload;
     } catch (error) {
         throw new Error(`Get contacts failed: ${error.message}`);
+    }
+}
+
+/**
+ * Get contacts from database (more reliable, gets all historical contacts)
+ * @param {string} jid - Session JID
+ */
+async function getContactsFromDB(jid) {
+    try {
+        const payload = await getWithAuth('/contact/db', getAuthHeader(jid));
+        return payload;
+    } catch (error) {
+        throw new Error(`Get contacts from DB failed: ${error.message}`);
     }
 }
 
@@ -581,6 +594,7 @@ module.exports = {
     checkRegistered,
     getGroups,
     getContacts,
+    getContactsFromDB,
     joinGroup,
     leaveGroup,
     checkHealth,
