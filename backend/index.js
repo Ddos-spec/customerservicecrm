@@ -284,13 +284,14 @@ function getSessionsDetails() {
 
     // Source of truth is sessionTokens (persisted sessions)
     const allSessionIds = Array.from(sessionTokens.keys());
-    
+
     return allSessionIds.map(id => {
         const session = sessions.get(id);
         return {
             sessionId: id,
             status: session?.status || 'UNKNOWN',
-            qr: session?.qr || null
+            qr: session?.qr || null,
+            connectedNumber: session?.connectedNumber || null
         };
     });
 }
@@ -580,14 +581,22 @@ webhookHandler.on('connection', (sessionId, data) => {
             sock: createCompatSocket(sessionId)
         };
     }
-    
+
     const newStatus = data.status === 'connected' ? 'CONNECTED' :
         data.status === 'disconnected' ? 'DISCONNECTED' :
         data.status === 'logged_out' ? 'LOGGED_OUT' : 'UNKNOWN';
-    
+
     session.status = newStatus;
     session.qr = null;
-    
+
+    // Store connected WhatsApp number
+    if (data.connectedNumber) {
+        session.connectedNumber = data.connectedNumber;
+    } else if (newStatus !== 'CONNECTED') {
+        // Clear connected number when disconnected
+        session.connectedNumber = null;
+    }
+
     // Ensure sock exists
     if (!session.sock) {
         session.sock = createCompatSocket(sessionId);

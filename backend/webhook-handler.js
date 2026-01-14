@@ -282,7 +282,10 @@ async function handlePresence(sessionId, data) {
  * Handle connection status change
  */
 async function handleConnection(sessionId, data) {
-    const { status, reason } = data;
+    const { status, reason, jid } = data;
+
+    // Extract phone number from JID (format: 628123456789@s.whatsapp.net)
+    const connectedNumber = jid ? jid.split('@')[0] : null;
 
     // Broadcast to WebSocket clients
     broadcast({
@@ -293,10 +296,14 @@ async function handleConnection(sessionId, data) {
                 status === 'disconnected' ? 'DISCONNECTED' :
                     status === 'logged_out' ? 'LOGGED_OUT' : 'UNKNOWN',
             reason,
+            connectedNumber,
         }],
     });
 
-    console.log(`[Webhook] Connection status: ${status} for session ${sessionId}`);
+    console.log(`[Webhook] Connection status: ${status} for session ${sessionId}${connectedNumber ? ` (${connectedNumber})` : ''}`);
+
+    // Emit 'connection' event (handled by index.js listener)
+    module.exports.emit('connection', sessionId, { status, reason, connectedNumber });
 
     // Notify admins when a session disconnects/logs out
     if (status === 'disconnected' || status === 'logged_out') {
