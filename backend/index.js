@@ -64,7 +64,12 @@ scheduleGC();
 
 // Trust proxy for rate limiting behind reverse proxy
 // Setting to true is safer for PaaS like Easypanel/Heroku/Railway
-app.set('trust proxy', true);
+// Security: Trust only the first proxy (Easypanel/Traefik Load Balancer)
+// Setting this to 'true' causes express-rate-limit to crash due to IP spoofing risks.
+// '1' means we trust the immediate reverse proxy, which is correct for Docker/Easypanel.
+app.set('trust proxy', 1);
+
+// Debugging configuration (moved after trust proxy set)
 
 // --- SECURITY ---
 const requiredEnvVars = ['SESSION_SECRET', 'ENCRYPTION_KEY', 'WA_GATEWAY_PASSWORD'];
