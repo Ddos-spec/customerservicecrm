@@ -2,6 +2,14 @@ const express = require('express');
 const path = require('path');
 const rateLimit = require('express-rate-limit'); // Security Fix High #12
 
+// Security Fix High #12: Per-user rate limiter for sending messages
+const sendMessageLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 1000, // Limit each IP to 1000 messages per hour (adjust as needed)
+    message: { status: 'error', message: 'Too many messages sent, please try again later.' },
+    keyGenerator: (req) => req.session?.user?.id ? `msg_limit_${req.session.user.id}` : req.ip // Limit by User ID if logged in
+});
+
 function buildMessagesRouter(deps) {
     const router = express.Router();
     const {
