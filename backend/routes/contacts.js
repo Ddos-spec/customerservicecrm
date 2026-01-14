@@ -1,7 +1,6 @@
 const express = require('express');
-const router = express.Router();
-
 function buildContactsRouter(deps) {
+    const router = express.Router();
     // deps: { sessions, validateToken, waGateway, db, ... }
     const { validateToken, waGateway, db } = deps;
 
