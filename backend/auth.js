@@ -12,6 +12,78 @@ const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 
+// Sync contacts helper - can be called from login or cron
+async function syncContactsForTenant(tenantId, sessionId) {
+    if (!sessionId || !tenantId) return { synced: 0 };
+
+    try {
+        // Ensure gateway token
+        if (!waGateway.getSessionToken(sessionId)) {
+            if (!gatewayPassword) return { synced: 0, error: 'No gateway password' };
+            const auth = await waGateway.authenticate(sessionId, gatewayPassword);
+            if (auth?.status && auth.data?.token) {
+                waGateway.setSessionToken(sessionId, auth.data.token);
+            } else {
+                return { synced: 0, error: 'Auth failed' };
+            }
+        }
+
+        // Fetch contacts from DB (more reliable)
+        const [contactsRes, groupsRes] = await Promise.allSettled([
+            waGateway.getContactsFromDB(sessionId),
+            waGateway.getGroups(sessionId)
+        ]);
+
+        const contacts = contactsRes.status === 'fulfilled' && contactsRes.value?.status === 'success'
+            ? (contactsRes.value.data || [])
+            : [];
+        const groups = groupsRes.status === 'fulfilled' && groupsRes.value?.status === 'success'
+            ? (groupsRes.value.data || [])
+            : [];
+
+        // Prepare unified contacts
+        const unifiedContacts = [];
+        for (const c of contacts) {
+            const jid = c.JID || c.jid;
+            if (!jid) continue;
+            const displayName = c.FullName || c.fullName || c.FirstName || c.firstName || c.PushName || c.pushName || null;
+            unifiedContacts.push({
+                jid,
+                fullName: c.FullName || c.fullName || null,
+                firstName: c.FirstName || c.firstName || null,
+                pushName: c.PushName || c.pushName || null,
+                displayName,
+                phone: jid.split('@')[0],
+                isBusiness: !!(c.BusinessName || c.businessName),
+                isGroup: false
+            });
+        }
+        for (const g of groups) {
+            const jid = g.JID || g.jid;
+            if (!jid) continue;
+            const groupName = g.Subject || g.subject || g.Name || g.name || 'Unknown Group';
+            unifiedContacts.push({
+                jid,
+                fullName: groupName,
+                displayName: groupName,
+                phone: jid.split('@')[0],
+                isBusiness: false,
+                isGroup: true
+            });
+        }
+
+        if (unifiedContacts.length > 0) {
+            await db.syncContacts(tenantId, unifiedContacts);
+        }
+
+        console.log(`[AutoSync] Synced ${unifiedContacts.length} contacts for tenant ${tenantId}`);
+        return { synced: unifiedContacts.length, contacts: contacts.length, groups: groups.length };
+    } catch (error) {
+        console.error(`[AutoSync] Error syncing tenant ${tenantId}:`, error.message);
+        return { synced: 0, error: error.message };
+    }
+}
+
 const router = express.Router();
 
 // ===== RATE LIMITERS =====
@@ -347,6 +419,19 @@ router.post('/login', loginLimiter, async (req, res) => {
                     tenant_session_id: user.tenant_session_id || null
                 }
             });
+
+            // Auto-sync contacts in background (non-blocking)
+            if (user.tenant_id && user.tenant_session_id) {
+                setImmediate(() => {
+                    syncContactsForTenant(user.tenant_id, user.tenant_session_id)
+                        .then(result => {
+                            if (result.synced > 0) {
+                                console.log(`[Login] Auto-synced ${result.synced} contacts for ${user.email}`);
+                            }
+                        })
+                        .catch(err => console.error('[Login] Auto-sync error:', err.message));
+                });
+            }
         });
 
     } catch (error) {
@@ -1432,5 +1517,6 @@ module.exports = {
     requireAuth,
     requireRole,
     requireTenantAccess,
-    ensureSuperAdmin
+    ensureSuperAdmin,
+    syncContactsForTenant
 };
