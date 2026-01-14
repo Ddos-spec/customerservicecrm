@@ -1361,8 +1361,8 @@ func WhatsAppGroupLeave(jid string, gjid string) error {
 	return errors.New("WhatsApp Client is not Valid")
 }
 
-// WhatsAppContactsGet returns contact list from client store
-func WhatsAppContactsGet(jid string) ([]types.ContactInfo, error) {
+// WhatsAppContactsGet returns contact list from client store with JID included
+func WhatsAppContactsGet(jid string) ([]map[string]interface{}, error) {
 	if WhatsAppClient[jid] != nil {
 		var err error
 
@@ -1377,10 +1377,17 @@ func WhatsAppContactsGet(jid string) ([]types.ContactInfo, error) {
 			return nil, err
 		}
 
-		// Convert map to slice
-		contacts := make([]types.ContactInfo, 0, len(contactMap))
-		for _, c := range contactMap {
-			contacts = append(contacts, c)
+		// Convert map to slice of maps to include the JID (key)
+		contacts := make([]map[string]interface{}, 0, len(contactMap))
+		for jid, info := range contactMap {
+			contacts = append(contacts, map[string]interface{}{
+				"JID":          jid.String(),
+				"FirstName":    info.FirstName,
+				"FullName":     info.FullName,
+				"PushName":     info.PushName,
+				"BusinessName": info.BusinessName,
+				"Found":        info.Found,
+			})
 		}
 
 		return contacts, nil

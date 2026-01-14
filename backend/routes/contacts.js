@@ -26,18 +26,24 @@ function buildContactsRouter(deps) {
                 // Map contacts to use Full Name / Push Name priority
                 const rawContacts = response.data || [];
                 const formattedContacts = rawContacts.map(c => {
-                    // Whatsmeow usually returns: Found, FirstName, FullName, PushName, BusinessName
+                    // Normalize property names (Go might return JID, Node might expect jid)
+                    const jid = c.JID || c.jid || '';
+                    const firstName = c.FirstName || c.firstName || '';
+                    const fullName = c.FullName || c.fullName || '';
+                    const pushName = c.PushName || c.pushName || '';
+                    const businessName = c.BusinessName || c.businessName || '';
+
                     // Priority: BusinessName > FullName > PushName > FirstName > JID User
-                    const name = c.BusinessName || c.FullName || c.PushName || c.FirstName || c.JID?.User || 'Unknown';
-                    const phone = c.JID?.User || c.JID?.split('@')[0] || '';
+                    const name = businessName || fullName || pushName || firstName || (typeof jid === 'string' ? jid.split('@')[0] : 'Unknown');
+                    const phone = typeof jid === 'string' ? jid.split('@')[0] : '';
                     
                     return {
-                        jid: c.JID,
+                        jid: jid,
                         name: name,
-                        shortName: c.FirstName,
-                        pushName: c.PushName,
+                        shortName: firstName,
+                        pushName: pushName,
                         phone: phone,
-                        isBusiness: !!c.BusinessName
+                        isBusiness: !!businessName
                     };
                 });
 
