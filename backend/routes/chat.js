@@ -28,7 +28,30 @@ function buildChatRouter(deps) {
      */
     router.get('/chats', async (req, res) => {
         const user = req.session?.user;
-        if (!user || !user.tenant_id) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+
+        // Check session first
+        if (!user) {
+            return res.status(401).json({ status: 'error', message: 'Session expired. Please login again.' });
+        }
+
+        // Check tenant_id - super_admin doesn't have one
+        if (!user.tenant_id) {
+            // For super_admin, allow specifying tenant_id via query
+            if (user.role === 'super_admin' && req.query.tenant_id) {
+                try {
+                    const limit = parseInt(req.query.limit) || 50;
+                    const offset = parseInt(req.query.offset) || 0;
+                    const chats = await db.getChatsByTenant(req.query.tenant_id, limit, offset);
+                    return res.json({ status: 'success', data: chats });
+                } catch (error) {
+                    return res.status(500).json({ status: 'error', message: error.message });
+                }
+            }
+            return res.status(400).json({
+                status: 'error',
+                message: 'No tenant associated with this account. Please contact admin.'
+            });
+        }
 
         try {
             const limit = parseInt(req.query.limit) || 50;
