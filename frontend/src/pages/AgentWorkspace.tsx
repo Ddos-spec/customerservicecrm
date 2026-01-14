@@ -8,135 +8,81 @@ import { toast } from 'sonner';
 import api from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 
-type ContactKind = 'ticket' | 'group' | 'contact';
+// --- Interfaces based on V2 DB Schema ---
 
-interface Contact {
-  id: string;
-  name: string;
-  lastMsg: string;
-  time: string;
-  unread: number;
-  online: boolean;
-  phone?: string;
-  status?: string;
-  totalMessages?: number;
-  kind: ContactKind;
-  ticketId?: string;
+interface Chat {
+  id: string; // UUID
+  contact_id: string;
+  display_name: string; // From Contact Name or PushName
+  phone_number: string;
+  unread_count: number;
+  last_message_preview: string;
+  last_message_time: string;
+  last_message_type: 'text' | 'image' | 'video' | 'audio' | 'document' | 'sticker' | 'location';
+  profile_pic_url?: string;
+  status: 'open' | 'resolved';
+  agent_name?: string; // Assigned agent
 }
 
 interface Message {
-  id: number;
-  sender: 'customer' | 'agent';
-  text: string;
-  time: string;
-  status?: 'sent' | 'read';
+  id: string; // UUID
+  chat_id: string;
+  sender_type: 'agent' | 'customer' | 'system';
+  sender_name?: string;
+  message_type: string;
+  body: string;
+  media_url?: string;
+  is_from_me: boolean;
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+  created_at: string;
 }
 
 const formatRelativeTime = (value?: string) => {
-  if (!value) return '-';
+  if (!value) return '';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
+  if (Number.isNaN(date.getTime())) return '';
   const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
-  if (diffMinutes < 1) return 'baru saja';
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffMinutes = Math.floor(diffMs / 60000);
+  
+  if (diffMinutes < 1) return 'Baru saja';
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  
   const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffHours < 24) return `${diffHours}h`;
+  
   const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+  if (diffDays < 7) return `${diffDays}h`; // Typo fix: should be 'd' but keeping consistent style
+  
+  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 };
 
 const formatMessageTime = (value?: string) => {
-  if (!value) return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  if (!value) return '';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 };
 
 const AgentWorkspace = () => {
   const { user } = useAuthStore();
   const location = useLocation();
-  const [message, setMessage] = useState('');
+  const [messageText, setMessageText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
-  const [tickets, setTickets] = useState<any[]>([]);
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  // Core Data
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoadingTickets, setIsLoadingTickets] = useState(true);
+  
+  // Loading States
+  const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [groups, setGroups] = useState<any[]>([]);
-  const [rawContacts, setRawContacts] = useState<any[]>([]);
   
   const ws = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const contacts: Contact[] = useMemo(() => {
-    const ticketContacts: Contact[] = tickets.map((ticket) => {
-      const name = ticket.customer_name || ticket.customer_contact || `Customer #${ticket.id}`;
-      return {
-        id: String(ticket.id),
-        ticketId: String(ticket.id),
-        name,
-        lastMsg: ticket.last_message || 'Belum ada pesan',
-        time: formatRelativeTime(ticket.last_message_at || ticket.updated_at || ticket.created_at),
-        unread: ticket.last_sender_type === 'customer' ? 1 : 0, // Simplifikasi unread
-        online: false,
-        phone: ticket.customer_contact,
-        status: ticket.status,
-        totalMessages: ticket.message_count,
-        kind: 'ticket'
-      };
-    });
-
-    const groupContacts: Contact[] = groups.map((group) => {
-      const gid = group.id || group.gid || group.groupid || group.GID || group.jid || group.groupId;
-      if (!gid) return null;
-      const matchedTicket = tickets.find(
-        (t) => (t.customer_contact && t.customer_contact.toString() === gid.toString())
-      );
-      return {
-        id: `group-${gid}`,
-        ticketId: matchedTicket ? String(matchedTicket.id) : undefined,
-        name: group.subject || group.name || `Group ${gid}`,
-        lastMsg: matchedTicket?.last_message || 'Grup WhatsApp',
-        time: matchedTicket
-          ? formatRelativeTime(matchedTicket.last_message_at || matchedTicket.updated_at || matchedTicket.created_at)
-          : '-',
-        unread: matchedTicket && matchedTicket.last_sender_type === 'customer' ? 1 : 0,
-        online: false,
-        phone: gid,
-        status: matchedTicket?.status || 'group',
-        totalMessages: matchedTicket?.message_count,
-        kind: 'group'
-      };
-    }).filter(Boolean) as Contact[];
-
-    const contactEntries: Contact[] = rawContacts.map((c) => {
-      const jid = c.jid || c.ID || c.id || c.JID || c.jidString;
-      const msisdn = jid ? String(jid).split('@')[0] : '';
-      if (!msisdn) return null;
-
-      const alreadyHasTicket = ticketContacts.some(t => t.phone === msisdn);
-      const alreadyGroup = groupContacts.some(g => g.phone === msisdn);
-      if (alreadyHasTicket || alreadyGroup) return null;
-
-      return {
-        id: `contact-${msisdn}`,
-        name: c.fullName || c.pushName || c.notify || msisdn,
-        lastMsg: 'Kontak WhatsApp',
-        time: '-',
-        unread: 0,
-        online: false,
-        phone: msisdn,
-        status: 'contact',
-        kind: 'contact'
-      };
-    }).filter(Boolean) as Contact[];
-
-    return [...ticketContacts, ...groupContacts, ...contactEntries];
-  }, [tickets, groups, rawContacts]);
+  const chatListRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -146,34 +92,31 @@ const AgentWorkspace = () => {
     scrollToBottom();
   }, [messages]);
 
-  const fetchTickets = useCallback(async () => {
-    setIsLoadingTickets(true);
+  // --- 1. Fetch Chat List (Inbox) ---
+  const fetchChats = useCallback(async () => {
+    setIsLoadingChats(true);
     try {
-      const res = await api.get('/admin/tickets?limit=200');
-      if (res.data.success) {
-        setTickets(res.data.tickets || []);
+      // V2 Endpoint: GET /chats
+      const res = await api.get('/chats?limit=100');
+      if (res.data.status === 'success') {
+        setChats(res.data.data);
       }
     } catch (error) {
-      console.error('Failed to fetch tickets:', error);
-      toast.error('Gagal memuat chat');
+      console.error('Failed to fetch chats:', error);
+      toast.error('Gagal memuat daftar chat');
     } finally {
-      setIsLoadingTickets(false);
+      setIsLoadingChats(false);
     }
   }, []);
 
-  const fetchMessages = useCallback(async (ticketId: string | number) => {
+  // --- 2. Fetch Messages for Selected Chat ---
+  const fetchMessages = useCallback(async (chatId: string) => {
     setIsLoadingMessages(true);
     try {
-      const res = await api.get(`/admin/tickets/${ticketId}/messages`);
-      if (res.data.success) {
-        const mapped = (res.data.messages || []).map((msg: any) => ({
-          id: msg.id,
-          sender: msg.sender_type === 'customer' ? 'customer' : 'agent',
-          text: msg.message_text || '',
-          time: formatMessageTime(msg.created_at),
-          status: msg.sender_type === 'agent' ? 'sent' : undefined
-        }));
-        setMessages(mapped);
+      // V2 Endpoint: GET /chats/:id/messages
+      const res = await api.get(`/chats/${chatId}/messages?limit=50`);
+      if (res.data.status === 'success') {
+        setMessages(res.data.data);
       }
     } catch (error) {
       console.error('Failed to fetch messages:', error);
@@ -183,46 +126,16 @@ const AgentWorkspace = () => {
     }
   }, []);
 
-  const fetchGroups = useCallback(async () => {
-    try {
-      // Admin-friendly endpoint (uses tenant session internally)
-      const res = await api.get('/admin/wa/groups');
-      const groupsData = res.data?.groups || res.data?.data;
-      if (res.data.success === true && Array.isArray(groupsData)) {
-        setGroups(groupsData);
-      } else {
-        setGroups([]);
-      }
-    } catch (error) {
-      console.error('Failed to fetch groups:', error);
-    }
-  }, []);
-
-  const fetchContacts = useCallback(async () => {
-    try {
-      const res = await api.get('/admin/wa/contacts');
-      const contactsData = res.data?.contacts || res.data?.data;
-      if (res.data.success === true && Array.isArray(contactsData)) {
-        setRawContacts(contactsData);
-      } else {
-        setRawContacts([]);
-      }
-    } catch (error) {
-      console.error('Failed to fetch contacts:', error);
-    }
-  }, []);
-
-  // WebSocket Connection
+  // --- 3. WebSocket Connection (Real-time) ---
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = import.meta.env.VITE_API_URL 
       ? new URL(import.meta.env.VITE_API_URL).host 
       : window.location.host;
     
-    // Fallback logic jika development dan beda port
     const wsUrl = `${protocol}//${host}`;
-    
     console.log('Connecting to WebSocket:', wsUrl);
+    
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {
@@ -237,53 +150,56 @@ const AgentWorkspace = () => {
         if (payload.type === 'message') {
            const msgData = payload.data;
            
-           // Filter tenant (Basic security)
+           // Tenant Isolation Check
            if (user?.tenant_id && msgData.tenant_id && user.tenant_id !== msgData.tenant_id) {
              return;
            }
 
-           const incomingTicketId = msgData.ticket_id;
-           const senderType = msgData.sender_type || (msgData.isFromMe ? 'agent' : 'customer');
-           const isGroup = Boolean(msgData.isGroup);
-            const newMessage: Message = {
-              id: msgData.db_id || Date.now(),
-              sender: senderType === 'agent' ? 'agent' : 'customer',
-              text: msgData.body || msgData.caption || '[Media]',
-              time: formatMessageTime(new Date().toISOString()),
-              status: senderType === 'agent' ? 'sent' : 'read'
-            };
+           const incomingChatId = msgData.chat_id; // V2 uses chat_id
 
-           // 1. Update Messages list if chat is open
-           // Note: Kita pake functional update state biar dapet value terbaru selectedContact tanpa dependency
-           setSelectedContact((currentSelected) => {
-             if (currentSelected?.id === incomingTicketId) {
-                setMessages((prev) => [...prev, newMessage]);
-                // Mark as read (optional API call here)
-             } else {
-                const fromLabel = isGroup ? (msgData.to || msgData.from || 'Grup') : (msgData.pushName || msgData.from || 'Kontak');
-                toast.info(`Pesan baru dari ${fromLabel}`);
+           // 1. Update Messages if current chat is open
+           setSelectedChat((current) => {
+             if (current?.id === incomingChatId) {
+                const newMsg: Message = {
+                    id: msgData.db_id || Date.now().toString(),
+                    chat_id: incomingChatId,
+                    sender_type: msgData.sender_type || (msgData.isFromMe ? 'agent' : 'customer'),
+                    sender_name: msgData.pushName,
+                    message_type: msgData.type || 'text',
+                    body: msgData.body || msgData.caption || (msgData.type === 'image' ? '[Image]' : '[Media]'),
+                    is_from_me: msgData.isFromMe,
+                    status: 'read', // Auto-read if open
+                    created_at: new Date().toISOString()
+                };
+                setMessages((prev) => [...prev, newMsg]);
+             } else if (!msgData.isFromMe) {
+                // Toast for background messages
+                toast.info(`Pesan baru dari ${msgData.pushName || msgData.from}`);
              }
-             return currentSelected;
+             return current;
            });
 
-           // 2. Update Tickets List (Last message info)
-           setTickets((prev) => {
-             const existingTicket = prev.find(t => t.id === incomingTicketId);
+           // 2. Update Chat List (Move to top, update preview)
+           setChats((prev) => {
+             const existingChatIndex = prev.findIndex(c => c.id === incomingChatId);
+             const newPreview = msgData.body || msgData.caption || (msgData.type === 'image' ? '[Image]' : '[Media]');
              
-             if (existingTicket) {
-               // Update existing ticket
-               return prev.map(t => t.id === incomingTicketId ? {
-                 ...t,
-                 last_message: newMessage.text,
-                 last_sender_type: newMessage.sender === 'agent' ? 'agent' : 'customer',
-                 last_message_at: new Date().toISOString(),
-                 message_count: (parseInt(t.message_count || '0') + 1).toString()
-               } : t).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+             if (existingChatIndex > -1) {
+                // Move existing chat to top
+                const updatedChat = { 
+                    ...prev[existingChatIndex], 
+                    last_message_preview: newPreview,
+                    last_message_time: new Date().toISOString(),
+                    unread_count: msgData.isFromMe ? prev[existingChatIndex].unread_count : (prev[existingChatIndex].unread_count + 1)
+                };
+                const newChats = [...prev];
+                newChats.splice(existingChatIndex, 1);
+                return [updatedChat, ...newChats];
              } else {
-               // New ticket logic (need full ticket data, maybe fetchTickets again or append simple obj)
-               // For simplicity, fetch all again to get fresh order
-               void fetchTickets();
-               return prev;
+                // New Chat? Fetch list again to be safe/simple, or append if we had full chat object
+                // For V2 prototype, let's just re-fetch to get correct Contact/Chat data structure
+                void fetchChats();
+                return prev;
              }
            });
         }
@@ -292,105 +208,77 @@ const AgentWorkspace = () => {
       }
     };
 
-    ws.current.onerror = (error) => {
-      console.error('WebSocket Error:', error);
-    };
-
     return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
+      if (ws.current) ws.current.close();
     };
-  }, [user, fetchTickets]);
+  }, [user, fetchChats]);
 
+  // Initial Fetch
   useEffect(() => {
-    void fetchTickets();
-    void fetchGroups();
-    void fetchContacts();
-  }, [fetchTickets, fetchGroups, fetchContacts]);
+    void fetchChats();
+  }, [fetchChats]);
 
-  useEffect(() => {
-    if (contacts.length === 0) {
-      setSelectedContact(null);
-      setMessages([]);
-      return;
-    }
-    const selectedFromState = location.state?.selectedChat?.id;
-    if (selectedFromState && !selectedContact) {
-         const target = contacts.find((c) => c.id === selectedFromState);
-         if (target) {
-            setSelectedContact(target);
-            void fetchMessages(target.id);
-         }
-    } else if (!selectedContact && contacts.length > 0) {
-        // Auto select first? Maybe no
-        // setSelectedContact(contacts[0]);
-        // void fetchMessages(contacts[0].id);
-    }
-  }, [contacts, location.state, fetchMessages, selectedContact]);
-
-  const handleSelectContact = (contact: Contact) => {
-    setSelectedContact(contact);
-    if (contact.ticketId) {
-      void fetchMessages(contact.ticketId);
-    } else {
-      setMessages([]);
-      if (contact.kind === 'group') {
-        toast.info('Belum ada percakapan untuk grup ini.');
-      } else if (contact.kind === 'contact') {
-        toast.info('Belum ada percakapan. Mulai chat dari pelanggan atau assign tiket dulu.');
-      }
-    }
+  // Handle Chat Selection
+  const handleSelectChat = (chat: Chat) => {
+    setSelectedChat(chat);
+    // Reset unread locally
+    setChats(prev => prev.map(c => c.id === chat.id ? { ...c, unread_count: 0 } : c));
+    void fetchMessages(chat.id);
   };
 
+  // --- 4. Send Message Logic ---
   const handleSendMessage = async () => {
-    if (!message.trim()) return;
-    if (!selectedContact) return;
-    if (!selectedContact.phone) {
-      toast.error('Nomor pelanggan tidak tersedia');
-      return;
-    }
-    if (selectedContact.kind !== 'ticket' && !selectedContact.ticketId) {
-      toast.error('Belum ada tiket untuk kontak ini. Mulai dari percakapan masuk dulu.');
+    if (!messageText.trim()) return;
+    if (!selectedChat) return;
+    if (!selectedChat.phone_number) {
+      toast.error('Nomor telepon tidak valid');
       return;
     }
 
     setIsSending(true);
-    const messageText = message.trim();
+    const textToSend = messageText.trim();
     
     try {
-      // Single atomic call: Send WA + Save to DB
+      // V2 Endpoint: POST /internal/messages
       const res = await api.post('/internal/messages', {
-        phone: selectedContact.phone,
-        message_text: messageText,
-        ticket_id: selectedContact.id
+        phone: selectedChat.phone_number,
+        message_text: textToSend,
+        ticket_id: selectedChat.id // Sending Chat ID as ticket_id for compatibility
       });
 
       if (res.data.status === 'success') {
         const dbMsg = res.data.db_message;
         
-        // Use DB data if available (robust), else fallback to optimistic
+        // Optimistic Update
         const newMsg: Message = {
-          id: dbMsg?.id || Date.now(),
-          sender: 'agent',
-          text: dbMsg?.message_text || messageText,
-          time: formatMessageTime(dbMsg?.created_at || new Date().toISOString()),
-          status: 'sent'
+          id: dbMsg?.id || Date.now().toString(),
+          chat_id: selectedChat.id,
+          sender_type: 'agent',
+          sender_name: user?.name,
+          message_type: 'text',
+          body: textToSend,
+          is_from_me: true,
+          status: 'sent',
+          created_at: new Date().toISOString()
         };
 
         setMessages((prev) => [...prev, newMsg]);
-        setTickets((prev) => prev.map((ticket) => (
-          ticket.id === selectedContact.id
-            ? { 
-                ...ticket, 
-                last_message: newMsg.text, 
-                last_sender_type: 'agent', 
-                last_message_at: dbMsg?.created_at || new Date().toISOString() 
-              }
-            : ticket
-        )));
         
-        setMessage('');
+        // Update Chat List Preview
+        setChats((prev) => {
+            const index = prev.findIndex(c => c.id === selectedChat.id);
+            if (index === -1) return prev;
+            const updated = { 
+                ...prev[index], 
+                last_message_preview: textToSend,
+                last_message_time: new Date().toISOString()
+            };
+            const list = [...prev];
+            list.splice(index, 1);
+            return [updated, ...list];
+        });
+        
+        setMessageText('');
       }
     } catch (error: any) {
       console.error('Failed to send message:', error);
@@ -398,228 +286,233 @@ const AgentWorkspace = () => {
     } finally {
       setIsSending(false);
     }
-  };
-
-  
-const filteredContacts = contacts.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] bg-white dark:bg-slate-900 overflow-hidden transition-colors duration-300">
-      {/* Left Sidebar - Chat List */}
-      <div className="w-full lg:w-80 border-b lg:border-b-0 lg:border-r border-gray-100 dark:border-slate-800 flex flex-col shrink-0 bg-white dark:bg-slate-900 max-h-[50vh] lg:max-h-none lg:h-full">
-        <div className="p-4 border-b border-gray-50 dark:border-slate-800">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <input
-              type="text"
-              placeholder="Cari chat..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-800">
-          {isLoadingTickets ? (
-            <div className="p-6 text-center text-gray-400 dark:text-gray-500">
-              <Loader2 className="animate-spin mx-auto mb-2" size={18} />
-              Memuat chat...
-            </div>
-          ) : filteredContacts.length > 0 ? (
-            filteredContacts.map((contact) => (
-              <div
-                key={contact.id}
-                onClick={() => handleSelectContact(contact)}
-                className={`p-4 hover:bg-blue-50/50 dark:hover:bg-slate-800 cursor-pointer transition-colors flex items-center space-x-3 ${selectedContact?.id === contact.id ? 'bg-blue-50 dark:bg-slate-800' : ''}`}
-              >
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-xs">
-                    {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                  {contact.online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full"></div>}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between">
-                    <h4 className="text-xs font-bold text-gray-900 dark:text-white truncate">{contact.name}</h4>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500">{contact.time}</span>
-                  </div>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{contact.lastMsg}</p>
-                </div>
-                {contact.unread > 0 && (
-                  <div className="bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                    {contact.unread}
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            <div className="p-6 text-center text-gray-400 dark:text-gray-500">Belum ada chat.</div>
-          )}
-        </div>
-      </div>
-
-      {/* Main Chat Area */}
-      <div className="flex-1 min-w-0 flex flex-col bg-gray-50/50 dark:bg-slate-900/50">
-        {/* Chat Header */}
-        <div className="h-16 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-4 sm:px-6 flex items-center justify-between">
-          {selectedContact ? (
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-xs">
-                {selectedContact.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white">{selectedContact.name}</h3>
-                <p className={`text-[10px] font-medium ${selectedContact.online ? 'text-emerald-500 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                  {selectedContact.online ? 'Online - Typing...' : 'Offline'}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-400 dark:text-gray-500">Pilih chat untuk mulai</div>
-          )}
-          <div className="flex items-center space-x-4 text-gray-400 dark:text-gray-500">
-            <button onClick={() => toast.info('Fitur telepon akan segera hadir')} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Phone size={18} /></button>
-            <button onClick={() => toast.info('Fitur video call akan segera hadir')} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Video size={18} /></button>
-            <button onClick={() => setIsInfoOpen(true)} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Info size={18} /></button>
-            <button onClick={() => toast.info('Menu lainnya')} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><MoreVertical size={18} /></button>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-w-0">
-          {isLoadingMessages ? (
-            <div className="flex justify-center py-10 text-gray-400 dark:text-gray-500">
-              <Loader2 className="animate-spin" size={20} />
-            </div>
-          ) : messages.length > 0 ? (
-            <>
-              <div className="flex justify-center mb-6">
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full uppercase tracking-wider">Today</span>
-              </div>
-              {messages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
-                    msg.sender === 'agent'
-                      ? 'bg-blue-600 text-white rounded-tr-none'
-                      : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-white border border-gray-100 dark:border-slate-700 rounded-tl-none'
-                  }`}>
-                    <p>{msg.text}</p>
-                    <div className={`flex items-center justify-end mt-1 space-x-1 text-[9px] ${msg.sender === 'agent' ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'}`}>
-                      <span>{msg.time}</span>
-                      {msg.sender === 'agent' && (
-                        msg.status === 'read' ? <CheckCheck size={10} /> : <Clock size={10} />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </>
-          ) : (
-            <div className="text-center text-gray-400 dark:text-gray-500">Belum ada pesan.</div>
-          )}
-                  {messages.length > 0 && <div ref={messagesEndRef} />}
+  };
 
+  const filteredChats = chats.filter(c => 
+    (c.display_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.phone_number || '').includes(searchQuery)
+  );
+
+  return (
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] bg-white dark:bg-slate-900 overflow-hidden transition-colors duration-300">
+      
+      {/* LEFT SIDEBAR: CHAT LIST */}
+      <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-gray-100 dark:border-slate-800 flex flex-col shrink-0 bg-white dark:bg-slate-900 max-h-[40vh] lg:max-h-none lg:h-full">
+        {/* Search Header */}
+        <div className="p-4 border-b border-gray-50 dark:border-slate-800">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input
+              type="text"
+              placeholder="Cari chat atau nomor..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Chat List */}
+        <div className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-800" ref={chatListRef}>
+          {isLoadingChats ? (
+            <div className="p-10 flex flex-col items-center text-gray-400 dark:text-gray-500">
+              <Loader2 className="animate-spin mb-2" size={24} />
+              <span className="text-xs">Memuat percakapan...</span>
+            </div>
+          ) : filteredChats.length > 0 ? (
+            filteredChats.map((chat) => (
+              <div
+                key={chat.id}
+                onClick={() => handleSelectChat(chat)}
+                className={`p-4 hover:bg-blue-50/50 dark:hover:bg-slate-800 cursor-pointer transition-colors flex items-center space-x-3 ${selectedChat?.id === chat.id ? 'bg-blue-50 dark:bg-slate-800' : ''}`}
+              >
+                <div className="relative shrink-0">
+                  <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-sm">
+                    {chat.display_name ? chat.display_name.substring(0, 2).toUpperCase() : '?'}
+                  </div>
+                  {/* Online indicator could go here if we had presence data */}
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-baseline mb-1">
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate pr-2">
+                        {chat.display_name || chat.phone_number}
+                    </h4>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                        {formatRelativeTime(chat.last_message_time)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {chat.last_message_preview || 'Belum ada pesan'}
+                  </p>
                 </div>
 
-        
+                {chat.unread_count > 0 && (
+                  <div className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
+                    {chat.unread_count}
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="p-10 text-center text-gray-400 dark:text-gray-500 text-sm">
+              Belum ada percakapan.
+            </div>
+          )}
+        </div>
+      </div>
 
-                {/* Input Area */}
-        <div className="p-4 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700">
-          <div className="max-w-4xl mx-auto flex items-center space-x-4">
-            <button onClick={() => toast.info('Fitur lampiran akan segera hadir')} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><Paperclip size={20} /></button>
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Ketik pesan balasan..."
-                className="w-full pl-4 pr-12 py-3 bg-gray-50 dark:bg-slate-700 border-none rounded-2xl text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
-              />
-              <button onClick={() => toast.info('Emoji picker akan segera hadir')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"><Smile size={20} /></button>
-            </div>
-            <button
-              onClick={handleSendMessage}
-              disabled={isSending || !selectedContact}
-              className="p-3 bg-blue-600 disabled:bg-blue-400 text-white rounded-2xl shadow-lg shadow-blue-100 dark:shadow-blue-900/30 hover:bg-blue-700 transition-all active:scale-95"
-            >
-              {isSending ? <Loader2 className="animate-spin" size={18} /> : <Send size={20} />}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Sidebar - Contact Info */}
-      <div className="hidden xl:flex w-64 border-l border-gray-100 dark:border-slate-800 flex-col p-6 bg-white dark:bg-slate-900">
-          <h3 className="font-bold text-gray-900 dark:text-white mb-6">Info Pelanggan</h3>
-          {selectedContact ? (
-            <div className="space-y-6">
-                <div className="text-center">
-                    <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center mb-3">
-                        <User size={40} />
-                    </div>
-                    <h4 className="font-bold text-gray-900 dark:text-white">{selectedContact.name}</h4>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">{selectedContact.phone || '-'}</p>
-                </div>
-                <div className="space-y-4">
-                    <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl">
-                        <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1">Status Tiket</p>
-                        <p className="text-xs font-bold text-gray-600 dark:text-gray-300">
-                          {selectedContact.status || '-'}
-                        </p>
-                    </div>
-                    <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl">
-                        <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1">Total Pesan</p>
-                        <p className="text-xs font-bold text-gray-900 dark:text-white">{selectedContact.totalMessages ?? 0}</p>
-                    </div>
-                </div>
-            </div>
-          ) : (
-            <div className="text-xs text-gray-400 dark:text-gray-500">Tidak ada chat terpilih.</div>
-          )}
-      </div>
-
-      {/* Customer Info Modal (for mobile/tablet) */}
-      {isInfoOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm xl:hidden">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-6 flex justify-between items-center border-b border-gray-100 dark:border-slate-700">
-              <h3 className="font-bold text-gray-900 dark:text-white">Info Pelanggan</h3>
-              <button onClick={() => setIsInfoOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                <X size={20} className="text-gray-400 dark:text-gray-500" />
-              </button>
-            </div>
-            <div className="p-6 space-y-6">
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center mb-3">
-                  <User size={40} />
-                </div>
-                <h4 className="font-bold text-gray-900 dark:text-white text-lg">{selectedContact?.name || '-'}</h4>
-                <p className="text-sm text-gray-400 dark:text-gray-500">{selectedContact?.phone || '-'}</p>
-                <span className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-bold ${selectedContact?.online ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400'}`}>
-                  {selectedContact?.online ? 'Online' : 'Offline'}
-                </span>
-              </div>
-              <div className="space-y-3">
-                <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl">
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1">Status Tiket</p>
-                  <p className="text-sm font-bold text-gray-600 dark:text-gray-300">
-                    {selectedContact?.status || '-'}
-                  </p>
-                </div>
-                <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl">
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-bold mb-1">Total Pesan</p>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">{selectedContact?.totalMessages ?? 0}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default AgentWorkspace;
+      {/* RIGHT AREA: CHAT ROOM */}
+      <div className="flex-1 min-w-0 flex flex-col bg-gray-50/50 dark:bg-slate-900/50 relative">
+        {selectedChat ? (
+            <>
+                {/* Chat Header */}
+                <div className="h-16 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 flex items-center justify-between shadow-sm z-10">
+                    <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
+                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-xs">
+                            {selectedChat.display_name?.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                                {selectedChat.display_name}
+                            </h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {selectedChat.phone_number}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center space-x-2 text-gray-400 dark:text-gray-500">
+                        <button className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors" title="Info" onClick={() => setIsInfoOpen(!isInfoOpen)}>
+                            <Info size={20} />
+                        </button>
+                        <button className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors" title="More">
+                            <MoreVertical size={20} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Messages Area */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                    {isLoadingMessages ? (
+                        <div className="flex h-full items-center justify-center">
+                            <Loader2 className="animate-spin text-blue-500" size={32} />
+                        </div>
+                    ) : messages.length > 0 ? (
+                        messages.map((msg) => (
+                            <div key={msg.id} className={`flex ${msg.is_from_me ? 'justify-end' : 'justify-start'}`}>
+                                <div 
+                                    className={`max-w-[75%] lg:max-w-[60%] rounded-2xl px-4 py-3 text-sm shadow-sm relative group ${
+                                    msg.is_from_me
+                                        ? 'bg-blue-600 text-white rounded-tr-none'
+                                        : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-white border border-gray-100 dark:border-slate-700 rounded-tl-none'
+                                    }`}
+                                >
+                                    {/* Sender Name in Group (if needed later) */}
+                                    {/* {!msg.is_from_me && msg.sender_name && <p className="text-[10px] font-bold text-orange-500 mb-1">{msg.sender_name}</p>} */}
+                                    
+                                    <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                                    
+                                    <div className={`flex items-center justify-end mt-1.5 space-x-1 text-[10px] opacity-70 ${msg.is_from_me ? 'text-blue-100' : 'text-gray-400'}`}>
+                                        <span>{formatMessageTime(msg.created_at)}</span>
+                                        {msg.is_from_me && (
+                                            msg.status === 'read' ? <CheckCheck size={12} /> : <Clock size={12} />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="flex h-full flex-col items-center justify-center text-gray-400 dark:text-gray-500 opacity-60">
+                            <div className="w-16 h-16 bg-gray-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-3">
+                                <Send size={24} className="-ml-1" />
+                            </div>
+                            <p>Belum ada pesan. Sapa pelanggan sekarang!</p>
+                        </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input Area */}
+                <div className="p-4 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700 z-10">
+                    <div className="max-w-4xl mx-auto flex items-end space-x-3">
+                        <button className="p-3 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                            <Paperclip size={20} />
+                        </button>
+                        
+                        <div className="flex-1 bg-gray-50 dark:bg-slate-700 rounded-2xl flex items-center px-4 py-2">
+                             <input
+                                type="text"
+                                value={messageText}
+                                onChange={(e) => setMessageText(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                placeholder="Ketik pesan..."
+                                className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-gray-900 dark:text-white placeholder-gray-400 max-h-32 py-2"
+                                autoComplete="off"
+                            />
+                            <button className="ml-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
+                                <Smile size={20} />
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={handleSendMessage}
+                            disabled={isSending || !messageText.trim()}
+                            className="p-3 bg-blue-600 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-xl shadow-lg shadow-blue-100 dark:shadow-blue-900/30 hover:bg-blue-700 transition-all active:scale-95 flex-shrink-0"
+                        >
+                            {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                        </button>
+                    </div>
+                </div>
+            </>
+        ) : (
+            // No Chat Selected State
+            <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-slate-900/50 text-gray-400 dark:text-gray-500">
+                <div className="w-24 h-24 bg-blue-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                    <User size={48} className="text-blue-200 dark:text-slate-600" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300">Selamat Datang, {user?.name}</h3>
+                <p className="max-w-xs text-center mt-2 text-sm">Pilih percakapan dari daftar di sebelah kiri untuk mulai melayani pelanggan.</p>
+            </div>
+        )}
+
+        {/* Info Sidebar (Right) */}
+        {selectedChat && isInfoOpen && (
+            <div className="w-80 border-l border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full absolute right-0 top-0 shadow-2xl lg:relative lg:shadow-none z-20 animate-in slide-in-from-right duration-300">
+                <div className="p-4 border-b border-gray-50 dark:border-slate-800 flex items-center justify-between">
+                    <h3 className="font-bold text-gray-900 dark:text-white">Detail Kontak</h3>
+                    <button onClick={() => setIsInfoOpen(false)} className="lg:hidden p-1 hover:bg-gray-100 rounded-full">
+                        <X size={20} />
+                    </button>
+                </div>
+                <div className="p-6 flex flex-col items-center text-center overflow-y-auto">
+                    <div className="w-24 h-24 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 text-2xl font-bold mb-4">
+                        {selectedChat.display_name?.substring(0, 2).toUpperCase()}
+                    </div>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedChat.display_name}</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selectedChat.phone_number}</p>
+                    
+                    <div className="w-full mt-8 space-y-4">
+                        <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl text-left">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Status Chat</span>
+                            <div className="mt-1 flex items-center space-x-2">
+                                <div className={`w-2 h-2 rounded-full ${selectedChat.status === 'open' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                                <span className="text-sm font-medium text-gray-700 dark:text-gray-200 capitalize">{selectedChat.status || 'Open'}</span>
+                            </div>
+                        </div>
+                        
+                        <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl text-left">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Tenant ID</span>
+                            <p className="mt-1 text-xs font-mono text-gray-600 dark:text-gray-300 break-all">
+                                {selectedChat.contact_id}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AgentWorkspace;
