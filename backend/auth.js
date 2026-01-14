@@ -9,6 +9,7 @@ const rateLimit = require('express-rate-limit');
 const db = require('./db');
 const { formatPhoneNumber } = require('./phone-utils');
 const axios = require('axios');
+const waGateway = require('./wa-gateway-client');
 
 const router = express.Router();
 
@@ -1282,6 +1283,76 @@ router.post('/notifier-session', requireRole('super_admin'), async (req, res) =>
     } catch (error) {
         console.error('Error setting notifier session:', error);
         res.status(500).json({ success: false, error: 'Failed to set notifier session' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/wa/groups
+ * Fetch joined groups for the tenant's WhatsApp session (no WA token needed from frontend)
+ */
+router.get('/wa/groups', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        let sessionId = user?.tenant_session_id || user?.tenant_session_id;
+
+        // Fallback: get tenant session id from DB
+        if (!sessionId && user?.tenant_id) {
+            const tenant = await db.getTenantById(user.tenant_id);
+            sessionId = tenant?.session_id;
+        }
+
+        // Super admin may query a specific session
+        if (!sessionId && user?.role === 'super_admin' && req.query.session_id) {
+            sessionId = req.query.session_id.toString().trim();
+        }
+
+        if (!sessionId) {
+            return res.status(400).json({ success: false, error: 'Session WA belum diatur' });
+        }
+
+        const response = await waGateway.getGroups(sessionId);
+        if (response.status === true || response.status === 'success') {
+            return res.json({ success: true, groups: response.data });
+        }
+
+        return res.status(502).json({ success: false, error: response.message || 'Gagal mengambil grup' });
+    } catch (error) {
+        console.error('Error fetching WA groups:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch groups' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/wa/contacts
+ * Fetch contacts for the tenant's WhatsApp session (no WA token needed from frontend)
+ */
+router.get('/wa/contacts', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        let sessionId = user?.tenant_session_id || user?.tenant_session_id;
+
+        if (!sessionId && user?.tenant_id) {
+            const tenant = await db.getTenantById(user.tenant_id);
+            sessionId = tenant?.session_id;
+        }
+
+        if (!sessionId && user?.role === 'super_admin' && req.query.session_id) {
+            sessionId = req.query.session_id.toString().trim();
+        }
+
+        if (!sessionId) {
+            return res.status(400).json({ success: false, error: 'Session WA belum diatur' });
+        }
+
+        const response = await waGateway.getContacts(sessionId);
+        if (response.status === true || response.status === 'success') {
+            return res.json({ success: true, contacts: response.data });
+        }
+
+        return res.status(502).json({ success: false, error: response.message || 'Gagal mengambil kontak' });
+    } catch (error) {
+        console.error('Error fetching WA contacts:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch contacts' });
     }
 });
 
