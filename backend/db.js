@@ -108,6 +108,21 @@ async function ensureInvitePhoneColumn() {
 }
 
 /**
+ * Ensure users.session_id exists for super admin -> session mapping
+ * This allows super admin to have their own WhatsApp session separate from tenants
+ */
+async function ensureUserSessionColumn() {
+    await query(
+        `ALTER TABLE users
+         ADD COLUMN IF NOT EXISTS session_id TEXT`
+    );
+    await query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS users_session_id_idx
+         ON users (session_id) WHERE session_id IS NOT NULL`
+    );
+}
+
+/**
  * Ensure user invites table exists
  * NOTE: Table should be created with UUID from strukturdatabase.txt schema
  */
@@ -866,6 +881,7 @@ module.exports = {
     pool,
     ensureTenantWebhooksTable,
     ensureTenantSessionColumn,
+    ensureUserSessionColumn,
     ensureUserInvitesTable,
     ensureSystemSettingsTable,
     ensureUserPhoneColumn,

@@ -648,6 +648,7 @@ if (!isTest) {
         try {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
+            await db.ensureUserSessionColumn();
             await db.ensureUserInvitesTable();
             await db.ensureSystemSettingsTable();
             await db.ensureUserPhoneColumn();
