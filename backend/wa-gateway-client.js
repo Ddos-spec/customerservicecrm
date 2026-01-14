@@ -433,6 +433,19 @@ async function getGroups(jid) {
 }
 
 /**
+ * Get contacts from gateway
+ * @param {string} jid - Session JID
+ */
+async function getContacts(jid) {
+    try {
+        const payload = await getWithAuth('/contact', getAuthHeader(jid));
+        return payload;
+    } catch (error) {
+        throw new Error(`Get contacts failed: ${error.message}`);
+    }
+}
+
+/**
  * Join a group by invite link
  * @param {string} jid - Session JID
  * @param {string} link - Group invite link
@@ -554,6 +567,7 @@ module.exports = {
     // Utilities
     checkRegistered,
     getGroups,
+    getContacts,
     joinGroup,
     leaveGroup,
     checkHealth,

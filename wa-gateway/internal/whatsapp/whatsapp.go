@@ -257,6 +257,25 @@ func LeaveGroup(c echo.Context) error {
 	return router.ResponseSuccess(c, "Successfully Leave Group By Group ID")
 }
 
+// GetContacts
+// @Summary     Get Contacts Information
+// @Description Get Contacts Information from WhatsApp client store
+// @Tags        WhatsApp Contacts
+// @Produce     json
+// @Success     200
+// @Security    BearerAuth
+// @Router      /contact [get]
+func GetContacts(c echo.Context) error {
+	jid := jwtPayload(c).JID
+
+	contacts, err := pkgWhatsApp.WhatsAppContactsGet(jid)
+	if err != nil {
+		return router.ResponseInternalError(c, err.Error())
+	}
+
+	return router.ResponseSuccessWithData(c, "Successfully List Contacts", contacts)
+}
+
 // SendText
 // @Summary     Send Text Message
 // @Description Send Text Message to Spesific WhatsApp Personal ID or Group ID

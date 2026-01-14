@@ -1360,3 +1360,25 @@ func WhatsAppGroupLeave(jid string, gjid string) error {
 	// Return Error WhatsApp Client is not Valid
 	return errors.New("WhatsApp Client is not Valid")
 }
+
+// WhatsAppContactsGet returns contact list from client store
+func WhatsAppContactsGet(jid string) ([]types.ContactInfo, error) {
+	if WhatsAppClient[jid] != nil {
+		var err error
+
+		// Make Sure WhatsApp Client is OK
+		err = WhatsAppIsClientOK(jid)
+		if err != nil {
+			return nil, err
+		}
+
+		contacts, err := WhatsAppClient[jid].Store.Contacts.GetAllContacts(context.Background())
+		if err != nil {
+			return nil, err
+		}
+
+		return contacts, nil
+	}
+
+	return nil, errors.New("WhatsApp Client is not Valid")
+}
