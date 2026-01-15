@@ -410,6 +410,9 @@ router.post('/login', loginLimiter, async (req, res) => {
                 return res.status(500).json({ success: false, error: 'Session error' });
             }
 
+            // Debug: Log successful login with session ID
+            console.log(`[Login] SUCCESS: ${user.email} (${user.role}) - SessionID: ${req.sessionID}`);
+
             res.json({
                 success: true,
                 user: {

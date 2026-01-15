@@ -35,8 +35,14 @@ function buildMessagesRouter(deps) {
     const unsupportedTypes = new Set(['button', 'list', 'template', 'contacts']);
 
     router.post('/internal/messages', sendMessageLimiter, async (req, res) => {
+        // Debug: Log session info
+        console.log('[Messages] Session ID:', req.sessionID);
+        console.log('[Messages] Session User:', req.session?.user?.email || 'NO USER');
+        console.log('[Messages] Cookies:', req.headers.cookie ? 'Present' : 'MISSING');
+
         const user = req.session?.user;
         if (!user) {
+            console.warn('[Messages] 401 - No user in session. Cookie header:', req.headers.cookie?.substring(0, 50) || 'NONE');
             return res.status(401).json({ status: 'error', message: 'Authentication required' });
         }
         if (!['admin_agent', 'agent'].includes(user.role)) {
