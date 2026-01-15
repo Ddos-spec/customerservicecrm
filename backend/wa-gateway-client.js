@@ -25,6 +25,41 @@ const gatewayClient = axios.create({
 // Session tokens cache (JID -> JWT token)
 const sessionTokens = new Map();
 
+// Error callback for session invalidation
+let onSessionError = null;
+
+/**
+ * Register a callback for session errors (e.g., "Client not Valid")
+ * @param {Function} callback - Function(sessionId, error) to call on session errors
+ */
+function setSessionErrorCallback(callback) {
+    onSessionError = callback;
+}
+
+/**
+ * Check if an error indicates the session is invalid/disconnected
+ */
+function isSessionInvalidError(error, response) {
+    const errorMsg = (error?.message || '').toLowerCase();
+    const responseMsg = (response?.data?.message || response?.message || '').toLowerCase();
+
+    const invalidPatterns = [
+        'client not valid',
+        'not logged in',
+        'session not found',
+        'unauthorized',
+        'not connected',
+        'connection closed',
+        'websocket closed',
+        'device removed',
+        'logged out'
+    ];
+
+    return invalidPatterns.some(pattern =>
+        errorMsg.includes(pattern) || responseMsg.includes(pattern)
+    );
+}
+
 /**
  * Normalize JID to ensure consistency (e.g. 0812... -> 62812...)
  */
@@ -67,6 +102,42 @@ function unwrap(response) {
         throw new Error('Gateway response tidak valid');
     }
     return payload;
+}
+
+/**
+ * Handle gateway error and check for session invalidation
+ * @param {string} jid - Session JID
+ * @param {Error} error - The error that occurred
+ * @param {Object} response - Optional response object
+ */
+function handleGatewayError(jid, error, response = null) {
+    // Check if this error indicates session is invalid
+    if (isSessionInvalidError(error, response)) {
+        console.warn(`[Gateway] Session ${jid} appears to be invalid: ${error.message}`);
+
+        // Notify callback if registered
+        if (typeof onSessionError === 'function') {
+            try {
+                onSessionError(normalizeJid(jid), error);
+            } catch (cbErr) {
+                console.error('[Gateway] Error in session error callback:', cbErr.message);
+            }
+        }
+    }
+
+    // Check for HTTP 500 errors which may indicate session issues
+    const statusCode = error?.response?.status || response?.status;
+    if (statusCode >= 500) {
+        console.warn(`[Gateway] Server error (${statusCode}) for session ${jid}`);
+
+        if (typeof onSessionError === 'function') {
+            try {
+                onSessionError(normalizeJid(jid), error);
+            } catch (cbErr) {
+                console.error('[Gateway] Error in session error callback:', cbErr.message);
+            }
+        }
+    }
 }
 
 /**
@@ -258,6 +329,7 @@ async function sendText(jid, to, message) {
         const form = buildUrlEncoded({ msisdn: to, message });
         return await postUrlEncoded('/send/text', form, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send text failed: ${error.message}`);
     }
 }
@@ -282,6 +354,7 @@ async function sendImage(jid, to, image, caption = '', viewOnce = false) {
 
         return await postFormData('/send/image', formData, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send image failed: ${error.message}`);
     }
 }
@@ -302,6 +375,7 @@ async function sendDocument(jid, to, document, filename) {
 
         return await postFormData('/send/document', formData, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send document failed: ${error.message}`);
     }
 }
@@ -321,6 +395,7 @@ async function sendAudio(jid, to, audio) {
 
         return await postFormData('/send/audio', formData, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send audio failed: ${error.message}`);
     }
 }
@@ -344,6 +419,7 @@ async function sendVideo(jid, to, video, caption = '', viewOnce = false) {
 
         return await postFormData('/send/video', formData, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send video failed: ${error.message}`);
     }
 }
@@ -363,6 +439,7 @@ async function sendSticker(jid, to, sticker) {
 
         return await postFormData('/send/sticker', formData, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send sticker failed: ${error.message}`);
     }
 }
@@ -379,6 +456,7 @@ async function sendLocation(jid, to, latitude, longitude) {
         const form = buildUrlEncoded({ msisdn: to, latitude, longitude });
         return await postUrlEncoded('/send/location', form, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send location failed: ${error.message}`);
     }
 }
@@ -395,6 +473,7 @@ async function sendContact(jid, to, name, phone) {
         const form = buildUrlEncoded({ msisdn: to, name, phone });
         return await postUrlEncoded('/send/contact', form, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send contact failed: ${error.message}`);
     }
 }
@@ -411,6 +490,7 @@ async function sendLink(jid, to, url, caption = '') {
         const form = buildUrlEncoded({ msisdn: to, url, caption });
         return await postUrlEncoded('/send/link', form, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send link failed: ${error.message}`);
     }
 }
@@ -428,6 +508,7 @@ async function sendPoll(jid, to, question, options = [], multiAnswer = false) {
         });
         return await postUrlEncoded('/send/poll', form, getAuthHeader(jid));
     } catch (error) {
+        handleGatewayError(jid, error, error?.response);
         throw new Error(`Send poll failed: ${error.message}`);
     }
 }
@@ -564,6 +645,9 @@ module.exports = {
     setSessionToken,
     getSessionToken,
     removeSessionToken,
+
+    // Error handling callback
+    setSessionErrorCallback,
 
     // Authentication
     authenticate,
