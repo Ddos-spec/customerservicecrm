@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const db = require('./db');
 const { formatPhoneNumber } = require('./phone-utils');
+const { normalizeJid, getJidUser } = require('./utils/jid');
 const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
@@ -44,7 +45,9 @@ async function syncContactsForTenant(tenantId, sessionId) {
         // Prepare unified contacts
         const unifiedContacts = [];
         for (const c of contacts) {
-            const jid = c.JID || c.jid;
+            const rawJid = c.JID || c.jid;
+            if (!rawJid) continue;
+            const jid = normalizeJid(rawJid, { isGroup: false });
             if (!jid) continue;
             const displayName = c.FullName || c.fullName || c.FirstName || c.firstName || c.PushName || c.pushName || null;
             unifiedContacts.push({
@@ -53,20 +56,22 @@ async function syncContactsForTenant(tenantId, sessionId) {
                 firstName: c.FirstName || c.firstName || null,
                 pushName: c.PushName || c.pushName || null,
                 displayName,
-                phone: jid.split('@')[0],
+                phone: getJidUser(jid),
                 isBusiness: !!(c.BusinessName || c.businessName),
                 isGroup: false
             });
         }
         for (const g of groups) {
-            const jid = g.JID || g.jid;
+            const rawJid = g.JID || g.jid;
+            if (!rawJid) continue;
+            const jid = normalizeJid(rawJid, { isGroup: true });
             if (!jid) continue;
             const groupName = g.Subject || g.subject || g.Name || g.name || 'Unknown Group';
             unifiedContacts.push({
                 jid,
                 fullName: groupName,
                 displayName: groupName,
-                phone: jid.split('@')[0],
+                phone: getJidUser(jid),
                 isBusiness: false,
                 isGroup: true
             });

@@ -3,6 +3,9 @@ package events
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -13,10 +16,19 @@ import (
 	"customerservicecrm/wa-gateway/pkg/webhook"
 )
 
+const groupNameCacheTTL = 10 * time.Minute
+
+type groupNameCacheEntry struct {
+	name      string
+	fetchedAt time.Time
+}
+
 // Handler handles WhatsApp events and forwards them to webhooks
 type Handler struct {
 	sessionID string
 	client    *whatsmeow.Client
+	groupNameCache   map[string]groupNameCacheEntry
+	groupNameCacheMu sync.RWMutex
 }
 
 // NewHandler creates a new event handler for a WhatsApp session
@@ -24,6 +36,7 @@ func NewHandler(sessionID string, client *whatsmeow.Client) *Handler {
 	return &Handler{
 		sessionID: sessionID,
 		client:    client,
+		groupNameCache: make(map[string]groupNameCacheEntry),
 	}
 }
 
@@ -75,6 +88,12 @@ func (h *Handler) handleMessage(evt *events.Message) {
 		Timestamp: evt.Info.Timestamp.Unix(),
 	}
 
+	if msg.IsGroup {
+		if groupName := h.getGroupName(evt.Info.Chat); groupName != "" {
+			msg.GroupName = groupName
+		}
+	}
+
 	// Determine message type and extract content
 	h.extractMessageContent(evt.Message, &msg)
 
@@ -105,6 +124,33 @@ func (h *Handler) handleMessage(evt *events.Message) {
 	if err := webhook.QueueMessage(h.sessionID, msg); err != nil {
 		log.Print(nil).Errorf("[MESSAGE] Failed to queue webhook: %v", err)
 	}
+}
+
+func (h *Handler) getGroupName(jid types.JID) string {
+	key := jid.String()
+
+	h.groupNameCacheMu.RLock()
+	entry, ok := h.groupNameCache[key]
+	h.groupNameCacheMu.RUnlock()
+	if ok && entry.name != "" && time.Since(entry.fetchedAt) < groupNameCacheTTL {
+		return entry.name
+	}
+
+	info, err := h.client.GetGroupInfo(context.Background(), jid)
+	if err != nil {
+		log.Print(nil).Warnf("[GROUP] Failed to get group info for %s: %v", key, err)
+		return ""
+	}
+
+	name := strings.TrimSpace(info.Name)
+	if name == "" {
+		return ""
+	}
+
+	h.groupNameCacheMu.Lock()
+	h.groupNameCache[key] = groupNameCacheEntry{name: name, fetchedAt: time.Now()}
+	h.groupNameCacheMu.Unlock()
+	return name
 }
 
 // extractMessageContent extracts content from various message types

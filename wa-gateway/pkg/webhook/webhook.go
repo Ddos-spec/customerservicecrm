@@ -53,6 +53,7 @@ type MessagePayload struct {
 	IsGroup       bool                   `json:"isGroup"`
 	IsFromMe      bool                   `json:"isFromMe"`
 	PushName      string                 `json:"pushName,omitempty"`
+	GroupName     string                 `json:"groupName,omitempty"`
 	Timestamp     int64                  `json:"timestamp"`
 	QuotedMessage map[string]interface{} `json:"quotedMessage,omitempty"`
 	Raw           map[string]interface{} `json:"raw,omitempty"`

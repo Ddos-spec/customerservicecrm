@@ -91,13 +91,18 @@ async function getContactsByTenant(tenantId) {
     return result.rows;
 }
 
+async function getContactByJid(tenantId, jid) {
+    const result = await query('SELECT * FROM contacts WHERE tenant_id = $1 AND jid = $2', [tenantId, jid]);
+    return result.rows[0] || null;
+}
+
 // =============================================
 // 3. CHATS & MESSAGES (V2 - Pengganti Tiket)
 // =============================================
 
 async function getOrCreateChat(tenantId, jid, pushName = null, isGroup = false) {
     // 1. Pastikan kontak ada
-    let contactRes = await query('SELECT id FROM contacts WHERE tenant_id = $1 AND jid = $2', [tenantId, jid]);
+    let contactRes = await query('SELECT id, full_name, phone_number FROM contacts WHERE tenant_id = $1 AND jid = $2', [tenantId, jid]);
     let contactId;
 
     if (contactRes.rows.length === 0) {
@@ -110,12 +115,46 @@ async function getOrCreateChat(tenantId, jid, pushName = null, isGroup = false) 
         );
         contactId = res.rows[0].id;
     } else {
-        contactId = contactRes.rows[0].id;
+        const existing = contactRes.rows[0];
+        contactId = existing.id;
+        const newName = typeof pushName === 'string' ? pushName.trim() : '';
+        if (newName) {
+            const existingName = (existing.full_name || '').trim();
+            const jidUser = jid.split('@')[0];
+            const fallbackNames = new Set(['Group Chat', 'Unknown Group', jidUser]);
+            if (existing.phone_number) {
+                fallbackNames.add(existing.phone_number);
+            }
+
+            let shouldUpdate = false;
+            if (isGroup) {
+                shouldUpdate = !fallbackNames.has(newName) && newName !== existingName;
+            } else if (!existingName || fallbackNames.has(existingName)) {
+                shouldUpdate = newName !== existingName;
+            }
+
+            if (shouldUpdate) {
+                await query(
+                    'UPDATE contacts SET full_name = $1, updated_at = now() WHERE id = $2',
+                    [newName, contactId]
+                );
+            }
+        }
     }
 
     // 2. Dapatkan atau buat chat room
     let chatRes = await query('SELECT * FROM chats WHERE tenant_id = $1 AND contact_id = $2', [tenantId, contactId]);
-    if (chatRes.rows.length > 0) return chatRes.rows[0];
+    if (chatRes.rows.length > 0) {
+        const chat = chatRes.rows[0];
+        if (isGroup && !chat.is_group) {
+            const updated = await query(
+                'UPDATE chats SET is_group = true, updated_at = now() WHERE id = $1 RETURNING *',
+                [chat.id]
+            );
+            return updated.rows[0] || chat;
+        }
+        return chat;
+    }
 
     const newChat = await query(
         'INSERT INTO chats (tenant_id, contact_id, is_group) VALUES ($1, $2, $3) RETURNING *',
@@ -293,7 +332,7 @@ module.exports = {
     getInviteByToken: async (t) => (await query('SELECT i.*, t.company_name as tenant_name FROM user_invites i JOIN tenants t ON i.tenant_id = t.id WHERE i.token = $1', [t])).rows[0],
     acceptInvite: async (t) => await query("UPDATE user_invites SET status = 'accepted' WHERE token = $1", [t]),
     // Contacts
-    syncContacts, getContactsByTenant,
+    syncContacts, getContactsByTenant, getContactByJid,
     // Chats & Messages
     getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead,
     // System
