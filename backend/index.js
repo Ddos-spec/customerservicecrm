@@ -34,7 +34,10 @@ const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 
 const app = express();
 // Detect production if NODE_ENV is set OR if FRONTEND_URL is https (common in deployments)
+// On Easypanel, NODE_ENV is usually 'production'.
 const isProd = process.env.NODE_ENV === 'production' || (process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith('https'));
+
+console.log(`[System] Environment: NODE_ENV=${process.env.NODE_ENV}, isProd=${isProd}`);
 
 // Test environment defaults
 if (isTest) {

@@ -6,8 +6,8 @@ function buildTokenValidator(sessionTokens) {
         }
 
         if (!token) {
-            console.warn(`[Auth] 401 No token provided for: ${req.method} ${req.originalUrl}`);
-            return res.status(401).json({ status: 'error', message: 'No token provided' });
+            console.warn(`[Auth] 401 No API Token provided for: ${req.method} ${req.originalUrl}`);
+            return res.status(401).json({ status: 'error', message: 'No API Token provided' });
         }
 
         let sessionId = req.query.sessionId || req.body.sessionId || req.params.sessionId;

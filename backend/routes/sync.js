@@ -6,8 +6,12 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
 
     // Session-based auth middleware - allows super_admin without tenant_id
     const requireSession = (req, res, next) => {
+        // Debug Log
+        console.log(`[Sync] Auth Check: User=${req.session?.user?.email || 'None'} SessionID=${req.sessionID}`);
+        
         const user = req.session?.user;
         if (!user) {
+            console.warn('[Sync] Authentication failed: No user in session.');
             return res.status(401).json({ status: 'error', message: 'Authentication required' });
         }
         next();
