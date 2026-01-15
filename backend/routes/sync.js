@@ -3,18 +3,22 @@ const { normalizeJid, getJidUser } = require('../utils/jid');
 const router = express.Router();
 
 function buildSyncRouter({ waGateway, db, validateToken }) {
-    
-    router.use(validateToken);
+
+    // Session-based auth middleware for internal routes
+    const requireSession = (req, res, next) => {
+        const user = req.session?.user;
+        if (!user || !user.tenant_id) {
+            return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
+        next();
+    };
 
     /**
      * POST /api/v1/sync/contacts
      * Force sync contacts and groups from WhatsApp Gateway to CRM Database
      */
-    router.post('/contacts', async (req, res) => {
-        const user = req.session?.user;
-        if (!user || !user.tenant_id) {
-            return res.status(401).json({ status: 'error', message: 'Unauthorized' });
-        }
+    router.post('/contacts', requireSession, async (req, res) => {
+        const user = req.session.user;
 
         const sessionId = user.tenant_session_id;
         if (!sessionId) {
