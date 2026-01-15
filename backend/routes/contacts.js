@@ -9,61 +9,65 @@ function buildContactsRouter(deps) {
 
     /**
      * GET /api/v1/contacts
-     * Fetch from Gateway AND Sync to Backend Database (Postgres)
+     * Priority: Local DB (Unified) -> Gateway API (Fallback/Sync)
      */
     router.get('/contacts', async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
+        const forceSync = req.query.force === 'true';
 
         if (!sessionId) {
-            return res.status(400).json({ status: 'error', message: 'Session ID (WhatsApp) tidak ditemukan untuk user ini.' });
+            return res.status(400).json({ status: 'error', message: 'Session ID tidak ditemukan.' });
         }
 
         try {
+            // 1. Ambil Tenant ID dari Session
+            const tenant = await db.getTenantBySessionId(sessionId);
+            
+            // 2. Cek Database Lokal dulu (jika tenant ada & tidak dipaksa sync)
+            if (tenant && !forceSync) {
+                // Query langsung ke tabel 'contacts' (yang sudah diisi oleh Trigger Sync)
+                const dbContacts = await db.getContactsByTenant(tenant.id);
+                
+                if (dbContacts && dbContacts.length > 0) {
+                    console.log(`[Contacts] Served ${dbContacts.length} contacts from Local DB for ${sessionId}`);
+                    return res.json({ success: true, contacts: dbContacts, source: 'db' });
+                }
+            }
+
+            // 3. Fallback: Ambil dari Gateway API (jika DB kosong atau forceSync)
+            console.log(`[Contacts] Fetching from Gateway API for ${sessionId} (Force: ${forceSync})`);
             const response = await waGateway.getContacts(sessionId);
             
             if (response.status === true || response.status === 'success') {
                 const rawContacts = response.data || [];
-                const formattedContacts = rawContacts.map(c => {
-                    const jid = c.JID || c.jid || '';
-                    const firstName = c.FirstName || c.firstName || '';
-                    const fullName = c.FullName || c.fullName || '';
-                    const pushName = c.PushName || c.pushName || '';
-                    const businessName = c.BusinessName || c.businessName || '';
+                
+                // Format agar sesuai struktur frontend
+                const formattedContacts = rawContacts.map(c => ({
+                    jid: c.JID || c.jid || '',
+                    name: c.FullName || c.PushName || c.FirstName || (c.JID ? c.JID.split('@')[0] : 'Unknown'),
+                    shortName: c.FirstName || '',
+                    pushName: c.PushName || '',
+                    phone: c.JID ? c.JID.split('@')[0] : '',
+                    isBusiness: !!c.BusinessName
+                }));
 
-                    const name = businessName || fullName || pushName || firstName || (typeof jid === 'string' ? jid.split('@')[0] : 'Unknown');
-                    const phone = typeof jid === 'string' ? jid.split('@')[0] : '';
-                    
-                    return {
-                        jid: jid,
-                        name: name,
-                        shortName: firstName,
-                        pushName: pushName,
-                        phone: phone,
-                        isBusiness: !!businessName
-                    };
-                });
-
-                // --- SYNC TO BACKEND DB (BACKGROUND) ---
-                if (db && formattedContacts.length > 0) {
-                    db.getTenantBySessionId(sessionId).then(tenant => {
-                        if (tenant) {
-                            db.syncContacts(tenant.id, formattedContacts).catch(err => 
-                                console.error(`[Sync] Failed to sync contacts for ${sessionId}:`, err.message)
-                            );
-                        } else {
-                            console.warn(`[Sync] Skipping DB sync: No tenant found for session ${sessionId}`);
-                        }
-                    }).catch(err => console.error('[Sync] Tenant lookup failed:', err.message));
+                // Trigger manual sync ke DB (untuk memastikan data masuk jika Trigger DB belum jalan)
+                if (tenant && formattedContacts.length > 0) {
+                    // Kita panggil db.syncContacts, tapi sebenarnya Trigger di DB 'whatsmeow_contacts'
+                    // harusnya sudah menangani ini secara otomatis saat Gateway menyimpan data session.
+                    // Fungsi ini sekarang jadi double-cover (aman).
+                    db.syncContacts(tenant.id, formattedContacts).catch(err => 
+                        console.warn('[Sync] Manual sync warning:', err.message)
+                    );
                 }
-                // ---------------------------------------
 
-                return res.json({ success: true, contacts: formattedContacts });
+                return res.json({ success: true, contacts: formattedContacts, source: 'gateway' });
             }
-        } catch (gwError) {
-            console.warn(`[Contacts] Gateway fetch failed for ${sessionId}:`, gwError.message);
+        } catch (error) {
+            console.error('[Contacts] Error:', error.message);
+            return res.status(500).json({ status: 'error', message: 'Gagal mengambil kontak.' });
         }
 
-        // Fallback: return empty list instead of crashing
         return res.json({ success: true, contacts: [] });
     });
 
