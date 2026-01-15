@@ -121,7 +121,7 @@ function buildMessagesRouter(deps) {
         }
     });
 
-    router.use(validateToken);
+    // router.use(validateToken); // REMOVED: Caused middleware leak to other routes (e.g. /sync)
 
     const sendMessage = async (sock, to, message) => {
         try {
@@ -266,10 +266,10 @@ function buildMessagesRouter(deps) {
         res.status(200).json(resolvedResults);
     };
 
-    router.post('/messages', handleSendMessage);
-    router.post('/', handleSendMessage);
+    router.post('/messages', validateToken, handleSendMessage);
+    router.post('/', validateToken, handleSendMessage);
 
-    router.delete('/message', async (req, res) => {
+    router.delete('/message', validateToken, async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
         const { sessionId, messageId, remoteJid } = req.body;
 
@@ -295,21 +295,21 @@ function buildMessagesRouter(deps) {
         }
     });
 
-    router.post('/reply', async (req, res) => {
+    router.post('/reply', validateToken, async (req, res) => {
         return res.status(501).json({
             status: 'error',
             message: 'Fitur reply belum didukung di gateway Go.'
         });
     });
 
-    router.post('/mention', async (req, res) => {
+    router.post('/mention', validateToken, async (req, res) => {
         return res.status(501).json({
             status: 'error',
             message: 'Fitur mention belum didukung di gateway Go.'
         });
     });
 
-    router.post('/link-preview', async (req, res) => {
+    router.post('/link-preview', validateToken, async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
         const { to, text, title, description, thumbnailUrl } = req.body;
 
@@ -357,9 +357,9 @@ function buildMessagesRouter(deps) {
         res.status(501).json({ status: 'error', message });
     };
 
-    router.post('/broadcast', unsupportedMessageFeature('Broadcast belum didukung di gateway Go. Gunakan /messages batch.'));
-    router.post('/forward', unsupportedMessageFeature('Forward pesan belum didukung di gateway Go.'));
-    router.post('/star', unsupportedMessageFeature('Star pesan belum didukung di gateway Go.'));
+    router.post('/broadcast', validateToken, unsupportedMessageFeature('Broadcast belum didukung di gateway Go. Gunakan /messages batch.'));
+    router.post('/forward', validateToken, unsupportedMessageFeature('Forward pesan belum didukung di gateway Go.'));
+    router.post('/star', validateToken, unsupportedMessageFeature('Star pesan belum didukung di gateway Go.'));
 
     return router;
 }
