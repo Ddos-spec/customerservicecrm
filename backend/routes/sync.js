@@ -4,10 +4,10 @@ const router = express.Router();
 
 function buildSyncRouter({ waGateway, db, validateToken }) {
 
-    // Session-based auth middleware for internal routes
+    // Session-based auth middleware - allows super_admin without tenant_id
     const requireSession = (req, res, next) => {
         const user = req.session?.user;
-        if (!user || !user.tenant_id) {
+        if (!user) {
             return res.status(401).json({ status: 'error', message: 'Authentication required' });
         }
         next();
@@ -16,11 +16,38 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
     /**
      * POST /api/v1/sync/contacts
      * Force sync contacts and groups from WhatsApp Gateway to CRM Database
+     * Super admin can specify tenant_id in body, admin_agent uses their own tenant
      */
     router.post('/contacts', requireSession, async (req, res) => {
         const user = req.session.user;
 
-        const sessionId = user.tenant_session_id;
+        // Determine tenant_id: from user (admin_agent) or from body/first tenant (super_admin)
+        let tenantId = user.tenant_id;
+        let sessionId = user.tenant_session_id;
+
+        if (!tenantId && user.role === 'super_admin') {
+            // Super admin - get tenant from body or use first available
+            tenantId = req.body.tenant_id;
+            if (!tenantId) {
+                const tenants = await db.getAllTenants();
+                if (tenants.length === 0) {
+                    return res.status(400).json({ status: 'error', message: 'No tenants found' });
+                }
+                tenantId = tenants[0].id;
+                sessionId = tenants[0].session_id;
+            } else {
+                const tenant = await db.getTenantById(tenantId);
+                if (!tenant) {
+                    return res.status(400).json({ status: 'error', message: 'Tenant not found' });
+                }
+                sessionId = tenant.session_id;
+            }
+        }
+
+        if (!tenantId) {
+            return res.status(400).json({ status: 'error', message: 'No tenant associated with this user' });
+        }
+
         if (!sessionId) {
             return res.status(400).json({ status: 'error', message: 'No WhatsApp session linked to this tenant.' });
         }
@@ -95,12 +122,12 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
 
             // 3. Sync to Database
             if (unifiedContacts.length > 0) {
-                await db.syncContacts(user.tenant_id, unifiedContacts);
+                await db.syncContacts(tenantId, unifiedContacts);
 
                 // Auto-create Chat entries for groups so they appear in list immediately
                 for (const c of unifiedContacts) {
                     if (c.isGroup) {
-                       await db.getOrCreateChat(user.tenant_id, c.jid, c.displayName, true);
+                       await db.getOrCreateChat(tenantId, c.jid, c.displayName, true);
                     }
                 }
             }
