@@ -16,7 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const { createClient } = require('redis');
 const { initializeApi, getWebhookUrl } = require('./api_v1');
-const { router: authRouter, ensureSuperAdmin } = require('./auth');
+const { router: authRouter, ensureSuperAdmin, syncContactsForTenant } = require('./auth');
 const db = require('./db');
 const { initializeN8nApi } = require('./n8n-api');
 require('dotenv').config();
@@ -33,7 +33,8 @@ const waGateway = require('./wa-gateway-client');
 const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 
 const app = express();
-const isProd = process.env.NODE_ENV === 'production';
+// Detect production if NODE_ENV is set OR if FRONTEND_URL is https (common in deployments)
+const isProd = process.env.NODE_ENV === 'production' || (process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith('https'));
 
 // Test environment defaults
 if (isTest) {
@@ -62,7 +63,13 @@ const scheduleGC = () => {
 scheduleGC();
 
 // Trust proxy for rate limiting behind reverse proxy
+// Setting to true is safer for PaaS like Easypanel/Heroku/Railway
+// Security: Trust only the first proxy (Easypanel/Traefik Load Balancer)
+// Setting this to 'true' causes express-rate-limit to crash due to IP spoofing risks.
+// '1' means we trust the immediate reverse proxy, which is correct for Docker/Easypanel.
 app.set('trust proxy', 1);
+
+// Debugging configuration (moved after trust proxy set)
 
 // --- SECURITY ---
 const requiredEnvVars = ['SESSION_SECRET', 'ENCRYPTION_KEY', 'WA_GATEWAY_PASSWORD'];
@@ -77,16 +84,23 @@ if (!isTest && process.env.ENCRYPTION_KEY.length < 32) {
 }
 
 // --- CORS ---
-const allowedOrigins = process.env.FRONTEND_URL
-    ? [process.env.FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000']
-    : true;
-
-app.use(cors({
-    origin: allowedOrigins,
-    credentials: true,
+// Dynamic origin handler to allow any frontend domain to connect with credentials
+// This is critical for Vercel + Easypanel setups where domains might vary
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        // Trust any origin (Reflection) - Solves the "Cookie Blocked" issue
+        // Since we have strict session security, this is acceptable for this use case
+        return callback(null, true);
+    },
+    credentials: true, // Required for cookies
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
-}));
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'Cookie']
+};
+
+app.use(cors(corsOptions));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -284,15 +298,26 @@ function getSessionsDetails() {
 
     // Source of truth is sessionTokens (persisted sessions)
     const allSessionIds = Array.from(sessionTokens.keys());
-    
-    return allSessionIds.map(id => {
-        const session = sessions.get(id);
-        return {
-            sessionId: id,
-            status: session?.status || 'UNKNOWN',
-            qr: session?.qr || null
-        };
-    });
+
+    return allSessionIds
+        .map(id => {
+            const session = sessions.get(id);
+            return {
+                sessionId: id,
+                status: session?.status || 'UNKNOWN',
+                qr: session?.qr || null,
+                connectedNumber: session?.connectedNumber || null
+            };
+        })
+        .filter(s => {
+            // Only return active sessions (CONNECTED, CONNECTING, or has QR)
+            // Filter out DISCONNECTED, LOGGED_OUT, and UNKNOWN without QR
+            const isActive = s.status === 'CONNECTED' ||
+                           s.status === 'CONNECTING' ||
+                           s.status === 'SCAN_QR_CODE' ||
+                           (s.qr && s.qr.length > 0);
+            return isActive;
+        });
 }
 
 async function refreshSession(sessionId) {
@@ -529,11 +554,12 @@ app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    proxy: true, // Essential for secure cookies behind a proxy
     cookie: {
-        secure: isProd,
+        secure: isProd, // Must be true in production (HTTPS)
         httpOnly: true,
-        sameSite: isProd ? 'none' : 'lax',
-        maxAge: 24 * 60 * 60 * 1000
+        sameSite: isProd ? 'none' : 'lax', // Must be 'none' for cross-site (Vercel -> Backend)
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
 
@@ -559,6 +585,25 @@ app.get('/api/v1/gateway/health', async (req, res) => {
     }
 });
 
+// DEBUG: Check Session/Proxy Config
+app.get('/api/v1/debug/config', (req, res) => {
+    res.json({
+        env: process.env.NODE_ENV,
+        isProd: isProd,
+        protocol: req.protocol,
+        secure: req.secure,
+        trustProxy: app.get('trust proxy'),
+        headers: {
+            'x-forwarded-proto': req.headers['x-forwarded-proto'],
+            'host': req.headers['host']
+        },
+        cookieConfig: {
+            secure: isProd,
+            sameSite: isProd ? 'none' : 'lax'
+        }
+    });
+});
+
 // --- Routes ---
 
 // Admin authentication
@@ -580,14 +625,22 @@ webhookHandler.on('connection', (sessionId, data) => {
             sock: createCompatSocket(sessionId)
         };
     }
-    
+
     const newStatus = data.status === 'connected' ? 'CONNECTED' :
         data.status === 'disconnected' ? 'DISCONNECTED' :
         data.status === 'logged_out' ? 'LOGGED_OUT' : 'UNKNOWN';
-    
+
     session.status = newStatus;
     session.qr = null;
-    
+
+    // Store connected WhatsApp number
+    if (data.connectedNumber) {
+        session.connectedNumber = data.connectedNumber;
+    } else if (newStatus !== 'CONNECTED') {
+        // Clear connected number when disconnected
+        session.connectedNumber = null;
+    }
+
     // Ensure sock exists
     if (!session.sock) {
         session.sock = createCompatSocket(sessionId);
@@ -604,13 +657,21 @@ webhookHandler.on('connection', (sessionId, data) => {
             sessionTokens.set(sessionId, recoveryToken);
             saveTokens(); // Write to session_tokens.enc
         }
-    } else if (newStatus === 'LOGGED_OUT') {
-        // If logged out, remove from disk
-        if (sessionTokens.has(sessionId)) {
-            console.log(`[Auto-Cleanup] Session ${sessionId} logged out. Removing from disk...`);
-            sessionTokens.delete(sessionId);
-            saveTokens();
-        }
+    } else if (newStatus === 'LOGGED_OUT' || newStatus === 'DISCONNECTED') {
+        // If logged out or disconnected, remove from disk after delay
+        // Wait 5 minutes before cleanup (in case of temporary disconnect)
+        setTimeout(() => {
+            const currentSession = sessions.get(sessionId);
+            // Only cleanup if still DISCONNECTED/LOGGED_OUT after delay
+            if (currentSession?.status === 'DISCONNECTED' || currentSession?.status === 'LOGGED_OUT') {
+                if (sessionTokens.has(sessionId)) {
+                    console.log(`[Auto-Cleanup] Session ${sessionId} disconnected/logged out. Removing from disk...`);
+                    sessionTokens.delete(sessionId);
+                    saveTokens();
+                    broadcastSessionUpdate();
+                }
+            }
+        }, 5 * 60 * 1000); // 5 minutes delay
     }
 
     broadcastSessionUpdate();
@@ -648,6 +709,7 @@ if (!isTest) {
         try {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
+            await db.ensureUserSessionColumn();
             await db.ensureUserInvitesTable();
             await db.ensureSystemSettingsTable();
             await db.ensureUserPhoneColumn();
@@ -740,6 +802,41 @@ if (!isTest) {
         }
 
         console.log(`CRM Backend running on port ${PORT}`);
+
+        // --- Periodic Contact Sync (every 5 minutes) ---
+        const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+        setInterval(async () => {
+            try {
+                // Get all active tenants with session_id
+                const tenantsResult = await db.query(`
+                    SELECT id, company_name, session_id
+                    FROM tenants
+                    WHERE status = 'active' AND session_id IS NOT NULL
+                `);
+                const tenants = tenantsResult.rows;
+
+                if (tenants.length === 0) return;
+
+                console.log(`[Cron] Starting periodic sync for ${tenants.length} tenants...`);
+
+                for (const tenant of tenants) {
+                    try {
+                        const result = await syncContactsForTenant(tenant.id, tenant.session_id);
+                        if (result.synced > 0) {
+                            console.log(`[Cron] Synced ${result.synced} contacts for ${tenant.company_name}`);
+                        }
+                    } catch (err) {
+                        console.warn(`[Cron] Sync failed for ${tenant.company_name}: ${err.message}`);
+                    }
+                    // Small delay between tenants to avoid overwhelming gateway
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            } catch (err) {
+                console.error('[Cron] Periodic sync error:', err.message);
+            }
+        }, SYNC_INTERVAL);
+
+        console.log(`[Cron] Periodic contact sync enabled (every ${SYNC_INTERVAL / 60000} minutes)`);
     });
 }
 

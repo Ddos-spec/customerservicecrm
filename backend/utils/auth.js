@@ -6,6 +6,7 @@ function buildTokenValidator(sessionTokens) {
         }
 
         if (!token) {
+            console.warn(`[Auth] 401 No token provided for: ${req.method} ${req.originalUrl}`);
             return res.status(401).json({ status: 'error', message: 'No token provided' });
         }
 

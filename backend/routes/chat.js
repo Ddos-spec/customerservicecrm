@@ -1,9 +1,8 @@
 const express = require('express');
 
-const router = express.Router();
-
 function buildChatRouter(deps) {
-    const { sessions, formatPhoneNumber, validateToken } = deps;
+    const router = express.Router();
+    const { sessions, formatPhoneNumber, validateToken, db } = deps;
 
     const getSession = (sessionId) => {
         const session = sessions.get(sessionId);
@@ -19,7 +18,68 @@ function buildChatRouter(deps) {
         res.status(501).json({ status: 'error', message });
     };
 
-    router.use(validateToken);
+    // Removed global validateToken to allow session-based access for UI
+    // router.use(validateToken);
+
+    /**
+     * GET /api/v1/chats
+     * List all chat rooms for the tenant (Inbox)
+     */
+    router.get('/chats', async (req, res) => {
+        console.log(`[Chat] GET /chats accessed by user: ${req.session?.user?.email || 'Guest'}`);
+        const user = req.session?.user;
+
+        // Check session first
+        if (!user) {
+            return res.status(401).json({ status: 'error', message: 'Session expired. Please login again.' });
+        }
+
+        // Check tenant_id - super_admin doesn't have one
+        if (!user.tenant_id) {
+            // For super_admin, allow specifying tenant_id via query
+            if (user.role === 'super_admin' && req.query.tenant_id) {
+                try {
+                    const limit = parseInt(req.query.limit) || 50;
+                    const offset = parseInt(req.query.offset) || 0;
+                    const chats = await db.getChatsByTenant(req.query.tenant_id, limit, offset);
+                    return res.json({ status: 'success', data: chats });
+                } catch (error) {
+                    return res.status(500).json({ status: 'error', message: error.message });
+                }
+            }
+            return res.status(400).json({
+                status: 'error',
+                message: 'No tenant associated with this account. Please contact admin.'
+            });
+        }
+
+        try {
+            const limit = parseInt(req.query.limit) || 50;
+            const offset = parseInt(req.query.offset) || 0;
+            const chats = await db.getChatsByTenant(user.tenant_id, limit, offset);
+            res.json({ status: 'success', data: chats });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    /**
+     * GET /api/v1/chats/:chatId/messages
+     * Fetch message history for a specific chat room
+     */
+    router.get('/chats/:chatId/messages', async (req, res) => {
+        const user = req.session?.user;
+        if (!user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+
+        try {
+            const { chatId } = req.params;
+            const limit = parseInt(req.query.limit) || 100;
+            const messages = await db.getMessagesByChat(chatId, limit);
+            res.json({ status: 'success', data: messages });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
 
     router.get('/business-profile/:number', unsupported('Business profile belum didukung di gateway Go.'));
     router.post('/archive', unsupported('Archive chat belum didukung di gateway Go.'));
@@ -29,7 +89,8 @@ function buildChatRouter(deps) {
     router.post('/block', unsupported('Block contact belum didukung di gateway Go.'));
 
     router.get('/profile-picture/:jid', async (req, res) => {
-        const sessionId = req.sessionId || req.query.sessionId;
+        // Fallback to session user's tenant session if available
+        const sessionId = req.sessionId || req.query.sessionId || req.session?.user?.tenant_session_id;
         const { jid } = req.params;
         const { type } = req.query;
 

@@ -3,7 +3,10 @@
 File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas yang selesai, dan rencana selanjutnya agar transparan bagi pengguna.
 
 **Project:** Customer Service CRM (Omnichannel WhatsApp)
-**Arsitektur:** Headless Backend (Node.js/VPS) + React Frontend (Vercel)
+**Arsitektur (Deployed):**
+- **Frontend:** Vercel (React/Vite)
+- **Backend:** VPS (Node.js/Express)
+- **WA Gateway:** VPS (Go/Whatsmeow)
 
 ---
 
@@ -60,8 +63,10 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
   - [x] Rate Limiting (Login & Send Message)
   - [x] Error Message Sanitization (No Leak)
 
-### 7. Next Steps / Pending Tasks (🚧 To Do)
-- [ ] **Deployment**: User perlu deploy Frontend ke Vercel & Backend ke VPS.
+### 7. Deployment (✅ Selesai)
+- [x] **Frontend**: Deployed ke Vercel.
+- [x] **Backend**: Deployed ke VPS (Node.js).
+- [x] **WA Gateway**: Deployed ke VPS (Go).
 
 ---
 

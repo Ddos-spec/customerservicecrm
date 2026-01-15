@@ -26,24 +26,36 @@ const gatewayClient = axios.create({
 const sessionTokens = new Map();
 
 /**
+ * Normalize JID to ensure consistency (e.g. 0812... -> 62812...)
+ */
+function normalizeJid(jid) {
+    if (!jid) return '';
+    let clean = jid.toString().replace(/\D/g, ''); // Remove non-digits
+    if (clean.startsWith('0')) {
+        clean = '62' + clean.slice(1);
+    }
+    return clean;
+}
+
+/**
  * Set the JWT token for a session
  */
 function setSessionToken(jid, token) {
-    sessionTokens.set(jid, token);
+    sessionTokens.set(normalizeJid(jid), token);
 }
 
 /**
  * Get the JWT token for a session
  */
 function getSessionToken(jid) {
-    return sessionTokens.get(jid);
+    return sessionTokens.get(normalizeJid(jid));
 }
 
 /**
  * Remove session token
  */
 function removeSessionToken(jid) {
-    sessionTokens.delete(jid);
+    sessionTokens.delete(normalizeJid(jid));
 }
 
 /**
@@ -61,9 +73,10 @@ function unwrap(response) {
  * Get authorization header for a session
  */
 function getAuthHeader(jid) {
-    const token = sessionTokens.get(jid);
+    const cleanJid = normalizeJid(jid);
+    const token = sessionTokens.get(cleanJid);
     if (!token) {
-        throw new Error(`No token found for session ${jid}`);
+        throw new Error(`No token found for session ${jid} (normalized: ${cleanJid})`);
     }
     return { Authorization: `Bearer ${token}` };
 }
@@ -433,6 +446,32 @@ async function getGroups(jid) {
 }
 
 /**
+ * Get contacts from gateway (memory)
+ * @param {string} jid - Session JID
+ */
+async function getContacts(jid) {
+    try {
+        const payload = await getWithAuth('/contact', getAuthHeader(jid));
+        return payload;
+    } catch (error) {
+        throw new Error(`Get contacts failed: ${error.message}`);
+    }
+}
+
+/**
+ * Get contacts from database (more reliable, gets all historical contacts)
+ * @param {string} jid - Session JID
+ */
+async function getContactsFromDB(jid) {
+    try {
+        const payload = await getWithAuth('/contact/db', getAuthHeader(jid));
+        return payload;
+    } catch (error) {
+        throw new Error(`Get contacts from DB failed: ${error.message}`);
+    }
+}
+
+/**
  * Join a group by invite link
  * @param {string} jid - Session JID
  * @param {string} link - Group invite link
@@ -453,7 +492,8 @@ async function joinGroup(jid, link) {
  */
 async function leaveGroup(jid, groupId) {
     try {
-        const form = buildUrlEncoded({ group_id: groupId });
+        // Gateway expects "groupid" (no underscore)
+        const form = buildUrlEncoded({ groupid: groupId });
         return await postUrlEncoded('/group/leave', form, getAuthHeader(jid));
     } catch (error) {
         throw new Error(`Leave group failed: ${error.message}`);
@@ -553,6 +593,8 @@ module.exports = {
     // Utilities
     checkRegistered,
     getGroups,
+    getContacts,
+    getContactsFromDB,
     joinGroup,
     leaveGroup,
     checkHealth,

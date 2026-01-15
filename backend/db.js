@@ -1,6 +1,5 @@
 /**
- * PostgreSQL Database Connection
- * Connects to the database using DATABASE_URL from environment
+ * PostgreSQL Database Connection - V2 (Simplified Schema)
  */
 const { Pool } = require('pg');
 require('dotenv').config();
@@ -12,865 +11,232 @@ const pool = new Pool({
     connectionTimeoutMillis: 10000,
 });
 
-// Test connection on startup
-pool.on('connect', () => {
-    console.log('✅ PostgreSQL connected');
-});
+pool.on('connect', () => { console.log('✅ PostgreSQL connected'); });
+pool.on('error', (err) => { console.error('❌ PostgreSQL pool error:', err.message); });
 
-pool.on('error', (err) => {
-    console.error('❌ PostgreSQL pool error:', err.message);
-});
-
-/**
- * Execute a query with parameters
- * @param {string} text - SQL query
- * @param {Array} params - Query parameters
- * @returns {Promise<Object>} Query result
- */
 async function query(text, params) {
-    const start = Date.now();
     const result = await pool.query(text, params);
-    const duration = Date.now() - start;
-    if (process.env.NODE_ENV !== 'production') {
-        console.log(`[DB] Query executed in ${duration}ms:`, { text: text.slice(0, 100), rows: result.rowCount });
-    }
     return result;
 }
 
-/**
- * Get a client from the pool for transactions
- * @returns {Promise<Client>} PostgreSQL client
- */
-async function getClient() {
-    return pool.connect();
-}
+async function getClient() { return pool.connect(); }
 
-/**
- * Ensure tenant webhooks table exists
- * This keeps setup minimal without a migration tool.
- */
-async function ensureTenantWebhooksTable() {
-    await query(
-        `CREATE TABLE IF NOT EXISTS tenant_webhooks (
-            id SERIAL PRIMARY KEY,
-            tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            url TEXT NOT NULL,
-            created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
-        )`
-    );
-    await query(
-        `CREATE INDEX IF NOT EXISTS tenant_webhooks_tenant_id_idx
-         ON tenant_webhooks (tenant_id)`
-    );
-    await query(
-        `CREATE UNIQUE INDEX IF NOT EXISTS tenant_webhooks_tenant_url_idx
-         ON tenant_webhooks (tenant_id, url)`
-    );
-}
+// =============================================
+// 1. USER & TENANT QUERIES (Tetap Sama)
+// =============================================
 
-/**
- * Ensure tenants.session_id exists for tenant -> session mapping
- */
-async function ensureTenantSessionColumn() {
-    await query(
-        `ALTER TABLE tenants
-         ADD COLUMN IF NOT EXISTS session_id TEXT`
-    );
-    await query(
-        `CREATE UNIQUE INDEX IF NOT EXISTS tenants_session_id_idx
-         ON tenants (session_id)`
-    );
-}
-
-async function ensureSystemSettingsTable() {
-    await query(
-        `CREATE TABLE IF NOT EXISTS system_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )`
-    );
-}
-
-async function ensureUserPhoneColumn() {
-    await query(
-        `ALTER TABLE users
-         ADD COLUMN IF NOT EXISTS phone_number TEXT`
-    );
-}
-
-async function ensureInvitePhoneColumn() {
-    await query(
-        `ALTER TABLE user_invites
-         ADD COLUMN IF NOT EXISTS phone_number TEXT`
-    );
-}
-
-/**
- * Ensure user invites table exists
- */
-async function ensureUserInvitesTable() {
-    await query(
-        `CREATE TABLE IF NOT EXISTS user_invites (
-            id SERIAL PRIMARY KEY,
-            tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL,
-            role VARCHAR(20) NOT NULL DEFAULT 'agent',
-            token TEXT NOT NULL UNIQUE,
-            status VARCHAR(20) NOT NULL DEFAULT 'pending',
-            created_by INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
-            created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-            expires_at TIMESTAMP NULL
-        )`
-    );
-    await query(
-        `CREATE INDEX IF NOT EXISTS user_invites_tenant_id_idx
-         ON user_invites (tenant_id)`
-    );
-    await query(
-        `CREATE INDEX IF NOT EXISTS user_invites_email_idx
-         ON user_invites (email)`
-    );
-    await query(
-        `CREATE INDEX IF NOT EXISTS user_invites_status_idx
-         ON user_invites (status)`
-    );
-}
-
-// ===== USER QUERIES =====
-
-/**
- * Find user by email
- * @param {string} email - User email
- * @returns {Promise<Object|null>} User object or null
- */
 async function findUserByEmail(email) {
     const result = await query(
-        `SELECT u.id, u.tenant_id, u.name, u.email, u.password_hash, u.role, u.status, u.created_at, u.phone_number,
-                t.company_name as tenant_name,
-                t.session_id as tenant_session_id
-         FROM users u
-         LEFT JOIN tenants t ON u.tenant_id = t.id
-         WHERE u.email = $1`,
+        `SELECT u.*, t.company_name as tenant_name, t.session_id as tenant_session_id
+         FROM users u LEFT JOIN tenants t ON u.tenant_id = t.id WHERE u.email = $1`,
         [email]
     );
     return result.rows[0] || null;
 }
 
-/**
- * Find user by ID
- * @param {number} id - User ID
- * @returns {Promise<Object|null>} User object or null
- */
 async function findUserById(id) {
-    const result = await query(
-        `SELECT u.id, u.tenant_id, u.name, u.email, u.role, u.status, u.created_at, u.phone_number,
-                t.company_name as tenant_name,
-                t.session_id as tenant_session_id
-         FROM users u
-         LEFT JOIN tenants t ON u.tenant_id = t.id
-         WHERE u.id = $1`,
-        [id]
-    );
+    const result = await query('SELECT * FROM users WHERE id = $1', [id]);
     return result.rows[0] || null;
 }
 
-/**
- * Create a new user
- * @param {Object} userData - User data
- * @returns {Promise<Object>} Created user
- */
-async function createUser({ tenant_id, name, email, password_hash, role, status = 'active', phone_number = null }) {
-    const result = await query(
-        `INSERT INTO users (tenant_id, name, email, password_hash, role, status, phone_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, tenant_id, name, email, role, status, phone_number, created_at`,
-        [tenant_id, name, email, password_hash, role, status, phone_number]
-    );
-    return result.rows[0];
-}
-
-/**
- * Get all users for a tenant
- * @param {number} tenantId - Tenant ID
- * @returns {Promise<Array>} List of users
- */
-async function getUsersByTenant(tenantId) {
-    const result = await query(
-        `SELECT id, tenant_id, name, email, role, status, phone_number, created_at
-         FROM users
-         WHERE tenant_id = $1
-         ORDER BY created_at DESC`,
-        [tenantId]
-    );
-    return result.rows;
-}
-
-/**
- * Update user status
- * @param {number} userId - User ID
- * @param {string} status - New status
- * @returns {Promise<Object>} Updated user
- */
-async function updateUserStatus(userId, status) {
-    const result = await query(
-        'UPDATE users SET status = $1 WHERE id = $2 RETURNING *',
-        [status, userId]
-    );
-    return result.rows[0];
-}
-
-/**
- * Update user details (generic)
- * @param {number} userId - User ID
- * @param {Object} updates - Fields to update
- * @returns {Promise<Object>} Updated user
- */
-async function updateUser(userId, updates) {
-    const ALLOWED_FIELDS = ['name', 'email', 'password_hash', 'role', 'status', 'phone_number'];
-    const fields = Object.keys(updates).filter(key => ALLOWED_FIELDS.includes(key));
-    
-    if (fields.length === 0) return null;
-
-    const setClause = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
-    const values = fields.map(f => updates[f]);
-    
-    const result = await query(
-        `UPDATE users SET ${setClause} WHERE id = $1 RETURNING *`,
-        [userId, ...values]
-    );
-    return result.rows[0];
-}
-
-/**
- * Delete user
- * @param {number} userId - User ID
- * @returns {Promise<boolean>} Success status
- */
-async function deleteUser(userId) {
-    const result = await query(
-        'DELETE FROM users WHERE id = $1',
-        [userId]
-    );
-    return result.rowCount > 0;
-}
-
-// ===== TENANT QUERIES =====
-
-/**
- * Create a new tenant
- * @param {Object} tenantData - Tenant data
- * @returns {Promise<Object>} Created tenant
- */
-async function createTenant({ company_name, status = 'active', session_id = null }) {
-    const result = await query(
-        `INSERT INTO tenants (company_name, status, session_id)
-         VALUES ($1, $2, $3)
-         RETURNING id, company_name, status, created_at, session_id`,
-        [company_name, status, session_id]
-    );
-    return result.rows[0];
-}
-
-/**
- * Get all tenants
- * @returns {Promise<Array>} List of tenants
- */
-async function getAllTenants() {
-    const result = await query(
-        `SELECT t.id, t.company_name, t.status, t.created_at, t.session_id,
-                COUNT(u.id) as user_count
-         FROM tenants t
-         LEFT JOIN users u ON t.id = u.tenant_id
-         GROUP BY t.id
-         ORDER BY t.created_at DESC`
-    );
-    return result.rows;
-}
-
-/**
- * Get tenant by ID
- * @param {number} tenantId - Tenant ID
- * @returns {Promise<Object|null>} Tenant object or null
- */
-async function getTenantById(tenantId) {
-    const result = await query(
-        'SELECT * FROM tenants WHERE id = $1',
-        [tenantId]
-    );
+async function getTenantById(id) {
+    const result = await query('SELECT * FROM tenants WHERE id = $1', [id]);
     return result.rows[0] || null;
 }
 
-/**
- * Update tenant status
- * @param {number} tenantId - Tenant ID
- * @param {string} status - New status
- * @returns {Promise<Object>} Updated tenant
- */
-async function updateTenantStatus(tenantId, status) {
-    const result = await query(
-        'UPDATE tenants SET status = $1 WHERE id = $2 RETURNING *',
-        [status, tenantId]
-    );
-    return result.rows[0];
-}
-
-/**
- * Set tenant session id
- * @param {number} tenantId - Tenant ID
- * @param {string|null} sessionId - Session ID
- * @returns {Promise<Object>} Updated tenant
- */
-async function setTenantSessionId(tenantId, sessionId) {
-    const result = await query(
-        'UPDATE tenants SET session_id = $1 WHERE id = $2 RETURNING *',
-        [sessionId, tenantId]
-    );
-    return result.rows[0];
-}
-
-/**
- * Delete tenant
- * @param {number} tenantId - Tenant ID
- * @returns {Promise<boolean>} Success status
- */
-async function deleteTenant(tenantId) {
-    const result = await query(
-        'DELETE FROM tenants WHERE id = $1',
-        [tenantId]
-    );
-    return result.rowCount > 0;
-}
-
-/**
- * Get tenant by session id
- * @param {string} sessionId - Session ID
- * @returns {Promise<Object|null>} Tenant object or null
- */
 async function getTenantBySessionId(sessionId) {
-    const result = await query(
-        'SELECT * FROM tenants WHERE session_id = $1',
-        [sessionId]
-    );
+    const result = await query('SELECT * FROM tenants WHERE session_id = $1', [sessionId]);
     return result.rows[0] || null;
 }
 
-/**
- * Get tenant seat limit (max_active_members), default 100 if null
- */
-async function getTenantSeatLimit(tenantId) {
-    const result = await query(
-        'SELECT max_active_members FROM tenants WHERE id = $1',
-        [tenantId]
-    );
-    const limit = result.rows[0]?.max_active_members;
-    const parsed = Number.parseInt(limit, 10);
-    return Number.isFinite(parsed) ? parsed : 100;
+// =============================================
+// 2. CONTACTS (V2)
+// =============================================
+
+async function syncContacts(tenantId, contacts) {
+    if (!contacts || contacts.length === 0) return;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        for (const c of contacts) {
+            const jid = c.jid || c.JID;
+            if (!jid) continue;
+            const phone = c.phone || jid.split('@')[0];
+
+            // Priority for display_name: fullName (saved) > firstName (saved) > pushName (not saved)
+            const displayName = c.displayName || c.fullName || c.firstName || c.pushName || null;
+
+            await client.query(`
+                INSERT INTO contacts (tenant_id, jid, phone_number, display_name, push_name, full_name, is_business)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (tenant_id, jid) DO UPDATE SET
+                    phone_number = COALESCE(EXCLUDED.phone_number, contacts.phone_number),
+                    display_name = COALESCE(EXCLUDED.display_name, contacts.display_name),
+                    push_name = COALESCE(EXCLUDED.push_name, contacts.push_name),
+                    full_name = COALESCE(EXCLUDED.full_name, contacts.full_name),
+                    is_business = EXCLUDED.is_business,
+                    updated_at = now()
+            `, [tenantId, jid, phone, displayName, c.pushName, c.fullName, c.isBusiness || false]);
+        }
+        await client.query('COMMIT');
+        console.log(`[DB] Synced ${contacts.length} contacts for tenant ${tenantId}`);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('[DB] Sync Contacts Error:', error.message);
+        throw error;
+    } finally { client.release(); }
 }
 
-/**
- * Get tenant admin agent contact
- * @param {number} tenantId - Tenant ID
- * @returns {Promise<Object|null>} Admin agent user or null
- */
-async function getTenantAdmin(tenantId) {
-    const result = await query(
-        `SELECT id, tenant_id, name, email, role, status, created_at
-         FROM users
-         WHERE tenant_id = $1 AND role = 'admin_agent'
-         ORDER BY created_at ASC
-         LIMIT 1`,
-        [tenantId]
-    );
-    return result.rows[0] || null;
-}
-
-async function getUsersByTenantWithPhone(tenantId, roles = []) {
-    const hasRoleFilter = roles && roles.length > 0;
-    const params = hasRoleFilter ? [tenantId, roles] : [tenantId];
-    const roleClause = hasRoleFilter ? 'AND role = ANY($2)' : '';
-    const result = await query(
-        `SELECT id, tenant_id, name, email, role, status, phone_number
-         FROM users
-         WHERE tenant_id = $1
-           AND phone_number IS NOT NULL
-           AND status = 'active'
-           ${roleClause}`,
-        params
-    );
+async function getContactsByTenant(tenantId) {
+    const result = await query('SELECT * FROM contacts WHERE tenant_id = $1 ORDER BY updated_at DESC', [tenantId]);
     return result.rows;
 }
 
-async function getSuperAdminsWithPhone() {
-    const result = await query(
-        `SELECT id, name, email, phone_number
-         FROM users
-         WHERE role = 'super_admin'
-           AND status = 'active'
-           AND phone_number IS NOT NULL`
-    );
-    return result.rows;
-}
+// =============================================
+// 3. CHATS & MESSAGES (V2 - Pengganti Tiket)
+// =============================================
 
-async function setSystemSetting(key, value) {
-    await query(
-        `INSERT INTO system_settings(key, value)
-         VALUES ($1, $2)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-        [key, value]
-    );
-    return true;
-}
+async function getOrCreateChat(tenantId, jid, pushName = null) {
+    // 1. Pastikan kontak ada
+    let contactRes = await query('SELECT id FROM contacts WHERE tenant_id = $1 AND jid = $2', [tenantId, jid]);
+    let contactId;
 
-async function getSystemSetting(key) {
-    const result = await query(
-        'SELECT value FROM system_settings WHERE key = $1',
-        [key]
-    );
-    return result.rows[0]?.value || null;
-}
-
-// ===== USER INVITES =====
-
-/**
- * Create invite for user
- * @param {Object} inviteData - Invite data
- * @returns {Promise<Object>} Created invite
- */
-async function createUserInvite({ tenant_id, name, email, role = 'agent', token, created_by, expires_at, phone_number = null }) {
-    const result = await query(
-        `INSERT INTO user_invites (tenant_id, name, email, role, token, created_by, expires_at, phone_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, tenant_id, name, email, role, token, status, created_at, expires_at, phone_number`,
-        [tenant_id, name, email, role, token, created_by || null, expires_at || null, phone_number]
-    );
-    return result.rows[0];
-}
-
-/**
- * Get invite by token
- * @param {string} token - Invite token
- * @returns {Promise<Object|null>} Invite or null
- */
-async function getInviteByToken(token) {
-    const result = await query(
-        `SELECT i.*, t.company_name as tenant_name
-         FROM user_invites i
-         LEFT JOIN tenants t ON i.tenant_id = t.id
-         WHERE i.token = $1`,
-        [token]
-    );
-    return result.rows[0] || null;
-}
-
-/**
- * Mark invite accepted
- * @param {string} token - Invite token
- * @returns {Promise<Object|null>} Updated invite
- */
-async function acceptInvite(token) {
-    const result = await query(
-        `UPDATE user_invites
-         SET status = 'accepted'
-         WHERE token = $1
-         RETURNING *`,
-        [token]
-    );
-    return result.rows[0] || null;
-}
-
-/**
- * Count pending invites for a tenant
- * @param {number} tenantId - Tenant ID
- * @returns {Promise<number>} Count
- */
-async function countPendingInvites(tenantId) {
-    const result = await query(
-        `SELECT COUNT(*) as total
-         FROM user_invites
-         WHERE tenant_id = $1 AND status = 'pending'`,
-        [tenantId]
-    );
-    return parseInt(result.rows[0]?.total || '0', 10);
-}
-
-// ===== TENANT WEBHOOKS =====
-
-/**
- * List webhooks for a tenant
- * @param {number} tenantId - Tenant ID
- * @returns {Promise<Array>} List of webhooks
- */
-async function getTenantWebhooks(tenantId) {
-    const result = await query(
-        `SELECT id, tenant_id, url, created_at
-         FROM tenant_webhooks
-         WHERE tenant_id = $1
-         ORDER BY created_at DESC`,
-        [tenantId]
-    );
-    return result.rows;
-}
-
-/**
- * Create webhook for a tenant
- * @param {number} tenantId - Tenant ID
- * @param {string} url - Webhook URL
- * @returns {Promise<Object>} Created webhook
- */
-async function createTenantWebhook(tenantId, url) {
-    const result = await query(
-        `INSERT INTO tenant_webhooks (tenant_id, url)
-         VALUES ($1, $2)
-         RETURNING id, tenant_id, url, created_at`,
-        [tenantId, url]
-    );
-    return result.rows[0];
-}
-
-/**
- * Get ticket by ID with last customer message timestamp (for guard)
- * @param {number} ticketId - Ticket ID
- * @returns {Promise<Object|null>} Ticket with last_customer_message_at
- */
-async function getTicketWithLastCustomerMessage(ticketId) {
-    const result = await query(
-        `SELECT t.*,
-                (
-                    SELECT created_at
-                    FROM messages m
-                    WHERE m.ticket_id = t.id AND m.sender_type = 'customer'
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                ) AS last_customer_message_at
-         FROM tickets t
-         WHERE t.id = $1`,
-        [ticketId]
-    );
-    return result.rows[0] || null;
-}
-
-/**
- * Count messages for a tenant within a time window
- * @param {number} tenantId - Tenant ID
- * @param {number} minutes - Lookback window in minutes
- * @param {string|null} senderType - Optional sender_type filter
- * @returns {Promise<number>} Count of messages
- */
-async function countTenantMessagesSince(tenantId, minutes = 60, senderType = null) {
-    const lookbackMinutes = Math.max(1, parseInt(minutes, 10) || 60);
-    const params = [tenantId, lookbackMinutes];
-    const senderClause = senderType ? 'AND m.sender_type = $3' : '';
-    if (senderType) {
-        params.push(senderType);
+    if (contactRes.rows.length === 0) {
+        const phone = jid.split('@')[0];
+        const res = await query(
+            'INSERT INTO contacts (tenant_id, jid, phone_number, push_name) VALUES ($1, $2, $3, $4) RETURNING id',
+            [tenantId, jid, phone, pushName]
+        );
+        contactId = res.rows[0].id;
+    } else {
+        contactId = contactRes.rows[0].id;
     }
 
-    const result = await query(
-        `SELECT COUNT(*) AS total
-         FROM messages m
-         JOIN tickets t ON m.ticket_id = t.id
-         WHERE t.tenant_id = $1
-           AND m.created_at >= NOW() - ($2 * INTERVAL '1 minute')
-           ${senderClause}`,
-        params
+    // 2. Dapatkan atau buat chat room
+    let chatRes = await query('SELECT * FROM chats WHERE tenant_id = $1 AND contact_id = $2', [tenantId, contactId]);
+    if (chatRes.rows.length > 0) return chatRes.rows[0];
+
+    const newChat = await query(
+        'INSERT INTO chats (tenant_id, contact_id) VALUES ($1, $2) RETURNING *',
+        [tenantId, contactId]
     );
-    return parseInt(result.rows[0]?.total || '0', 10);
+    return newChat.rows[0];
 }
 
-/**
- * Delete webhook for a tenant
- * @param {number} tenantId - Tenant ID
- * @param {number} webhookId - Webhook ID
- * @returns {Promise<boolean>} Success status
- */
-async function deleteTenantWebhook(tenantId, webhookId) {
-    const result = await query(
-        'DELETE FROM tenant_webhooks WHERE tenant_id = $1 AND id = $2',
-        [tenantId, webhookId]
-    );
-    return result.rowCount > 0;
+async function logMessage({ chatId, senderType, senderId, senderName, messageType, body, mediaUrl, waMessageId, isFromMe }) {
+    const res = await query(`
+        INSERT INTO messages (chat_id, sender_type, sender_id, sender_name, message_type, body, media_url, wa_message_id, is_from_me)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
+    `, [chatId, senderType, senderId, senderName, messageType || 'text', body, mediaUrl, waMessageId, isFromMe || false]);
+
+    // Update Chat Preview
+    await query(`
+        UPDATE chats SET 
+            last_message_preview = $1, 
+            last_message_time = now(), 
+            last_message_type = $2,
+            unread_count = CASE WHEN $3 = false THEN unread_count + 1 ELSE unread_count END,
+            updated_at = now()
+        WHERE id = $4
+    `, [body?.substring(0, 100), messageType || 'text', isFromMe || false, chatId]);
+
+    return res.rows[0];
 }
 
-// ===== MESSAGE/CHAT QUERIES (for n8n) =====
-
-/**
- * Log a message to the database (for n8n webhook)
- * @param {Object} messageData - Message data
- * @returns {Promise<Object>} Created message
- */
-async function logMessage({ ticket_id, sender_type, message_text, file_url = null }) {
-    const result = await query(
-        `INSERT INTO messages (ticket_id, sender_type, message_text, file_url)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *`,
-        [ticket_id, sender_type, message_text, file_url]
-    );
-    return result.rows[0];
+async function getChatsByTenant(tenantId, limit = 50, offset = 0) {
+    const result = await query(`
+        SELECT c.*, con.display_name, con.push_name, con.phone_number, con.profile_pic_url, u.name as agent_name
+        FROM chats c
+        JOIN contacts con ON c.contact_id = con.id
+        LEFT JOIN users u ON c.assigned_to = u.id
+        WHERE c.tenant_id = $1
+        ORDER BY c.updated_at DESC
+        LIMIT $2 OFFSET $3
+    `, [tenantId, limit, offset]);
+    return result.rows;
 }
 
-/**
- * Get or create ticket for a conversation
- * @param {Object} ticketData - Ticket data
- * @returns {Promise<Object>} Ticket object
- */
-async function getOrCreateTicket({ tenant_id, customer_name, customer_contact }) {
-    // First, try to find an open ticket for this customer
-    let result = await query(
-        `SELECT * FROM tickets
-         WHERE tenant_id = $1 AND customer_contact = $2 AND status IN ('open', 'pending')
-         ORDER BY created_at DESC LIMIT 1`,
-        [tenant_id, customer_contact]
-    );
-
-    if (result.rows[0]) {
-        return result.rows[0];
-    }
-
-    // Create new ticket if none exists
-    result = await query(
-        `INSERT INTO tickets (tenant_id, customer_name, customer_contact, status)
-         VALUES ($1, $2, $3, 'open')
-         RETURNING *`,
-        [tenant_id, customer_name, customer_contact]
-    );
-    return result.rows[0];
-}
-
-/**
- * Get messages for a ticket
- * @param {number} ticketId - Ticket ID
- * @returns {Promise<Array>} List of messages
- */
-async function getMessagesByTicket(ticketId) {
+async function getMessagesByChat(chatId, limit = 100) {
     const result = await query(
-        'SELECT * FROM messages WHERE ticket_id = $1 ORDER BY created_at ASC',
-        [ticketId]
+        'SELECT * FROM messages WHERE chat_id = $1 ORDER BY created_at ASC LIMIT $2',
+        [chatId, limit]
     );
     return result.rows;
 }
 
-/**
- * Get tickets for a tenant with pagination
- * @param {number} tenantId - Tenant ID
- * @param {number} limit - Number of tickets
- * @param {number} offset - Offset for pagination
- * @returns {Promise<Array>} List of tickets
- */
-async function getTicketsByTenant(tenantId, limit = 50, offset = 0) {
-    const result = await query(
-        `SELECT t.*, u.name as agent_name,
-                (SELECT message_text FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message,
-                (SELECT sender_type FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_sender_type,
-                (SELECT created_at FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message_at,
-                (SELECT COUNT(*) FROM messages WHERE ticket_id = t.id) as message_count
-         FROM tickets t
-         LEFT JOIN users u ON t.assigned_agent_id = u.id
-         WHERE t.tenant_id = $1
-         ORDER BY t.updated_at DESC
-         LIMIT $2 OFFSET $3`,
-        [tenantId, limit, offset]
-    );
-    return result.rows;
-}
+// =============================================
+// 4. STATS (V2)
+// =============================================
 
-/**
- * Update ticket status
- * @param {number} ticketId - Ticket ID
- * @param {string} status - New status
- * @returns {Promise<Object>} Updated ticket
- */
-async function updateTicketStatus(ticketId, status) {
-    const result = await query(
-        'UPDATE tickets SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-        [status, ticketId]
-    );
-    return result.rows[0];
-}
-
-/**
- * Assign ticket to agent
- * @param {number} ticketId - Ticket ID
- * @param {number} agentId - Agent user ID
- * @returns {Promise<Object>} Updated ticket
- */
-async function assignTicketToAgent(ticketId, agentId) {
-    const result = await query(
-        'UPDATE tickets SET assigned_agent_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-        [agentId, ticketId]
-    );
-    return result.rows[0];
-}
-
-/**
- * Add internal note to ticket (for escalation)
- * @param {number} ticketId - Ticket ID
- * @param {string} note - Internal note
- * @returns {Promise<Object>} Updated ticket
- */
-async function addTicketNote(ticketId, note) {
-    const result = await query(
-        `UPDATE tickets
-         SET internal_notes = COALESCE(internal_notes, '') || E'\n[' || TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI') || '] ' || $1,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING *`,
-        [note, ticketId]
-    );
-    return result.rows[0];
-}
-
-/**
- * Escalate ticket (for n8n)
- * @param {number} ticketId - Ticket ID
- * @param {string} reason - Escalation reason
- * @returns {Promise<Object>} Updated ticket
- */
-async function escalateTicket(ticketId, reason) {
-    const result = await query(
-        `UPDATE tickets
-         SET status = 'escalated',
-             internal_notes = COALESCE(internal_notes, '') || E'\n[ESCALATED ' || TO_CHAR(NOW(), 'YYYY-MM-DD HH24:MI') || '] ' || $1,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING *`,
-        [reason, ticketId]
-    );
-    return result.rows[0];
-}
-
-// ===== STATISTICS =====
-
-/**
- * Get dashboard statistics for a tenant
- * @param {number} tenantId - Tenant ID (null for super admin = all tenants)
- * @returns {Promise<Object>} Statistics object
- */
-async function getDashboardStats(tenantId = null) {
-    const tenantFilter = tenantId ? 'WHERE tenant_id = $1' : '';
-    const params = tenantId ? [tenantId] : [];
-
-    const [ticketStats, userStats, todayStats, avgResponse] = await Promise.all([
-        query(
-            `SELECT
-                COUNT(*) FILTER (WHERE status = 'open') as open_tickets,
-                COUNT(*) FILTER (WHERE status = 'pending') as pending_tickets,
-                COUNT(*) FILTER (WHERE status = 'escalated') as escalated_tickets,
-                COUNT(*) FILTER (WHERE status = 'closed') as closed_tickets,
-                COUNT(*) as total_tickets
-             FROM tickets ${tenantFilter}`,
-            params
-        ),
-        query(
-            `SELECT
-                COUNT(*) FILTER (WHERE role = 'admin_agent') as admin_count,
-                COUNT(*) FILTER (WHERE role = 'agent') as agent_count,
-                COUNT(*) as total_users
-             FROM users ${tenantFilter}`,
-            params
-        ),
-        tenantId ? query(
-            `SELECT COUNT(*) as today_tickets
-             FROM tickets
-             WHERE tenant_id = $1 AND created_at >= CURRENT_DATE`,
-            params
-        ) : Promise.resolve({ rows: [{ today_tickets: 0 }] }),
-        tenantId ? query(
-            `SELECT AVG(EXTRACT(EPOCH FROM (m.created_at - t.created_at)) / 60) as avg_response_minutes
-             FROM tickets t
-             JOIN LATERAL (
-                 SELECT created_at
-                 FROM messages
-                 WHERE ticket_id = t.id AND sender_type = 'agent'
-                 ORDER BY created_at ASC
-                 LIMIT 1
-             ) m ON true
-             WHERE t.tenant_id = $1`,
-            params
-        ) : Promise.resolve({ rows: [{ avg_response_minutes: null }] })
+async function getDashboardStats(tenantId) {
+    const [chatStats, userStats] = await Promise.all([
+        query('SELECT COUNT(*) as total_chats, SUM(unread_count) as total_unread FROM chats WHERE tenant_id = $1', [tenantId]),
+        query('SELECT COUNT(*) as total_users FROM users WHERE tenant_id = $1', [tenantId])
     ]);
-
     return {
-        tickets: {
-            ...ticketStats.rows[0],
-            today_tickets: todayStats.rows[0]?.today_tickets || 0,
-            avg_response_minutes: avgResponse.rows[0]?.avg_response_minutes
-        },
+        chats: chatStats.rows[0],
         users: userStats.rows[0]
     };
 }
 
-/**
- * Get super admin statistics (all tenants)
- * @returns {Promise<Object>} System-wide statistics
- */
 async function getSuperAdminStats() {
-    const [tenantStats, userStats, ticketStats] = await Promise.all([
-        query('SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = \'active\') as active FROM tenants'),
+    const [tenantStats, userStats, chatStats] = await Promise.all([
+        query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'active') as active FROM tenants"),
         query('SELECT COUNT(*) as total FROM users'),
-        query('SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = \'open\') as open FROM tickets')
+        query('SELECT COUNT(*) as total, SUM(unread_count) as total_unread FROM chats')
     ]);
-
     return {
         tenants: tenantStats.rows[0],
         users: userStats.rows[0],
-        tickets: ticketStats.rows[0]
+        chats: chatStats.rows[0]
     };
 }
 
 module.exports = {
-    query,
-    getClient,
-    pool,
-    ensureTenantWebhooksTable,
-    ensureTenantSessionColumn,
-    ensureUserInvitesTable,
-    ensureSystemSettingsTable,
-    ensureUserPhoneColumn,
-    ensureInvitePhoneColumn,
-    // Users
-    findUserByEmail,
-    findUserById,
-    createUser,
-    getUsersByTenant,
-    getUsersByTenantWithPhone,
-    getSuperAdminsWithPhone,
-    updateUserStatus,
-    updateUser,
-    deleteUser,
-    // Tenants
-    createTenant,
-    getAllTenants,
-    getTenantById,
-    updateTenantStatus,
-    setTenantSessionId,
-    deleteTenant, // Export deleteTenant
-    getTenantBySessionId,
-    getTenantAdmin,
-    getTenantSeatLimit,
-    // Invites
-    createUserInvite,
-    getInviteByToken,
-    acceptInvite,
-    countPendingInvites,
-    // Settings
-    setSystemSetting,
-    getSystemSetting,
-    // Tenant webhooks
-    getTenantWebhooks,
-    createTenantWebhook,
-    deleteTenantWebhook,
-    // Messages & Tickets
-    getTicketWithLastCustomerMessage,
-    countTenantMessagesSince,
-    logMessage,
-    getOrCreateTicket,
-    getMessagesByTicket,
-    getTicketsByTenant,
-    updateTicketStatus,
-    assignTicketToAgent,
-    addTicketNote,
-    escalateTicket,
-    // Statistics
-    getDashboardStats,
-    getSuperAdminStats,
+    query, getClient, pool,
+    // Users & Tenants
+    findUserByEmail, findUserById, getTenantById, getTenantBySessionId, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
+    createUser: async (u) => (await query('INSERT INTO users (tenant_id, name, email, password_hash, role, phone_number) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [u.tenant_id, u.name, u.email, u.password_hash, u.role, u.phone_number])).rows[0],
+    updateUser: async (id, u) => {
+        const fields = Object.keys(u).map((k, i) => `${k} = $${i + 2}`).join(', ');
+        const vals = Object.values(u);
+        return (await query(`UPDATE users SET ${fields} WHERE id = $1 RETURNING *`, [id, ...vals])).rows[0];
+    },
+    deleteUser: async (id) => (await query('DELETE FROM users WHERE id = $1 RETURNING id', [id])).rows[0],
+    getUsersByTenant: async (tid) => (await query('SELECT * FROM users WHERE tenant_id = $1', [tid])).rows,
+    getUsersByTenantWithPhone: async (tid, roles) => (await query('SELECT * FROM users WHERE tenant_id = $1 AND role = ANY($2::text[]) AND phone_number IS NOT NULL', [tid, roles])).rows,
+    getSuperAdminsWithPhone: async () => (await query("SELECT * FROM users WHERE role = 'super_admin' AND phone_number IS NOT NULL")).rows,
+    getTenantSeatLimit: async () => 100, // Hardcoded for now
+    countPendingInvites: async (tid) => (await query("SELECT COUNT(*) FROM user_invites WHERE tenant_id = $1 AND status = 'pending'", [tid])).rows[0].count,
+    createTenantWebhook: async (tid, url) => (await query('INSERT INTO tenant_webhooks (tenant_id, url) VALUES ($1, $2) RETURNING *', [tid, url])).rows[0],
+    getTenantWebhooks: async (tid) => (await query('SELECT * FROM tenant_webhooks WHERE tenant_id = $1', [tid])).rows,
+    deleteTenantWebhook: async (tid, wid) => (await query('DELETE FROM tenant_webhooks WHERE tenant_id = $1 AND id = $2 RETURNING id', [tid, wid])).rows[0],
+    updateTenantStatus: async (id, status) => (await query('UPDATE tenants SET status = $1 WHERE id = $2 RETURNING *', [status, id])).rows[0],
+    setTenantSessionId: async (id, sid) => (await query('UPDATE tenants SET session_id = $1 WHERE id = $2 RETURNING *', [sid, id])).rows[0],
+    deleteTenant: async (id) => (await query('DELETE FROM tenants WHERE id = $1 RETURNING id', [id])).rows[0],
+    setUserSessionId: async (id, sid) => (await query('UPDATE users SET session_id = $1 WHERE id = $2 RETURNING *', [sid, id])).rows[0],
+    getTenantAdmin: async (tid) => (await query("SELECT * FROM users WHERE tenant_id = $1 AND role = 'admin_agent' LIMIT 1", [tid])).rows[0],
+    ensureTenantWebhooksTable: async () => query('CREATE TABLE IF NOT EXISTS tenant_webhooks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, url TEXT NOT NULL, created_at TIMESTAMP DEFAULT now(), UNIQUE(tenant_id, url))'),
+    ensureTenantSessionColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_id TEXT UNIQUE'),
+    ensureUserSessionColumn: async () => query('ALTER TABLE users ADD COLUMN IF NOT EXISTS session_id TEXT, ADD COLUMN IF NOT EXISTS user_session_id TEXT, ADD COLUMN IF NOT EXISTS tenant_session_id TEXT'),
+    ensureUserInvitesTable: async () => query('CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT \'pending\', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())'),
+    ensureSystemSettingsTable: async () => query('CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
+    ensureUserPhoneColumn: async () => query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT'),
+    ensureInvitePhoneColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS phone_number TEXT'),
+    createUserInvite: async (i) => (await query('INSERT INTO user_invites (tenant_id, email, token, role, created_by, expires_at, phone_number, name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *', [i.tenant_id, i.email, i.token, i.role, i.created_by, i.expires_at, i.phone_number, i.name])).rows[0],
+    getInviteByToken: async (t) => (await query('SELECT i.*, t.company_name as tenant_name FROM user_invites i JOIN tenants t ON i.tenant_id = t.id WHERE i.token = $1', [t])).rows[0],
+    acceptInvite: async (t) => await query("UPDATE user_invites SET status = 'accepted' WHERE token = $1", [t]),
+    // Contacts
+    syncContacts, getContactsByTenant,
+    // Chats & Messages
+    getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat,
+    // System
+    getSystemSetting: async (key) => {
+        const res = await query('SELECT value FROM system_settings WHERE key = $1', [key]);
+        return res.rows[0]?.value || null;
+    },
+    setSystemSetting: async (key, val) => {
+        await query('INSERT INTO system_settings(key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, val]);
+    },
+    getDashboardStats, getSuperAdminStats
 };

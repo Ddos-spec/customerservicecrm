@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Clock, Star, Wifi, X, RefreshCw, Activity, Settings,
-  CheckCircle2, MessageSquare, Shield, LogOut, Send, MessageCircle
+  Wifi, Settings, MessageSquare, Smartphone, Activity,
+  Users, RefreshCw, X, LogOut, Send, MessageCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
@@ -14,17 +14,12 @@ const formatRelativeTime = (value?: string) => {
   if (Number.isNaN(date.getTime())) return '-';
   const diffMs = Date.now() - date.getTime();
   const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
-  if (diffMinutes < 1) return 'baru saja';
+  if (diffMinutes < 1) return 'Baru saja';
   if (diffMinutes < 60) return `${diffMinutes}m lalu`;
   const diffHours = Math.floor(diffMinutes / 60);
   if (diffHours < 24) return `${diffHours}j lalu`;
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays}h lalu`;
-};
-
-const toNumber = (value: any) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const asDataUrl = (qr: string) => {
@@ -39,11 +34,12 @@ const AgentDashboard = () => {
   const canManageSession = user?.role === 'admin_agent';
   const sessionId = user?.tenant_session_id || '';
 
+  // Data States
   const [stats, setStats] = useState<any>(null);
-  const [recentTickets, setRecentTickets] = useState<any[]>([]);
-
+  const [recentChats, setRecentChats] = useState<any[]>([]);
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [qrUrl, setQrUrl] = useState('');
+  const [connectedNumber, setConnectedNumber] = useState<string>('');
   const [adminContact, setAdminContact] = useState<{ name: string; email: string } | null>(null);
 
   // UI States
@@ -61,21 +57,28 @@ const AgentDashboard = () => {
     message: ''
   });
 
-  const fetchDashboard = useCallback(async () => {
+  // 1. Fetch Stats (V2)
+  const fetchDashboardStats = useCallback(async () => {
     try {
-      const [statsRes, ticketsRes] = await Promise.all([
-        api.get('/admin/stats'),
-        api.get('/admin/tickets?limit=6&offset=0')
-      ]);
-
-      if (statsRes.data?.success) {
-        setStats(statsRes.data.stats);
-      }
-      if (ticketsRes.data?.success) {
-        setRecentTickets(ticketsRes.data.tickets || []);
+      const res = await api.get('/admin/stats');
+      if (res.data.success) {
+        setStats(res.data.stats);
       }
     } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+      console.error('Failed to fetch stats:', error);
+    }
+  }, []);
+
+  // 2. Fetch Recent Chats (Inbox)
+  const fetchRecentChats = useCallback(async () => {
+    try {
+      // Use the Chat API V2
+      const res = await api.get('/chats?limit=5');
+      if (res.data.status === 'success') {
+        setRecentChats(res.data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch recent chats:', error);
     }
   }, []);
 
@@ -94,6 +97,7 @@ const AgentDashboard = () => {
     if (!sessionId) {
       setWaStatus('disconnected');
       setQrUrl('');
+      setConnectedNumber('');
       return;
     }
 
@@ -108,9 +112,11 @@ const AgentDashboard = () => {
           } else {
             setQrUrl('');
           }
+          setConnectedNumber(mySession.connectedNumber || '');
         } else {
           setWaStatus('disconnected');
           setQrUrl('');
+          setConnectedNumber('');
         }
       }
     } catch (error) {
@@ -118,7 +124,7 @@ const AgentDashboard = () => {
     }
   }, [sessionId]);
 
-  // WebSocket Connection for Real-time
+  // WebSocket Connection
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = import.meta.env.VITE_API_URL 
@@ -133,7 +139,7 @@ const AgentDashboard = () => {
       try {
         const payload = JSON.parse(event.data);
         
-        // 1. Update Session Status (Connection/QR)
+        // Update Session
         if (payload.type === 'session-update') {
             const mySession = payload.data.find((s: any) => s.sessionId === sessionId);
             if (mySession) {
@@ -143,7 +149,8 @@ const AgentDashboard = () => {
                 } else {
                     setQrUrl('');
                 }
-                
+                setConnectedNumber(mySession.connectedNumber || '');
+
                 if (mySession.status === 'CONNECTED') {
                     toast.success('WhatsApp Terhubung!');
                     setIsQrModalOpen(false);
@@ -151,11 +158,12 @@ const AgentDashboard = () => {
             }
         }
         
-        // 2. Update Stats/Tickets if new message comes
+        // Update Stats/Chats on new message
         if (payload.type === 'message') {
             const msgData = payload.data;
             if (user?.tenant_id && msgData.tenant_id && user.tenant_id === msgData.tenant_id) {
-                void fetchDashboard();
+                void fetchDashboardStats();
+                void fetchRecentChats();
             }
         }
       } catch (err) {
@@ -168,7 +176,7 @@ const AgentDashboard = () => {
         ws.current.close();
       }
     };
-  }, [sessionId, user, fetchDashboard]);
+  }, [sessionId, user, fetchDashboardStats, fetchRecentChats]);
 
   const handleRequestQr = async () => {
     if (!canManageSession) {
@@ -183,7 +191,6 @@ const AgentDashboard = () => {
       await api.get(`/sessions/${sessionId}/qr`);
       setIsSettingsOpen(false);
       setIsQrModalOpen(true);
-      // Status will be updated via WebSocket
     } catch (error) {
       console.error('Failed to request QR:', error);
       toast.error('Gagal meminta QR. Coba lagi.');
@@ -208,53 +215,68 @@ Terima kasih.`);
   useEffect(() => {
     const loadInitialData = async () => {
       await Promise.all([
-        fetchDashboard(),
+        fetchDashboardStats(),
+        fetchRecentChats(),
         fetchAdminContact(),
         fetchSessionStatus()
       ]);
     };
     void loadInitialData();
-  }, [fetchDashboard, fetchAdminContact, fetchSessionStatus]);
+  }, [fetchDashboardStats, fetchRecentChats, fetchAdminContact, fetchSessionStatus]);
 
-  const totalTickets = toNumber(stats?.tickets?.total_tickets);
-  const openTickets = toNumber(stats?.tickets?.open_tickets);
-  const pendingTickets = toNumber(stats?.tickets?.pending_tickets);
-  const closedTickets = toNumber(stats?.tickets?.closed_tickets);
-  const todayTickets = toNumber(stats?.tickets?.today_tickets);
-  const avgResponseMinutes = Number(stats?.tickets?.avg_response_minutes);
-  const avgResponseLabel = Number.isFinite(avgResponseMinutes) ? `${avgResponseMinutes.toFixed(1)} mnt` : '-';
-  const satisfactionScore = totalTickets > 0 ? ((closedTickets / totalTickets) * 5).toFixed(1) : '0.0';
+  // Parse Stats V2
+  const totalChats = parseInt(stats?.chats?.total_chats || '0');
+  const totalUnread = parseInt(stats?.chats?.total_unread || '0');
+  const totalUsers = parseInt(stats?.users?.total_users || '0');
 
   const statCards = useMemo(() => ([
-      { label: 'Total Chat Hari Ini', value: String(todayTickets), icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', trend: `${totalTickets} Total` },
-      { label: 'Waktu Respon Rata-rata', value: avgResponseLabel, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', trend: `${openTickets} Open` },
-      { label: 'Kepuasan Pelanggan', value: `${satisfactionScore}/5`, icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: `${closedTickets} Closed` },
-      { label: 'Chat Terselesaikan', value: String(closedTickets), icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50', trend: `${pendingTickets} Pending` },
+      { 
+        label: 'Total Percakapan', 
+        value: String(totalChats), 
+        icon: MessageSquare, 
+        color: 'text-blue-600', 
+        bg: 'bg-blue-50', 
+        trend: 'All Time' 
+      },
+      { 
+        label: 'Pesan Belum Dibaca', 
+        value: String(totalUnread), 
+        icon: MessageCircle, 
+        color: 'text-amber-600', 
+        bg: 'bg-amber-50', 
+        trend: 'Needs Action' 
+      },
+      { 
+        label: 'Anggota Tim', 
+        value: String(totalUsers), 
+        icon: Users, 
+        color: 'text-purple-600', 
+        bg: 'bg-purple-50', 
+        trend: 'Active Users' 
+      },
+      // Placeholder for future metrics like 'Messages Today' if backend supports it
+      { 
+        label: 'Status Sistem', 
+        value: 'Normal', 
+        icon: Activity, 
+        color: 'text-emerald-600', 
+        bg: 'bg-emerald-50', 
+        trend: '100% Uptime' 
+      },
     ]
-  ), [todayTickets, totalTickets, avgResponseLabel, openTickets, satisfactionScore, closedTickets, pendingTickets]);
+  ), [totalChats, totalUnread, totalUsers]);
 
-  const recentChats = useMemo(() => (
-    recentTickets.slice(0, 4).map((t) => {
-      const name = t.customer_name || t.customer_contact || `Customer #${t.id}`;
-      const initials = name.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase();
-      return {
-        id: t.id,
-        name,
-        message: t.last_message || 'Belum ada pesan',
-        time: formatRelativeTime(t.last_message_at || t.updated_at || t.created_at),
-        status: t.last_sender_type === 'customer' ? 'unread' : 'read',
-        avatar: initials
-      };
-    })
-  ), [recentTickets]);
-
-  const teamActivity = useMemo(() => (
-    recentTickets.slice(0, 3).map((t) => ({
-      user: t.agent_name || 'Unassigned',
-      action: t.status === 'closed' ? `Menutup tiket #${t.id}` : `Update tiket #${t.id}`,
-      time: formatRelativeTime(t.updated_at || t.created_at)
+  // Prepare Recent Chats for Display
+  const displayChats = useMemo(() => (
+    recentChats.map((c: any) => ({
+        id: c.id,
+        name: c.display_name || c.phone_number || 'Unknown',
+        message: c.last_message_preview || 'Media/Lampiran',
+        time: formatRelativeTime(c.last_message_time),
+        unread: parseInt(c.unread_count || '0') > 0,
+        avatar: (c.display_name || c.phone_number || '?').substring(0, 2).toUpperCase()
     }))
-  ), [recentTickets]);
+  ), [recentChats]);
 
   // Handle help form submit
   const handleHelpSubmit = () => {
@@ -262,7 +284,6 @@ Terima kasih.`);
       toast.error('Mohon isi pesan bantuan');
       return;
     }
-
     const categoryText = helpForm.category === 'teknis' ? 'Bantuan Teknis' :
                         helpForm.category === 'billing' ? 'Pertanyaan Billing' :
                         helpForm.category === 'fitur' ? 'Request Fitur' : 'Lainnya';
@@ -284,17 +305,27 @@ Terima kasih.`);
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Selamat Datang, {user?.name || 'Agen'}!</h1>
-          <p className="text-gray-500 dark:text-gray-400">Pantau performa pelayanan pelanggan Anda hari ini.</p>
+          <p className="text-gray-500 dark:text-gray-400">Pantau aktivitas percakapan pelanggan Anda.</p>
         </div>
 
         <div className="flex items-center space-x-3">
-          <div className={`flex items-center space-x-2 px-4 py-2 rounded-full border ${ 
-            waStatus === 'connected' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' :
-            waStatus === 'connecting' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse' :
-            'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400'
-          }`}>
-            <Wifi size={16} />
-            <span className="text-sm font-bold capitalize">WhatsApp: {waStatus}</span>
+          <div className="flex flex-col items-end gap-2">
+            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full border ${ 
+              waStatus === 'connected' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' :
+              waStatus === 'connecting' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse' :
+              'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400'
+            }`}>
+              <Wifi size={16} />
+              <span className="text-sm font-bold capitalize">WhatsApp: {waStatus}</span>
+            </div>
+            {waStatus === 'connected' && connectedNumber && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                <Smartphone className="text-emerald-600 dark:text-emerald-400" size={14} />
+                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  {connectedNumber}
+                </span>
+              </div>
+            )}
           </div>
           <button
             onClick={() => setIsSettingsOpen(true)}
@@ -341,15 +372,15 @@ Terima kasih.`);
           <div className="p-6 border-b border-gray-50 dark:border-slate-700 flex items-center justify-between">
             <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
               <MessageSquare size={18} className="mr-2 text-blue-600 dark:text-blue-400" />
-              Chat Terbaru
+              Percakapan Terbaru
             </h3>
             <button onClick={() => navigate(user?.role === 'admin_agent' ? '/admin/chat' : '/agent/chat')} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">Lihat Semua</button>
           </div>
           <div className="divide-y divide-gray-50 dark:divide-slate-700">
-            {recentChats.length > 0 ? recentChats.map((chat) => (
+            {displayChats.length > 0 ? displayChats.map((chat) => (
               <div
                 key={chat.id}
-                onClick={() => navigate(user?.role === 'admin_agent' ? '/admin/chat' : '/agent/chat', { state: { selectedChat: { id: chat.id, name: chat.name } } })}
+                onClick={() => navigate(user?.role === 'admin_agent' ? '/admin/chat' : '/agent/chat', { state: { selectedChat: { id: chat.id } } })}
                 className="p-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer flex items-center space-x-4"
               >
                 <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold shrink-0">
@@ -362,39 +393,17 @@ Terima kasih.`);
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-1">{chat.message}</p>
                 </div>
-                {chat.status === 'unread' && <div className="w-2 h-2 bg-blue-600 dark:bg-blue-400 rounded-full"></div>}
+                {chat.unread && <div className="w-2 h-2 bg-blue-600 dark:bg-blue-400 rounded-full"></div>}
               </div>
             )) : (
-              <div className="p-8 text-center text-gray-400 dark:text-gray-500">Belum ada chat terbaru.</div>
+              <div className="p-8 text-center text-gray-400 dark:text-gray-500">Belum ada percakapan terbaru.</div>
             )}
           </div>
         </div>
 
-        {/* Right Sidebar - Team Activity */}
+        {/* Right Sidebar - Support/Activity */}
         <div className="space-y-8">
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
-            <h3 className="font-bold text-gray-900 dark:text-white mb-6 flex items-center">
-              <Activity size={18} className="mr-2 text-emerald-600 dark:text-emerald-400" />
-              Aktivitas Tim
-            </h3>
-            <div className="space-y-6">
-              {teamActivity.length > 0 ? teamActivity.map((act, i) => (
-                <div key={i} className="flex space-x-3">
-                  <div className="w-1 h-10 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden shrink-0">
-                    <div className={`w-full h-1/2 ${i === 0 ? 'bg-blue-500' : 'bg-emerald-500'}`}></div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-900 dark:text-white font-bold">{act.user}</p>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">{act.action}</p>
-                    <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1">{act.time}</p>
-                  </div>
-                </div>
-              )) : (
-                <div className="text-xs text-gray-400 dark:text-gray-500">Belum ada aktivitas.</div>
-              )}
-            </div>
-          </div>
-
+          
           {/* Quick Action Card */}
           <div className="bg-gradient-to-br from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 p-6 rounded-2xl text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/30 relative overflow-hidden group">
             <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform">
@@ -409,6 +418,15 @@ Terima kasih.`);
               Pusat Bantuan
             </button>
           </div>
+          
+           {/* Placeholder for Team Activity (Not yet implemented in V2 Backend) */}
+           <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 opacity-60">
+             <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+               <Activity size={18} className="mr-2 text-gray-400" />
+               Aktivitas Tim
+             </h3>
+             <p className="text-xs text-gray-500 italic">Fitur log aktivitas akan segera hadir.</p>
+           </div>
         </div>
       </div>
 
@@ -468,6 +486,14 @@ Terima kasih.`);
                     <div>
                       <h4 className="font-bold text-gray-900 dark:text-white text-sm">Koneksi WhatsApp</h4>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Status: <span className={waStatus === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}>{waStatus}</span></p>
+                      {waStatus === 'connected' && connectedNumber && (
+                        <div className="flex items-center gap-2 mt-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg inline-flex">
+                          <Smartphone className="text-emerald-600 dark:text-emerald-400" size={14} />
+                          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                            {connectedNumber}
+                          </span>
+                        </div>
+                      )}
                       {!sessionId && (
                         <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Session belum diatur oleh Super Admin.</p>
                       )}
@@ -487,7 +513,7 @@ Terima kasih.`);
               <div className="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-2xl">
                 <div className="flex items-center space-x-3 mb-4">
                   <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
-                    <Shield size={20} />
+                    <Users size={20} />
                   </div>
                   <div>
                     <h4 className="font-bold text-gray-900 dark:text-white text-sm">Informasi Akun</h4>

@@ -1,6 +1,7 @@
 const express = require('express');
-const router = express.Router();
+
 function buildSessionsRouter(deps) {
+    const router = express.Router();
     const {
         sessions,
         sessionTokens,
@@ -21,6 +22,7 @@ function buildSessionsRouter(deps) {
     } = deps;
 
     router.post('/sessions', async (req, res) => {
+        // ... (truncated for brevity, logic remains same)
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
 
         const currentUser = req.session && req.session.adminAuthed ? {
@@ -164,9 +166,9 @@ function buildSessionsRouter(deps) {
         }
     });
 
-    router.use(validateToken);
+    // router.use(validateToken); // REMOVED GLOBAL MIDDLEWARE
 
-    router.post('/sessions/:sessionId/generate-token', async (req, res) => {
+    router.post('/sessions/:sessionId/generate-token', validateToken, async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
         const { sessionId } = req.params;
 
@@ -191,7 +193,7 @@ function buildSessionsRouter(deps) {
         }
     });
 
-    router.post('/sessions/:sessionId/settings', async (req, res) => {
+    router.post('/sessions/:sessionId/settings', validateToken, async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
         const { sessionId } = req.params;
         const settings = req.body;
@@ -209,7 +211,7 @@ function buildSessionsRouter(deps) {
         }
     });
 
-    router.post('/webhook', async (req, res) => {
+    router.post('/webhook', validateToken, async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
         const { url, sessionId } = req.body;
         if (!url || !sessionId) {
@@ -221,7 +223,7 @@ function buildSessionsRouter(deps) {
         res.status(200).json({ status: 'success', message: `Webhook URL for session ${sessionId} updated to ${url}` });
     });
 
-    router.get('/webhook', async (req, res) => {
+    router.get('/webhook', validateToken, async (req, res) => {
         const { sessionId } = req.query;
         if (!sessionId) {
             return res.status(400).json({ status: 'error', message: 'sessionId is required.' });
@@ -230,7 +232,7 @@ function buildSessionsRouter(deps) {
         res.status(200).json({ status: 'success', sessionId, url: url || null });
     });
 
-    router.delete('/webhook', async (req, res) => {
+    router.delete('/webhook', validateToken, async (req, res) => {
         const { sessionId } = req.body;
         if (!sessionId) {
             return res.status(400).json({ status: 'error', message: 'sessionId is required.' });

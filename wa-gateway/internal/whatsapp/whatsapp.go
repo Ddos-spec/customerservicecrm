@@ -2,14 +2,17 @@ package whatsapp
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"mime/multipart"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/labstack/echo/v4"
 
+	"customerservicecrm/wa-gateway/internal/database"
 	"customerservicecrm/wa-gateway/pkg/router"
 	pkgWhatsApp "customerservicecrm/wa-gateway/pkg/whatsapp"
 
@@ -255,6 +258,66 @@ func LeaveGroup(c echo.Context) error {
 	}
 
 	return router.ResponseSuccess(c, "Successfully Leave Group By Group ID")
+}
+
+// GetContacts
+// @Summary     Get Contacts Information
+// @Description Get Contacts Information from WhatsApp client store
+// @Tags        WhatsApp Contacts
+// @Produce     json
+// @Success     200
+// @Security    BearerAuth
+// @Router      /contact [get]
+func GetContacts(c echo.Context) error {
+	jid := jwtPayload(c).JID
+
+	contacts, err := pkgWhatsApp.WhatsAppContactsGet(jid)
+	if err != nil {
+		return router.ResponseInternalError(c, err.Error())
+	}
+
+	return router.ResponseSuccessWithData(c, "Successfully List Contacts", contacts)
+}
+
+// GetContactsFromDB
+// @Summary     Get Contacts from Database
+// @Description Get all contacts directly from whatsmeow_contacts database table (more reliable than memory)
+// @Tags        WhatsApp Contacts
+// @Produce     json
+// @Success     200
+// @Security    BearerAuth
+// @Router      /contact/db [get]
+func GetContactsFromDB(c echo.Context) error {
+	jid := jwtPayload(c).JID
+
+	// Extract session ID from JID (e.g., "6289660152525:74@s.whatsapp.net" -> "6289660152525")
+	sessionId := jid
+	if idx := strings.Index(jid, ":"); idx > 0 {
+		sessionId = jid[:idx]
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	contacts, err := database.GetContactsFromDB(ctx, sessionId)
+	if err != nil {
+		return router.ResponseInternalError(c, err.Error())
+	}
+
+	// Transform to match existing API format
+	result := make([]map[string]interface{}, 0, len(contacts))
+	for _, c := range contacts {
+		contact := map[string]interface{}{
+			"JID":          c.TheirJID,
+			"FirstName":    c.FirstName,
+			"FullName":     c.FullName,
+			"PushName":     c.PushName,
+			"BusinessName": c.BusinessName,
+		}
+		result = append(result, contact)
+	}
+
+	return router.ResponseSuccessWithData(c, "Successfully List Contacts from Database", result)
 }
 
 // SendText
