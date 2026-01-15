@@ -151,6 +151,8 @@ async function getChatsByTenant(tenantId, limit = 50, offset = 0) {
         JOIN contacts con ON c.contact_id = con.id
         LEFT JOIN users u ON c.assigned_to = u.id
         WHERE c.tenant_id = $1
+          AND con.jid NOT LIKE '%@g.us'        -- Exclude Groups
+          AND con.jid NOT LIKE '%@broadcast'   -- Exclude Status Updates/Broadcasts
         ORDER BY c.updated_at DESC
         LIMIT $2 OFFSET $3
     `, [tenantId, limit, offset]);

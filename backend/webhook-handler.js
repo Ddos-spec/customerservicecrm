@@ -141,6 +141,13 @@ async function handleMessage(sessionId, data) {
         // Ensure we have a valid JID
         if (!targetJid) return;
 
+        // --- FILTER: Ignore Status Updates ---
+        if (targetJid === 'status@broadcast' || targetJid.includes('@broadcast')) {
+            // Optional: You can log this to a separate 'statuses' table if needed later
+            // console.log(`[Webhook] Ignored status update from ${message.pushName}`);
+            return; 
+        }
+
         const chat = await db.getOrCreateChat(tenant.id, targetJid, message.pushName);
 
         // 3. Persist Message
