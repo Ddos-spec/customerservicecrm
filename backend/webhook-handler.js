@@ -9,6 +9,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('./db');
 const waGateway = require('./wa-gateway-client');
+const { normalizeJid, getJidUser } = require('./utils/jid');
 
 // Event handlers map (can be extended by other modules)
 const eventHandlers = new Map();
@@ -139,15 +140,8 @@ async function handleMessage(sessionId, data) {
         // For groups: message.to = group JID, message.from = sender in group
         // For private: message.to = recipient, message.from = sender
         const isGroup = message.isGroup || message.to?.endsWith('@g.us');
-        let targetJid;
-
-        if (isGroup) {
-            // Group chat: target is the group itself
-            targetJid = message.to;
-        } else {
-            // Private chat: target is the other person
-            targetJid = message.isFromMe ? message.to : message.from;
-        }
+        const rawTargetJid = message.to || message.from;
+        const targetJid = normalizeJid(rawTargetJid, { isGroup });
 
         // Ensure we have a valid JID
         if (!targetJid) return;
@@ -158,7 +152,9 @@ async function handleMessage(sessionId, data) {
         }
 
         // Get group name for display (from pushName or extract from JID)
-        const displayName = isGroup ? (message.groupName || message.pushName || targetJid.split('@')[0]) : message.pushName;
+        const displayName = isGroup
+            ? (message.groupName || getJidUser(targetJid))
+            : (message.pushName || getJidUser(targetJid));
 
         const chat = await db.getOrCreateChat(tenant.id, targetJid, displayName, isGroup);
 
@@ -175,12 +171,21 @@ async function handleMessage(sessionId, data) {
         }
 
         const senderType = message.isFromMe ? 'agent' : 'customer';
+        const senderJid = normalizeJid(message.from, { isGroup: false });
+        let senderName = message.pushName;
+        if (!senderName && senderJid) {
+            const contact = await db.getContactByJid(tenant.id, senderJid);
+            senderName = contact?.full_name || contact?.display_name || contact?.push_name || null;
+        }
+        if (!senderName) {
+            senderName = isGroup ? getJidUser(senderJid || targetJid) : 'Customer';
+        }
 
         const savedMessage = await db.logMessage({
             chatId: chat.id,
             senderType: senderType,
-            senderId: message.from,
-            senderName: message.pushName || 'Customer',
+            senderId: senderJid || message.from,
+            senderName: senderName,
             messageType: message.type,
             body: messageText,
             mediaUrl: mediaUrl,
@@ -200,6 +205,7 @@ async function handleMessage(sessionId, data) {
                 chat_id: chat.id,
                 tenant_id: tenant.id,
                 sender_type: senderType,
+                sender_name: senderName,
                 is_group: isGroup
             },
         });

@@ -219,7 +219,7 @@ const AgentWorkspace = () => {
                     id: msgData.db_id || Date.now().toString(),
                     chat_id: incomingChatId,
                     sender_type: msgData.sender_type || (msgData.isFromMe ? 'agent' : 'customer'),
-                    sender_name: msgData.pushName,
+                    sender_name: msgData.sender_name || msgData.pushName,
                     message_type: msgData.type || 'text',
                     body: msgData.body || msgData.caption || (msgData.type === 'image' ? '[Image]' : '[Media]'),
                     is_from_me: msgData.isFromMe,
@@ -229,7 +229,7 @@ const AgentWorkspace = () => {
                 setMessages((prev) => [...prev, newMsg]);
              } else if (!msgData.isFromMe) {
                 // Toast for background messages
-                toast.info(`Pesan baru dari ${msgData.pushName || msgData.from}`);
+                toast.info(`Pesan baru dari ${msgData.sender_name || msgData.pushName || msgData.from}`);
              }
              return current;
            });
