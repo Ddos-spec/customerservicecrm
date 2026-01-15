@@ -1,36 +1,32 @@
 # Repository Guidelines
 
-## Gaya Umum & Prinsip
-- Gua/lu style, tapi tetap rapi. Pegang: **KISS** (bikin simple biar gampang debug), **YAGNI** (jangan nambah fitur sebelum perlu, biar gak numpuk utang), **DRY** (hindari copy-paste, ekstrak ke fungsi/komponen), **SOLID** + **SoC** (tanggung jawab tunggal, pisah UI/data/API). **Clean Code**: nama jelas, fungsi pendek, hindari side effect aneh.
-- Efeknya: perubahan lebih cepat, risiko bug berkurang, review lebih mudah.
+## Nada & Prinsip
+- Gua/lu vibe tapi tetap profesional. KISS: pilih path paling simple biar debug cepat. YAGNI: stop bikin fitur/prop sebelum ada use case. DRY: copy dua kali? jadi util/hook/komponen. SOLID + SoC: satu file satu tanggung jawab, UI/state/API dipisah. Clean Code: nama jelas, fungsi pendek, hindari side effect. Efeknya: perubahan gesit, bug turun, review enteng.
 
-## Struktur Proyek
-- Root: config, `scripts/` (doctor, scan-secrets), hooks di `.husky/`.
-- `frontend/`: React + Vite + Tailwind (TS). Entry `src/main.tsx`, `src/App.tsx`; halaman di `src/pages/`, layout di `src/layouts/`, state di `src/store/`, komponen reusable di `src/components/`. Dark mode pakai kelas `dark` (`src/store/useThemeStore.ts`).
-- `backend/`, `wa-gateway/`: service sisi server (cek README sebelum ubah).
-- `docs/`: dokumentasi produk/API—update kalau behavior berubah.
+## Struktur & Modul
+- Root: `docker-compose.yaml` (Postgres, Redis, wa-gateway, backend), `scripts/` (doctor, scan-secrets, smart-check), hook di `.husky/`, setup dev di `.vscode/`, dokumentasi & skema di `docs/` + `strukturdatabase*.txt`.
+- `backend/`: Node/Express dengan Postgres/Redis. Entry `index.js`, routes di `api_v1/` + `auth.js`. UUID untuk tenant/user/ticket, seat limit `tenants.max_active_members`, normalisasi nomor WA di alur auth/user/invite.
+- `frontend/`: React + Vite + TS + Tailwind. Entry `src/main.tsx`/`App.tsx`; layout `src/layouts/`, halaman `src/pages/`, komponen `src/components/`, state `src/store/`, API helper `src/lib/api.ts`. Tema light/dark via kelas `dark` di html/body.
+- `wa-gateway/`: Go WhatsApp gateway; cek README/Makefile sebelum build/deploy.
 
 ## Perintah Dev/Build/Test
-- Dev FE: `cd frontend && npm run dev` (Vite, port 5173).
-- Build FE: `cd frontend && npm run build` (tsc -b + Vite prod).
-- Cek lint/tipe FE: `cd frontend && npm run lint` atau `npm run check`.
-- Root health check: `npm run doctor` / `npm run doctor:fix`.
+- Root: `npm run doctor` / `npm run doctor:fix`.
+- Backend: `cd backend && npm run dev`, `npm run start`, `npm run check`/`npm run lint`, `npm run test` (Jest). Pastikan env Postgres/Redis/wa-gateway ada.
+- Frontend: `cd frontend && npm run dev` (5173), `npm run build`, `npm run check`/`npm run lint`, `npm run preview`.
+- Kontainer: `docker-compose up -d redis postgres wa-gateway backend` (isi env dulu).
 
-## Style, Naming, & Kesalahan Umum
-- Functional components + hooks; Tailwind untuk styling. Simpan konstanta/mock di level modul biar dependencies hooks bersih.
-- Nama: PascalCase komponen, camelCase variabel/fungsi, SCREAMING_SNAKE_CASE konstanta.
-- Hindari: logika berat di render, duplikasi util, mixing UI dan API di satu file, lupa toggle `dark` class di html/body.
+## Style, Naming, & Anti-Bloopers
+- Indent: frontend 2 spasi, backend ikuti file (4 spasi). PascalCase komponen, camelCase variabel/fungsi, SCREAMING_SNAKE_CASE env.
+- Jangan parseInt ID (UUID string). Pisah UI/API/state; jangan numpuk logika berat di render; hindari duplikasi util.
+- Set kelas `dark` sebelum render (lihat `src/main.tsx`). Normalisasi nomor WA ke +62; hormati seat limit + pending invites saat bikin admin/agent.
 
 ## Testing
-- Belum ada test formal; minimal jalankan `npm run check` sebelum commit.
-- Kalau nambah logic penting, tambahin unit/integration test (kalau setup), atau tulis langkah verifikasi manual di PR.
+- Minimal: `npm run check` di frontend dan backend sebelum commit; `npm run test` backend kalau ubah logic API/auth.
+- Manual: login + toggle light/dark, tambah tenant/admin/agent sampai limit, kirim undangan (cek webhook/n8n + email), alur tiket/pesan utama.
 
 ## Commit & PR
-- Commit singkat, imperatif: contoh “Fix dark mode config load”, “Address demo useMemo lint warnings”.
-- Pastikan working tree bersih dan `npm run check` lulus; Husky jalanin `scripts/scan-secrets.js` dan `scripts/smart-check.js`.
-- PR: jelasin perubahan, langkah reproduce & verifikasi, link issue, sertakan screenshot/GIF untuk UI (light & dark).
+- Commit imperatif pendek, contoh: "Normalize phone on invite". Lulus lint/check dulu; Husky jalanin `scripts/scan-secrets.js` + `scripts/smart-check.js`.
+- PR: tulis ringkas perubahan, langkah uji, env/migrasi yang kena, sertakan screenshot/GIF UI (light & dark), link issue/trello bila ada.
 
 ## Security & Config
-- Jangan commit secrets; `.env` lokal saja. Secret scanner bakal teriak kalau ada bocor.
-- Kalau ubah auth/session atau tema, cek `localStorage` key dan apply kelas `dark` saat load (`src/main.tsx`).
-- Proxy/API target di `frontend/vite.config.ts` harus environment-driven; jangan hardcode prod URL. 
+- Secrets di `.env` lokal/server, jangan di-commit. Kunci: `SESSION_SECRET`, `ENCRYPTION_KEY`, `DATABASE_URL`/`PG*`, `REDIS_URL`, `WA_GATEWAY_PASSWORD`, `AUTH_JWT_SECRET`, `FRONTEND_URL`, `N8N_INVITE_WEBHOOK_URL`. Butuh extension `pgcrypto` buat UUID. Hindari hardcode URL frontend/backend.
