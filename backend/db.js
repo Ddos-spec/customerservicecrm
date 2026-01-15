@@ -95,15 +95,15 @@ async function getContactsByTenant(tenantId) {
 // 3. CHATS & MESSAGES (V2 - Pengganti Tiket)
 // =============================================
 
-async function getOrCreateChat(tenantId, jid, pushName = null) {
+async function getOrCreateChat(tenantId, jid, pushName = null, isGroup = false) {
     // 1. Pastikan kontak ada
     let contactRes = await query('SELECT id FROM contacts WHERE tenant_id = $1 AND jid = $2', [tenantId, jid]);
     let contactId;
 
     if (contactRes.rows.length === 0) {
-        const phone = jid.split('@')[0];
-        // Use pushName or phone as initial full_name
-        const initialName = pushName || phone;
+        const phone = isGroup ? null : jid.split('@')[0];
+        // Use pushName or phone as initial full_name (for groups, this is group name)
+        const initialName = pushName || (isGroup ? 'Group Chat' : phone);
         const res = await query(
             'INSERT INTO contacts (tenant_id, jid, phone_number, full_name) VALUES ($1, $2, $3, $4) RETURNING id',
             [tenantId, jid, phone, initialName]
@@ -118,8 +118,8 @@ async function getOrCreateChat(tenantId, jid, pushName = null) {
     if (chatRes.rows.length > 0) return chatRes.rows[0];
 
     const newChat = await query(
-        'INSERT INTO chats (tenant_id, contact_id) VALUES ($1, $2) RETURNING *',
-        [tenantId, contactId]
+        'INSERT INTO chats (tenant_id, contact_id, is_group) VALUES ($1, $2, $3) RETURNING *',
+        [tenantId, contactId, isGroup]
     );
     return newChat.rows[0];
 }
@@ -146,13 +146,12 @@ async function logMessage({ chatId, senderType, senderId, senderName, messageTyp
 
 async function getChatsByTenant(tenantId, limit = 50, offset = 0) {
     const result = await query(`
-        SELECT c.*, con.full_name as display_name, con.full_name as push_name, con.phone_number, con.profile_pic_url, u.name as agent_name
+        SELECT c.*, con.full_name as display_name, con.full_name as push_name, con.phone_number, con.jid, con.profile_pic_url, u.name as agent_name
         FROM chats c
         JOIN contacts con ON c.contact_id = con.id
         LEFT JOIN users u ON c.assigned_to = u.id
         WHERE c.tenant_id = $1
-          AND con.jid NOT LIKE '%@g.us'        -- Exclude Groups
-          AND con.jid NOT LIKE '%@broadcast'   -- Exclude Status Updates/Broadcasts
+          AND con.jid NOT LIKE '%@broadcast'   -- Exclude Status Updates/Broadcasts only
         ORDER BY c.updated_at DESC
         LIMIT $2 OFFSET $3
     `, [tenantId, limit, offset]);
@@ -180,6 +179,13 @@ async function getMessagesByChat(chatId, limit = 50, beforeId = null) {
 // =============================================
 // 4. STATS (V2)
 // =============================================
+
+async function markChatAsRead(chatId) {
+    const result = await query(`
+        UPDATE chats SET unread_count = 0, updated_at = now() WHERE id = $1 RETURNING *
+    `, [chatId]);
+    return result.rows[0];
+}
 
 async function getDashboardStats(tenantId) {
     const [chatStats, userStats] = await Promise.all([
@@ -289,7 +295,7 @@ module.exports = {
     // Contacts
     syncContacts, getContactsByTenant,
     // Chats & Messages
-    getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat,
+    getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead,
     // System
     getSystemSetting: async (key) => {
         const res = await query('SELECT value FROM system_settings WHERE key = $1', [key]);

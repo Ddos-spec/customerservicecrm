@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Send, Paperclip, Smile, MoreVertical, Search,
-  Info, CheckCheck, Clock, User, X, Loader2
+  Info, CheckCheck, Clock, User, X, Loader2, Users
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
@@ -12,8 +12,10 @@ import { useAuthStore } from '../store/useAuthStore';
 interface Chat {
   id: string; // UUID
   contact_id: string;
-  display_name: string; // From Contact Name or PushName
+  display_name: string; // From Contact Name or PushName (or Group Name for groups)
   phone_number: string;
+  jid?: string; // WhatsApp JID
+  is_group: boolean; // Group chat flag
   unread_count: number;
   last_message_preview: string;
   last_message_time: string;
@@ -277,14 +279,24 @@ const AgentWorkspace = () => {
     // Reset unread locally
     setChats(prev => prev.map(c => c.id === chat.id ? { ...c, unread_count: 0 } : c));
     void fetchMessages(chat.id);
+
+    // Mark as read on backend (fire and forget)
+    if (chat.unread_count > 0) {
+      api.put(`/chats/${chat.id}/read`).catch(err => {
+        console.warn('Failed to mark chat as read:', err);
+      });
+    }
   };
 
   // --- 4. Send Message Logic ---
   const handleSendMessage = async () => {
     if (!messageText.trim()) return;
     if (!selectedChat) return;
-    if (!selectedChat.phone_number) {
-      toast.error('Nomor telepon tidak valid');
+
+    // For groups, use JID. For private chats, use phone_number
+    const recipient = selectedChat.is_group ? selectedChat.jid : selectedChat.phone_number;
+    if (!recipient) {
+      toast.error(selectedChat.is_group ? 'Group JID tidak valid' : 'Nomor telepon tidak valid');
       return;
     }
 
@@ -294,9 +306,10 @@ const AgentWorkspace = () => {
     try {
       // V2 Endpoint: POST /internal/messages
       const res = await api.post('/internal/messages', {
-        phone: selectedChat.phone_number,
+        phone: recipient,
         message_text: textToSend,
-        ticket_id: selectedChat.id // Sending Chat ID as ticket_id for compatibility
+        ticket_id: selectedChat.id, // Sending Chat ID as ticket_id for compatibility
+        is_group: selectedChat.is_group
       });
 
       if (res.data.status === 'success') {
@@ -380,16 +393,16 @@ const AgentWorkspace = () => {
                 className={`p-4 hover:bg-blue-50/50 dark:hover:bg-slate-800 cursor-pointer transition-colors flex items-center space-x-3 ${selectedChat?.id === chat.id ? 'bg-blue-50 dark:bg-slate-800' : ''}`}
               >
                 <div className="relative shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-sm">
-                    {chat.display_name ? chat.display_name.substring(0, 2).toUpperCase() : '?'}
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm ${chat.is_group ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'}`}>
+                    {chat.is_group ? <Users size={20} /> : (chat.display_name ? chat.display_name.substring(0, 2).toUpperCase() : '?')}
                   </div>
-                  {/* Online indicator could go here if we had presence data */}
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-baseline mb-1">
-                    <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate pr-2">
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate pr-2 flex items-center gap-1.5">
                         {chat.display_name || chat.phone_number}
+                        {chat.is_group && <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">GRUP</span>}
                     </h4>
                     <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
                         {formatRelativeTime(chat.last_message_time)}
@@ -422,15 +435,16 @@ const AgentWorkspace = () => {
                 {/* Chat Header */}
                 <div className="h-16 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 flex items-center justify-between shadow-sm z-10">
                     <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
-                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-700 dark:text-blue-400 font-bold text-xs">
-                            {selectedChat.display_name?.substring(0, 2).toUpperCase()}
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs ${selectedChat.is_group ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'}`}>
+                            {selectedChat.is_group ? <Users size={18} /> : selectedChat.display_name?.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                 {selectedChat.display_name}
+                                {selectedChat.is_group && <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">GRUP</span>}
                             </h3>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {selectedChat.phone_number}
+                                {selectedChat.is_group ? 'Grup WhatsApp' : selectedChat.phone_number}
                             </p>
                         </div>
                     </div>
@@ -470,9 +484,11 @@ const AgentWorkspace = () => {
                                         : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-white border border-gray-100 dark:border-slate-700 rounded-tl-none'
                                     }`}
                                 >
-                                    {/* Sender Name in Group (if needed later) */}
-                                    {/* {!msg.is_from_me && msg.sender_name && <p className="text-[10px] font-bold text-orange-500 mb-1">{msg.sender_name}</p>} */}
-                                    
+                                    {/* Sender Name in Group Chat */}
+                                    {selectedChat.is_group && !msg.is_from_me && msg.sender_name && (
+                                        <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mb-1">{msg.sender_name}</p>
+                                    )}
+
                                     <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
                                     
                                     <div className={`flex items-center justify-end mt-1.5 space-x-1 text-[10px] opacity-70 ${msg.is_from_me ? 'text-blue-100' : 'text-gray-400'}`}>

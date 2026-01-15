@@ -136,19 +136,31 @@ async function handleMessage(sessionId, data) {
         }
 
         // 2. Identify Target Chat
-        let targetJid = message.isFromMe ? message.to : message.from;
-        
+        // For groups: message.to = group JID, message.from = sender in group
+        // For private: message.to = recipient, message.from = sender
+        const isGroup = message.isGroup || message.to?.endsWith('@g.us');
+        let targetJid;
+
+        if (isGroup) {
+            // Group chat: target is the group itself
+            targetJid = message.to;
+        } else {
+            // Private chat: target is the other person
+            targetJid = message.isFromMe ? message.to : message.from;
+        }
+
         // Ensure we have a valid JID
         if (!targetJid) return;
 
         // --- FILTER: Ignore Status Updates ---
         if (targetJid === 'status@broadcast' || targetJid.includes('@broadcast')) {
-            // Optional: You can log this to a separate 'statuses' table if needed later
-            // console.log(`[Webhook] Ignored status update from ${message.pushName}`);
-            return; 
+            return;
         }
 
-        const chat = await db.getOrCreateChat(tenant.id, targetJid, message.pushName);
+        // Get group name for display (from pushName or extract from JID)
+        const displayName = isGroup ? (message.groupName || message.pushName || targetJid.split('@')[0]) : message.pushName;
+
+        const chat = await db.getOrCreateChat(tenant.id, targetJid, displayName, isGroup);
 
         // 3. Persist Message
         let messageText = message.body || '';
@@ -187,7 +199,8 @@ async function handleMessage(sessionId, data) {
                 db_id: savedMessage.id,
                 chat_id: chat.id,
                 tenant_id: tenant.id,
-                sender_type: senderType
+                sender_type: senderType,
+                is_group: isGroup
             },
         });
 

@@ -75,9 +75,29 @@ function buildChatRouter(deps) {
             const { chatId } = req.params;
             const limit = parseInt(req.query.limit) || 50;
             const beforeId = req.query.before || null; // Cursor for pagination
-            
+
             const messages = await db.getMessagesByChat(chatId, limit, beforeId);
             res.json({ status: 'success', data: messages });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    /**
+     * PUT /api/v1/chats/:chatId/read
+     * Mark chat as read (reset unread_count to 0)
+     */
+    router.put('/chats/:chatId/read', async (req, res) => {
+        const user = req.session?.user;
+        if (!user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+
+        try {
+            const { chatId } = req.params;
+            const chat = await db.markChatAsRead(chatId);
+            if (!chat) {
+                return res.status(404).json({ status: 'error', message: 'Chat not found' });
+            }
+            res.json({ status: 'success', data: chat });
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });
         }
