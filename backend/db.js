@@ -156,12 +156,22 @@ async function getChatsByTenant(tenantId, limit = 50, offset = 0) {
     return result.rows;
 }
 
-async function getMessagesByChat(chatId, limit = 100) {
-    const result = await query(
-        'SELECT * FROM messages WHERE chat_id = $1 ORDER BY created_at ASC LIMIT $2',
-        [chatId, limit]
-    );
-    return result.rows;
+async function getMessagesByChat(chatId, limit = 50, beforeId = null) {
+    let queryText = 'SELECT * FROM messages WHERE chat_id = $1';
+    let params = [chatId, limit];
+    
+    if (beforeId) {
+        queryText += ' AND created_at < (SELECT created_at FROM messages WHERE id = $3)';
+        params.push(beforeId);
+    }
+    
+    // Ambil data secara DESC (Mundur ke masa lalu) untuk mendapatkan "X pesan sebelum ini"
+    queryText += ' ORDER BY created_at DESC LIMIT $2';
+
+    const result = await query(queryText, params);
+    
+    // Kembalikan urutannya menjadi ASC (Kronologis) agar Frontend mudah merender
+    return result.rows.reverse();
 }
 
 // =============================================
@@ -223,6 +233,54 @@ module.exports = {
     ensureSystemSettingsTable: async () => query('CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     ensureUserPhoneColumn: async () => query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT'),
     ensureInvitePhoneColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS phone_number TEXT'),
+    ensureContactSyncTrigger: async () => {
+        const funcSQL = `
+            CREATE OR REPLACE FUNCTION "public"."sync_whatsmeow_to_crm_contact"() RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+            DECLARE
+              v_tenant_id UUID;
+              v_phone TEXT;
+              v_display_name TEXT;
+            BEGIN
+              SELECT id INTO v_tenant_id FROM tenants LIMIT 1; 
+
+              IF v_tenant_id IS NOT NULL THEN
+                v_phone := split_part(NEW.their_jid, '@', 1);
+                v_display_name := COALESCE(NEW.full_name, NEW.push_name, NEW.first_name);
+                
+                IF v_display_name IS NULL OR v_display_name = '' THEN
+                    v_display_name := v_phone;
+                END IF;
+
+                INSERT INTO contacts (tenant_id, jid, phone_number, push_name, full_name, display_name, updated_at)
+                VALUES (v_tenant_id, NEW.their_jid, v_phone, NEW.push_name, NEW.full_name, v_display_name, now())
+                ON CONFLICT (tenant_id, jid) 
+                DO UPDATE SET 
+                  phone_number = EXCLUDED.phone_number,
+                  push_name = EXCLUDED.push_name,
+                  full_name = EXCLUDED.full_name,
+                  display_name = EXCLUDED.display_name,
+                  updated_at = now();
+              END IF;
+
+              RETURN NEW;
+            END;
+            $$;
+        `;
+        await query(funcSQL);
+        
+        // Ensure Trigger Exists
+        await query(`
+            DO $$
+            BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_sync_wm_contacts') THEN
+                CREATE TRIGGER trg_sync_wm_contacts
+                AFTER INSERT OR UPDATE ON "public"."whatsmeow_contacts"
+                FOR EACH ROW EXECUTE FUNCTION sync_whatsmeow_to_crm_contact();
+              END IF;
+            END
+            $$;
+        `);
+    },
     createUserInvite: async (i) => (await query('INSERT INTO user_invites (tenant_id, email, token, role, created_by, expires_at, phone_number, name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *', [i.tenant_id, i.email, i.token, i.role, i.created_by, i.expires_at, i.phone_number, i.name])).rows[0],
     getInviteByToken: async (t) => (await query('SELECT i.*, t.company_name as tenant_name FROM user_invites i JOIN tenants t ON i.tenant_id = t.id WHERE i.token = $1', [t])).rows[0],
     acceptInvite: async (t) => await query("UPDATE user_invites SET status = 'accepted' WHERE token = $1", [t]),

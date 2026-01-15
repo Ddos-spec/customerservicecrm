@@ -1370,6 +1370,31 @@ router.get('/stats', requireAuth, async (req, res) => {
 });
 
 /**
+ * POST /api/v1/admin/fix-contacts
+ * Manually trigger contact sync fix (force update all contacts from raw table)
+ */
+router.post('/fix-contacts', requireRole('super_admin'), async (req, res) => {
+    try {
+        console.log('[Admin] Triggering manual contact sync fix...');
+        const client = await db.pool.connect();
+        try {
+            const result = await client.query(`
+                UPDATE whatsmeow_contacts 
+                SET their_jid = their_jid 
+                WHERE their_jid IS NOT NULL
+            `);
+            console.log(`[Admin] Fix contacts completed. Affected: ${result.rowCount}`);
+            res.json({ success: true, message: `Synced ${result.rowCount} contacts from Gateway to CRM.` });
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('Error fixing contacts:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * GET /api/v1/admin/notifier-session
  * Get current notifier session id (super admin only)
  */

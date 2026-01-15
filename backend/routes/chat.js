@@ -73,8 +73,10 @@ function buildChatRouter(deps) {
 
         try {
             const { chatId } = req.params;
-            const limit = parseInt(req.query.limit) || 100;
-            const messages = await db.getMessagesByChat(chatId, limit);
+            const limit = parseInt(req.query.limit) || 50;
+            const beforeId = req.query.before || null; // Cursor for pagination
+            
+            const messages = await db.getMessagesByChat(chatId, limit, beforeId);
             res.json({ status: 'success', data: messages });
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });

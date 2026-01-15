@@ -381,23 +381,40 @@ CREATE TRIGGER set_updated_at_contacts BEFORE UPDATE ON "public"."contacts" FOR 
 CREATE OR REPLACE FUNCTION "public"."sync_whatsmeow_to_crm_contact"() RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 DECLARE
   v_tenant_id UUID;
+  v_phone TEXT;
+  v_display_name TEXT;
 BEGIN
   -- Default Tenant: Ambil yang pertama
   SELECT id INTO v_tenant_id FROM tenants LIMIT 1; 
 
   IF v_tenant_id IS NOT NULL THEN
-    INSERT INTO contacts (tenant_id, jid, push_name, full_name, display_name)
+    -- 1. Extract Phone Number (Ambil angka sebelum @)
+    v_phone := split_part(NEW.their_jid, '@', 1);
+
+    -- 2. Tentukan Nama dengan Prioritas: FullName > PushName > FirstName
+    v_display_name := COALESCE(NEW.full_name, NEW.push_name, NEW.first_name);
+    
+    -- Fallback jika masih null, pakai nomor HP
+    IF v_display_name IS NULL OR v_display_name = '' THEN
+        v_display_name := v_phone;
+    END IF;
+
+    INSERT INTO contacts (tenant_id, jid, phone_number, push_name, full_name, display_name)
     VALUES (
       v_tenant_id, 
       NEW.their_jid, 
+      v_phone,
       NEW.push_name, 
       NEW.full_name, 
-      COALESCE(NEW.full_name, NEW.push_name, NEW.first_name)
+      v_display_name
     )
     ON CONFLICT (tenant_id, jid) 
     DO UPDATE SET 
+      -- OVERWRITE data yang ada (Force Update)
+      phone_number = EXCLUDED.phone_number,
       push_name = EXCLUDED.push_name,
       full_name = EXCLUDED.full_name,
+      display_name = EXCLUDED.display_name,
       updated_at = now();
   END IF;
 

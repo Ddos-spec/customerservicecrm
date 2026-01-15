@@ -77,18 +77,25 @@ const AgentWorkspace = () => {
   // Loading States
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
   
   const ws = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatListRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Only auto-scroll to bottom on initial load or new incoming messages (at the bottom)
+  // We disable this when fetching old history to prevent jumping
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (!isFetchingMore) {
+        scrollToBottom();
+    }
+  }, [messages, isFetchingMore]);
 
   // --- 1. Fetch Chat List (Inbox) ---
   const fetchChats = useCallback(async () => {
@@ -108,21 +115,69 @@ const AgentWorkspace = () => {
   }, []);
 
   // --- 2. Fetch Messages for Selected Chat ---
-  const fetchMessages = useCallback(async (chatId: string) => {
-    setIsLoadingMessages(true);
+  const fetchMessages = useCallback(async (chatId: string, beforeId?: string) => {
+    if (beforeId) {
+        setIsFetchingMore(true);
+    } else {
+        setIsLoadingMessages(true);
+        setHasMoreMessages(true); // Reset for new chat
+    }
+
     try {
       // V2 Endpoint: GET /chats/:id/messages
-      const res = await api.get(`/chats/${chatId}/messages?limit=50`);
+      // Use cursor-based pagination if beforeId is present
+      const url = `/chats/${chatId}/messages?limit=50${beforeId ? `&before=${beforeId}` : ''}`;
+      const res = await api.get(url);
+      
       if (res.data.status === 'success') {
-        setMessages(res.data.data);
+        const newMessages = res.data.data;
+        
+        // If we get fewer messages than limit, we reached the beginning of history
+        if (newMessages.length < 50) {
+            setHasMoreMessages(false);
+        }
+
+        if (beforeId) {
+            // "Load More" scenario: Prepend old messages
+            // We need to maintain scroll position manually after render
+            const container = messagesContainerRef.current;
+            const oldScrollHeight = container ? container.scrollHeight : 0;
+
+            setMessages((prev) => [...newMessages, ...prev]);
+
+            // Restore scroll position after DOM update
+            // We use setTimeout to ensure React has finished rendering
+            setTimeout(() => {
+                if (container) {
+                    const newScrollHeight = container.scrollHeight;
+                    container.scrollTop = newScrollHeight - oldScrollHeight;
+                }
+            }, 0);
+        } else {
+            // "Initial Load" scenario: Replace all messages
+            setMessages(newMessages);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch messages:', error);
       toast.error('Gagal memuat pesan');
     } finally {
       setIsLoadingMessages(false);
+      setIsFetchingMore(false);
     }
   }, []);
+
+  // Handle Scroll to Top (Infinite Scroll)
+  const handleScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Check if scrolled to top (allow 10px buffer) and if we have more messages to load
+    if (container.scrollTop < 10 && hasMoreMessages && !isFetchingMore && !isLoadingMessages && messages.length > 0) {
+        const oldestMessageId = messages[0].id;
+        fetchMessages(selectedChat!.id, oldestMessageId);
+    }
+  };
 
   // --- 3. WebSocket Connection (Real-time) ---
   useEffect(() => {
@@ -390,7 +445,17 @@ const AgentWorkspace = () => {
                 </div>
 
                 {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                <div 
+                    ref={messagesContainerRef}
+                    onScroll={handleScroll}
+                    className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4"
+                >
+                    {isFetchingMore && (
+                        <div className="flex justify-center py-2">
+                            <Loader2 className="animate-spin text-gray-400" size={20} />
+                        </div>
+                    )}
+
                     {isLoadingMessages ? (
                         <div className="flex h-full items-center justify-center">
                             <Loader2 className="animate-spin text-blue-500" size={32} />
