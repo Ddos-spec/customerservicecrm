@@ -63,20 +63,18 @@ async function syncContacts(tenantId, contacts) {
             if (!jid) continue;
             const phone = c.phone || jid.split('@')[0];
 
-            // Priority for display_name: fullName (saved) > firstName (saved) > pushName (not saved)
-            const displayName = c.displayName || c.fullName || c.firstName || c.pushName || null;
+            // Priority for full_name: fullName > firstName > pushName > phone
+            const fullName = c.fullName || c.firstName || c.pushName || c.displayName || phone;
 
             await client.query(`
-                INSERT INTO contacts (tenant_id, jid, phone_number, display_name, push_name, full_name, is_business)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO contacts (tenant_id, jid, phone_number, full_name, is_business)
+                VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (tenant_id, jid) DO UPDATE SET
                     phone_number = COALESCE(EXCLUDED.phone_number, contacts.phone_number),
-                    display_name = COALESCE(EXCLUDED.display_name, contacts.display_name),
-                    push_name = COALESCE(EXCLUDED.push_name, contacts.push_name),
                     full_name = COALESCE(EXCLUDED.full_name, contacts.full_name),
                     is_business = EXCLUDED.is_business,
                     updated_at = now()
-            `, [tenantId, jid, phone, displayName, c.pushName, c.fullName, c.isBusiness || false]);
+            `, [tenantId, jid, phone, fullName, c.isBusiness || false]);
         }
         await client.query('COMMIT');
         console.log(`[DB] Synced ${contacts.length} contacts for tenant ${tenantId}`);
@@ -88,7 +86,8 @@ async function syncContacts(tenantId, contacts) {
 }
 
 async function getContactsByTenant(tenantId) {
-    const result = await query('SELECT * FROM contacts WHERE tenant_id = $1 ORDER BY updated_at DESC', [tenantId]);
+    // Select full_name as display_name for frontend compatibility
+    const result = await query('SELECT *, full_name as display_name FROM contacts WHERE tenant_id = $1 ORDER BY updated_at DESC', [tenantId]);
     return result.rows;
 }
 
@@ -103,9 +102,11 @@ async function getOrCreateChat(tenantId, jid, pushName = null) {
 
     if (contactRes.rows.length === 0) {
         const phone = jid.split('@')[0];
+        // Use pushName or phone as initial full_name
+        const initialName = pushName || phone;
         const res = await query(
-            'INSERT INTO contacts (tenant_id, jid, phone_number, push_name) VALUES ($1, $2, $3, $4) RETURNING id',
-            [tenantId, jid, phone, pushName]
+            'INSERT INTO contacts (tenant_id, jid, phone_number, full_name) VALUES ($1, $2, $3, $4) RETURNING id',
+            [tenantId, jid, phone, initialName]
         );
         contactId = res.rows[0].id;
     } else {
@@ -145,7 +146,7 @@ async function logMessage({ chatId, senderType, senderId, senderName, messageTyp
 
 async function getChatsByTenant(tenantId, limit = 50, offset = 0) {
     const result = await query(`
-        SELECT c.*, con.display_name, con.push_name, con.phone_number, con.profile_pic_url, u.name as agent_name
+        SELECT c.*, con.full_name as display_name, con.full_name as push_name, con.phone_number, con.profile_pic_url, u.name as agent_name
         FROM chats c
         JOIN contacts con ON c.contact_id = con.id
         LEFT JOIN users u ON c.assigned_to = u.id
@@ -239,26 +240,25 @@ module.exports = {
             DECLARE
               v_tenant_id UUID;
               v_phone TEXT;
-              v_display_name TEXT;
+              v_full_name TEXT;
             BEGIN
               SELECT id INTO v_tenant_id FROM tenants LIMIT 1; 
 
               IF v_tenant_id IS NOT NULL THEN
                 v_phone := split_part(NEW.their_jid, '@', 1);
-                v_display_name := COALESCE(NEW.full_name, NEW.push_name, NEW.first_name);
+                -- Priority: FullName > FirstName > PushName > Phone
+                v_full_name := COALESCE(NEW.full_name, NEW.first_name, NEW.push_name);
                 
-                IF v_display_name IS NULL OR v_display_name = '' THEN
-                    v_display_name := v_phone;
+                IF v_full_name IS NULL OR v_full_name = '' THEN
+                    v_full_name := v_phone;
                 END IF;
 
-                INSERT INTO contacts (tenant_id, jid, phone_number, push_name, full_name, display_name, updated_at)
-                VALUES (v_tenant_id, NEW.their_jid, v_phone, NEW.push_name, NEW.full_name, v_display_name, now())
+                INSERT INTO contacts (tenant_id, jid, phone_number, full_name, updated_at)
+                VALUES (v_tenant_id, NEW.their_jid, v_phone, v_full_name, now())
                 ON CONFLICT (tenant_id, jid) 
                 DO UPDATE SET 
                   phone_number = EXCLUDED.phone_number,
-                  push_name = EXCLUDED.push_name,
                   full_name = EXCLUDED.full_name,
-                  display_name = EXCLUDED.display_name,
                   updated_at = now();
               END IF;
 
