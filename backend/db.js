@@ -309,24 +309,31 @@ module.exports = {
             CREATE OR REPLACE FUNCTION "public"."sync_whatsmeow_to_crm_contact"() RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
             DECLARE
               v_tenant_id UUID;
+              v_our_phone TEXT;
               v_phone TEXT;
               v_full_name TEXT;
             BEGIN
-              SELECT id INTO v_tenant_id FROM tenants LIMIT 1; 
+              -- Extract phone number from our_jid (e.g., 6289xxx@s.whatsapp.net → 6289xxx)
+              v_our_phone := split_part(NEW.our_jid, '@', 1);
+
+              -- Match our_jid with tenant's session_id for proper tenant isolation
+              SELECT id INTO v_tenant_id FROM tenants
+              WHERE session_id = v_our_phone AND status = 'active'
+              LIMIT 1;
 
               IF v_tenant_id IS NOT NULL THEN
                 v_phone := split_part(NEW.their_jid, '@', 1);
                 -- Priority: FullName > FirstName > PushName > Phone
                 v_full_name := COALESCE(NEW.full_name, NEW.first_name, NEW.push_name);
-                
+
                 IF v_full_name IS NULL OR v_full_name = '' THEN
                     v_full_name := v_phone;
                 END IF;
 
                 INSERT INTO contacts (tenant_id, jid, phone_number, full_name, updated_at)
                 VALUES (v_tenant_id, NEW.their_jid, v_phone, v_full_name, now())
-                ON CONFLICT (tenant_id, jid) 
-                DO UPDATE SET 
+                ON CONFLICT (tenant_id, jid)
+                DO UPDATE SET
                   phone_number = EXCLUDED.phone_number,
                   full_name = EXCLUDED.full_name,
                   updated_at = now();

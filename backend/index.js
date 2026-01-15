@@ -129,6 +129,40 @@ if (!isTest) {
 const sessions = new Map();
 const sessionTokens = new Map();
 
+// Register session error callback to auto-disconnect on Gateway errors
+waGateway.setSessionErrorCallback((sessionId, error) => {
+    console.warn(`[Auto-Disconnect] Session ${sessionId} error detected: ${error?.message || 'Unknown error'}`);
+
+    // Get session from memory
+    let session = sessions.get(sessionId);
+    if (session) {
+        // Only update if currently showing as CONNECTED (to prevent looping)
+        if (session.status === 'CONNECTED') {
+            session.status = 'DISCONNECTED';
+            session.qr = null;
+            sessions.set(sessionId, session);
+
+            console.log(`[Auto-Disconnect] Session ${sessionId} marked as DISCONNECTED due to Gateway error`);
+
+            // Broadcast status update to all WebSocket clients
+            const data = JSON.stringify({
+                type: 'session-update',
+                data: [{
+                    sessionId,
+                    status: 'DISCONNECTED',
+                    reason: error?.message || 'Gateway error',
+                    connectedNumber: session.connectedNumber || null
+                }]
+            });
+            wss.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    client.send(data);
+                }
+            });
+        }
+    }
+});
+
 // --- Encryption ---
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 const STORAGE_DIR = path.join(__dirname, 'storage');
@@ -660,6 +694,23 @@ webhookHandler.on('connection', (sessionId, data) => {
             sessionTokens.set(sessionId, recoveryToken);
             saveTokens(); // Write to session_tokens.enc
         }
+
+        // AUTO-SYNC: When session becomes CONNECTED, sync contacts immediately
+        // Find tenant by session_id and trigger sync
+        setImmediate(async () => {
+            try {
+                const tenant = await db.getTenantBySessionId(sessionId);
+                if (tenant) {
+                    console.log(`[Auto-Sync] Session ${sessionId} connected. Syncing contacts for ${tenant.company_name}...`);
+                    const result = await syncContactsForTenant(tenant.id, sessionId);
+                    if (result.synced > 0) {
+                        console.log(`[Auto-Sync] Synced ${result.synced} contacts for ${tenant.company_name}`);
+                    }
+                }
+            } catch (err) {
+                console.warn(`[Auto-Sync] Failed for session ${sessionId}: ${err.message}`);
+            }
+        });
     } else if (newStatus === 'LOGGED_OUT' || newStatus === 'DISCONNECTED') {
         // If logged out or disconnected, remove from disk after delay
         // Wait 5 minutes before cleanup (in case of temporary disconnect)
@@ -825,6 +876,13 @@ if (!isTest) {
 
                 for (const tenant of tenants) {
                     try {
+                        // Skip syncing for sessions that are known to be DISCONNECTED
+                        const session = sessions.get(tenant.session_id);
+                        if (session && (session.status === 'DISCONNECTED' || session.status === 'LOGGED_OUT')) {
+                            console.log(`[Cron] Skipping sync for ${tenant.company_name} - session is ${session.status}`);
+                            continue;
+                        }
+
                         const result = await syncContactsForTenant(tenant.id, tenant.session_id);
                         if (result.synced > 0) {
                             console.log(`[Cron] Synced ${result.synced} contacts for ${tenant.company_name}`);
