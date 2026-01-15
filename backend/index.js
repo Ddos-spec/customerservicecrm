@@ -714,6 +714,7 @@ if (!isTest) {
             await db.ensureSystemSettingsTable();
             await db.ensureUserPhoneColumn();
             await db.ensureInvitePhoneColumn();
+            await db.ensureContactSyncTrigger(); // Update Trigger Logic (Force Sync)
         } catch (err) {
             console.error('Database setup error:', err.message);
         }
