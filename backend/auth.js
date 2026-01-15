@@ -1370,10 +1370,11 @@ router.get('/stats', requireAuth, async (req, res) => {
 });
 
 /**
- * POST /api/v1/admin/fix-contacts
+ * ALL /api/v1/admin/fix-contacts
  * Manually trigger contact sync fix (force update all contacts from raw table)
+ * Support both GET (browser friendly) and POST
  */
-router.post('/fix-contacts', requireRole('super_admin'), async (req, res) => {
+router.all('/fix-contacts', requireRole('super_admin'), async (req, res) => {
     try {
         console.log('[Admin] Triggering manual contact sync fix...');
         const client = await db.pool.connect();
