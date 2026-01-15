@@ -39,8 +39,6 @@ CREATE TABLE "public"."contacts" (
   "tenant_id" UUID NOT NULL,
   "jid" TEXT NOT NULL,
   "phone_number" TEXT NULL,
-  "display_name" TEXT NULL,
-  "push_name" TEXT NULL,
   "full_name" TEXT NULL,
   "profile_pic_url" TEXT NULL,
   "is_business" BOOLEAN NULL DEFAULT false,
