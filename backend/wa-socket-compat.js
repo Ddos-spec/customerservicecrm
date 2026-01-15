@@ -206,14 +206,20 @@ function createCompatSocket(sessionId) {
                 const result = await waGateway.getGroups(sessionId);
                 // Transform to Baileys format
                 const groups = {};
-                if (result?.data?.groups) {
-                    for (const group of result.data.groups) {
-                        groups[group.id] = {
-                            id: group.id,
-                            subject: group.name || group.subject,
-                            participants: group.participants || []
-                        };
-                    }
+                const rawGroups = Array.isArray(result?.data)
+                    ? result.data
+                    : Array.isArray(result?.data?.groups)
+                        ? result.data.groups
+                        : [];
+
+                for (const group of rawGroups) {
+                    const id = group.id || group.ID || group.jid || group.JID || group.jidString || group?.JID?.user;
+                    if (!id) continue;
+                    groups[id] = {
+                        id,
+                        subject: group.subject || group.name || group.topic || `Group ${id}`,
+                        participants: group.participants || group.Participants || []
+                    };
                 }
                 return groups;
             } catch (error) {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Bell, RefreshCw, Loader2, CheckCircle2, Wifi, WifiOff } from 'lucide-react';
+import { Bell, RefreshCw, Loader2, CheckCircle2, Wifi, WifiOff, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
@@ -180,6 +180,17 @@ const SuperAdminSettings = () => {
                     <CheckCircle2 className="text-emerald-500" size={40} />
                   </div>
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Notifier Aktif</h3>
+
+                  {/* Display Connected WhatsApp Number */}
+                  {session?.connectedNumber && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg mb-3">
+                      <Smartphone className="text-emerald-600 dark:text-emerald-400" size={16} />
+                      <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                        {session.connectedNumber}
+                      </span>
+                    </div>
+                  )}
+
                   <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-sm">
                     Sistem akan otomatis memberi tahu super admin ketika ada session yang disconnect atau logout.
                   </p>

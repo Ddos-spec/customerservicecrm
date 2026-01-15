@@ -127,80 +127,76 @@ async function handleMessage(sessionId, data) {
     const { message } = data;
     if (!message) return;
 
-    // Skip messages from self unless specifically needed
-    if (message.isFromMe) {
-        console.log(`[Webhook] Skipping self message: ${message.id}`);
-        // TODO: Handle self message storage (outgoing messages)
-        return;
-    }
-
     try {
         // 1. Identify Tenant
-        const tenant = await db.getTenantBySessionId(sessionId);
+        let tenant = await db.getTenantBySessionId(sessionId);
         if (!tenant) {
             console.warn(`[Webhook] Received message for unknown session: ${sessionId}`);
             return;
         }
 
-        // 2. Identify Contact & Create Ticket
-        const contactNumber = message.from.split('@')[0];
-        const contactName = message.pushName || contactNumber;
+        // 2. Identify Target Chat
+        let targetJid = message.isFromMe ? message.to : message.from;
         
-        const ticket = await db.getOrCreateTicket({
-            tenant_id: tenant.id,
-            customer_name: contactName,
-            customer_contact: contactNumber
-        });
+        // Ensure we have a valid JID
+        if (!targetJid) return;
+
+        const chat = await db.getOrCreateChat(tenant.id, targetJid, message.pushName);
 
         // 3. Persist Message
         let messageText = message.body || '';
-        let fileUrl = null;
+        let mediaUrl = null;
 
-        // Handle simple media types (image/document with caption)
-        if (message.type === 'image' || message.type === 'video' || message.type === 'document') {
-             // Jika ada caption, jadikan text. URL media idealnya di-upload dulu, 
-             // tapi untuk sekarang kita simpan type-nya aja atau URL mock jika ada dari gateway
-             messageText = message.caption || `[${message.type}]`;
-             // TODO: Handle media upload/storage retrieval from Gateway
+        // Simplify media types
+        if (message.type === 'image' || message.type === 'video' || message.type === 'document' || message.type === 'audio') {
+             messageText = message.caption || `[${message.type.toUpperCase()}]`;
+             // mediaUrl = message.url; // Optional: if provided by gateway
         } else if (message.type === 'sticker') {
-            messageText = '[Sticker]';
-        } else if (message.type === 'audio' || message.type === 'ptt') {
-            messageText = '[Audio]';
+            messageText = '[STICKER]';
         }
 
+        const senderType = message.isFromMe ? 'agent' : 'customer';
+
         const savedMessage = await db.logMessage({
-            ticket_id: ticket.id,
-            sender_type: 'customer',
-            message_text: messageText,
-            file_url: fileUrl
+            chatId: chat.id,
+            senderType: senderType,
+            senderId: message.from,
+            senderName: message.pushName || 'Customer',
+            messageType: message.type,
+            body: messageText,
+            mediaUrl: mediaUrl,
+            waMessageId: message.id,
+            isFromMe: message.isFromMe
         });
 
-        console.log(`[Webhook] Saved message ID ${savedMessage.id} for Ticket ${ticket.id}`);
+        console.log(`[Webhook] Saved ${senderType} message ID ${savedMessage.id} for Chat ${chat.id} (${targetJid})`);
 
         // 4. Broadcast to WebSocket (UI Update)
-        // Kirim struktur yang sesuai dengan yang diharapkan Frontend
         broadcast({
             type: 'message',
             sessionId,
             data: {
                 ...message,
                 db_id: savedMessage.id,
-                ticket_id: ticket.id,
-                tenant_id: tenant.id
+                chat_id: chat.id,
+                tenant_id: tenant.id,
+                sender_type: senderType
             },
         });
 
-        // 5. Forward to external webhooks (Legacy/Integration)
-        const webhooks = await db.getTenantWebhooks(tenant.id);
-        if (webhooks && webhooks.length > 0) {
-            await forwardToTenantWebhooks(webhooks, {
-                event: 'message',
-                sessionId,
-                tenantId: tenant.id,
-                tenantName: tenant.company_name,
-                message,
-                ticketId: ticket.id
-            });
+        // 5. Forward to external webhooks
+        if (!message.isFromMe) {
+            const webhooks = await db.getTenantWebhooks(tenant.id);
+            if (webhooks && webhooks.length > 0) {
+                await forwardToTenantWebhooks(webhooks, {
+                    event: 'message',
+                    sessionId,
+                    tenantId: tenant.id,
+                    tenantName: tenant.company_name,
+                    message,
+                    chatId: chat.id
+                });
+            }
         }
 
     } catch (error) {
@@ -270,7 +266,10 @@ async function handlePresence(sessionId, data) {
  * Handle connection status change
  */
 async function handleConnection(sessionId, data) {
-    const { status, reason } = data;
+    const { status, reason, jid } = data;
+
+    // Extract phone number from JID (format: 628123456789@s.whatsapp.net)
+    const connectedNumber = jid ? jid.split('@')[0] : null;
 
     // Broadcast to WebSocket clients
     broadcast({
@@ -281,10 +280,14 @@ async function handleConnection(sessionId, data) {
                 status === 'disconnected' ? 'DISCONNECTED' :
                     status === 'logged_out' ? 'LOGGED_OUT' : 'UNKNOWN',
             reason,
+            connectedNumber,
         }],
     });
 
-    console.log(`[Webhook] Connection status: ${status} for session ${sessionId}`);
+    console.log(`[Webhook] Connection status: ${status} for session ${sessionId}${connectedNumber ? ` (${connectedNumber})` : ''}`);
+
+    // Emit 'connection' event (handled by index.js listener)
+    module.exports.emit('connection', sessionId, { status, reason, connectedNumber });
 
     // Notify admins when a session disconnects/logs out
     if (status === 'disconnected' || status === 'logged_out') {
@@ -363,8 +366,14 @@ async function notifySessionDisconnected(sessionId, status, reason) {
     // Jangan kirim jika session yang putus adalah notifier
     if (notifierSessionId === sessionId) return;
 
-    // Cari tenant terkait
-    const tenant = await db.getTenantBySessionId(sessionId);
+    // Cari tenant atau user terkait
+    let tenant = await db.getTenantBySessionId(sessionId);
+    let sessionOwner = null;
+
+    // If not a tenant session, check if it's a user (super admin) session
+    if (!tenant) {
+        sessionOwner = await db.getUserBySessionId(sessionId);
+    }
 
     // Kumpulkan penerima: admin_agent (tenant terkait) + super_admin
     const recipients = [];
@@ -390,8 +399,9 @@ async function notifySessionDisconnected(sessionId, status, reason) {
         throw new Error('Auth ke gateway (notifier) gagal');
     }
 
-    const tenantName = tenant?.company_name || 'Tanpa Tenant';
-    const message = `Session WA (${tenantName}) ${sessionId} status: ${status}${reason ? ` (reason: ${reason})` : ''}. Mohon cek dan login ulang jika perlu.`;
+    const ownerName = tenant?.company_name || sessionOwner?.name || 'Unknown';
+    const ownerType = tenant ? 'Tenant' : sessionOwner ? 'User' : 'Unknown';
+    const message = `Session WA (${ownerType}: ${ownerName}) ${sessionId} status: ${status}${reason ? ` (reason: ${reason})` : ''}. Mohon cek dan login ulang jika perlu.`;
 
     await Promise.allSettled(
         uniquePhones.map(async (phone) => {

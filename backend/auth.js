@@ -9,6 +9,80 @@ const rateLimit = require('express-rate-limit');
 const db = require('./db');
 const { formatPhoneNumber } = require('./phone-utils');
 const axios = require('axios');
+const waGateway = require('./wa-gateway-client');
+const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+
+// Sync contacts helper - can be called from login or cron
+async function syncContactsForTenant(tenantId, sessionId) {
+    if (!sessionId || !tenantId) return { synced: 0 };
+
+    try {
+        // Ensure gateway token
+        if (!waGateway.getSessionToken(sessionId)) {
+            if (!gatewayPassword) return { synced: 0, error: 'No gateway password' };
+            const auth = await waGateway.authenticate(sessionId, gatewayPassword);
+            if (auth?.status && auth.data?.token) {
+                waGateway.setSessionToken(sessionId, auth.data.token);
+            } else {
+                return { synced: 0, error: 'Auth failed' };
+            }
+        }
+
+        // Fetch contacts from DB (more reliable)
+        const [contactsRes, groupsRes] = await Promise.allSettled([
+            waGateway.getContactsFromDB(sessionId),
+            waGateway.getGroups(sessionId)
+        ]);
+
+        const contacts = contactsRes.status === 'fulfilled' && contactsRes.value?.status === 'success'
+            ? (contactsRes.value.data || [])
+            : [];
+        const groups = groupsRes.status === 'fulfilled' && groupsRes.value?.status === 'success'
+            ? (groupsRes.value.data || [])
+            : [];
+
+        // Prepare unified contacts
+        const unifiedContacts = [];
+        for (const c of contacts) {
+            const jid = c.JID || c.jid;
+            if (!jid) continue;
+            const displayName = c.FullName || c.fullName || c.FirstName || c.firstName || c.PushName || c.pushName || null;
+            unifiedContacts.push({
+                jid,
+                fullName: c.FullName || c.fullName || null,
+                firstName: c.FirstName || c.firstName || null,
+                pushName: c.PushName || c.pushName || null,
+                displayName,
+                phone: jid.split('@')[0],
+                isBusiness: !!(c.BusinessName || c.businessName),
+                isGroup: false
+            });
+        }
+        for (const g of groups) {
+            const jid = g.JID || g.jid;
+            if (!jid) continue;
+            const groupName = g.Subject || g.subject || g.Name || g.name || 'Unknown Group';
+            unifiedContacts.push({
+                jid,
+                fullName: groupName,
+                displayName: groupName,
+                phone: jid.split('@')[0],
+                isBusiness: false,
+                isGroup: true
+            });
+        }
+
+        if (unifiedContacts.length > 0) {
+            await db.syncContacts(tenantId, unifiedContacts);
+        }
+
+        console.log(`[AutoSync] Synced ${unifiedContacts.length} contacts for tenant ${tenantId}`);
+        return { synced: unifiedContacts.length, contacts: contacts.length, groups: groups.length };
+    } catch (error) {
+        console.error(`[AutoSync] Error syncing tenant ${tenantId}:`, error.message);
+        return { synced: 0, error: error.message };
+    }
+}
 
 const router = express.Router();
 
@@ -305,6 +379,12 @@ router.post('/login', loginLimiter, async (req, res) => {
             });
         }
 
+        // Determine session_id based on role
+        // Super admin uses user.session_id, tenant users use tenants.session_id
+        const effectiveSessionId = user.role === 'super_admin'
+            ? user.user_session_id
+            : user.tenant_session_id;
+
         // Create session
         req.session.user = {
             id: user.id,
@@ -313,6 +393,8 @@ router.post('/login', loginLimiter, async (req, res) => {
             email: user.email,
             role: user.role,
             tenant_name: user.tenant_name,
+            session_id: effectiveSessionId || null,
+            user_session_id: user.user_session_id || null,
             tenant_session_id: user.tenant_session_id || null
         };
 
@@ -332,9 +414,24 @@ router.post('/login', loginLimiter, async (req, res) => {
                     role: user.role,
                     tenant_id: user.tenant_id,
                     tenant_name: user.tenant_name,
+                    session_id: effectiveSessionId || null,
+                    user_session_id: user.user_session_id || null,
                     tenant_session_id: user.tenant_session_id || null
                 }
             });
+
+            // Auto-sync contacts in background (non-blocking)
+            if (user.tenant_id && user.tenant_session_id) {
+                setImmediate(() => {
+                    syncContactsForTenant(user.tenant_id, user.tenant_session_id)
+                        .then(result => {
+                            if (result.synced > 0) {
+                                console.log(`[Login] Auto-synced ${result.synced} contacts for ${user.email}`);
+                            }
+                        })
+                        .catch(err => console.error('[Login] Auto-sync error:', err.message));
+                });
+            }
         });
 
     } catch (error) {
@@ -414,7 +511,16 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         const adminEmail = (req.body?.admin_email || '').trim();
         const adminPassword = req.body?.admin_password || '';
         const sessionIdRaw = req.body?.session_id;
-        const sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : '';
+        
+        // Normalize Session ID (Force 62 format)
+        let sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : '';
+        if (sessionId) {
+            sessionId = sessionId.replace(/\D/g, ''); // Remove non-digits
+            if (sessionId.startsWith('0')) {
+                sessionId = '62' + sessionId.slice(1);
+            }
+        }
+        
         const normalizedSessionId = sessionId === '' ? null : sessionId;
 
         if (!companyName) {
@@ -529,7 +635,13 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
     try {
         const { id } = req.params;
         const rawSessionId = req.body?.session_id;
-        const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+        
+        let sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+        if (sessionId) {
+            sessionId = sessionId.replace(/\D/g, '');
+            if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
+        }
+        
         const normalized = sessionId === '' ? null : sessionId;
 
         const tenant = await db.setTenantSessionId(id, normalized);
@@ -562,6 +674,46 @@ router.delete('/tenants/:id', requireRole('super_admin'), async (req, res) => {
     } catch (error) {
         console.error('Error deleting tenant:', error);
         res.status(500).json({ success: false, error: 'Failed to delete tenant' });
+    }
+});
+
+/**
+ * PATCH /api/v1/admin/users/:id/session
+ * Set session_id for user (for super admin only)
+ */
+router.patch('/users/:id/session', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const rawSessionId = req.body?.session_id;
+        const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+        const normalized = sessionId === '' ? null : sessionId;
+
+        const currentUser = req.session.user;
+
+        // Only allow users to set their own session_id
+        // OR super admin can set anyone's session_id
+        if (currentUser.role !== 'super_admin' && currentUser.id !== id) {
+            return res.status(403).json({ success: false, error: 'Forbidden - Can only set your own session' });
+        }
+
+        const user = await db.setUserSessionId(id, normalized);
+        if (!user) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        // Update current session if setting own session_id
+        if (currentUser.id === id) {
+            req.session.user.session_id = normalized;
+            req.session.user.user_session_id = normalized;
+        }
+
+        res.json({ success: true, user: { id: user.id, session_id: user.session_id } });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ success: false, error: 'Session ID already assigned to another user' });
+        }
+        console.error('Error updating user session:', error);
+        res.status(500).json({ success: false, error: 'Failed to update user session' });
     }
 });
 
@@ -1099,7 +1251,19 @@ router.get('/tickets', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Tenant ID required' });
         }
 
-        let tickets = await db.getTicketsByTenant(tenantId, limit, offset);
+        const chats = await db.getChatsByTenant(tenantId, limit, offset);
+        let tickets = chats.map(c => ({
+            id: c.id,
+            status: c.status || 'open',
+            customer_name: c.display_name || c.push_name || 'Customer',
+            customer_contact: c.phone_number,
+            last_message: c.last_message_preview,
+            message_count: 0, // Simplified for compatibility
+            updated_at: c.last_message_time,
+            agent_name: c.agent_name,
+            unread_count: c.unread_count
+        }));
+
         if (statusFilter) {
             tickets = tickets.filter((t) => t.status === statusFilter);
         }
@@ -1123,16 +1287,16 @@ router.get('/tickets/:id/messages', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Ticket ID required' });
         }
 
-        const ticketResult = await db.query('SELECT * FROM tickets WHERE id = $1', [ticketId]);
-        const ticket = ticketResult.rows[0];
-        if (!ticket) {
-            return res.status(404).json({ success: false, error: 'Ticket not found' });
+        const chatResult = await db.query('SELECT * FROM chats WHERE id = $1', [ticketId]);
+        const chat = chatResult.rows[0];
+        if (!chat) {
+            return res.status(404).json({ success: false, error: 'Ticket (Chat) not found' });
         }
-        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+        if (user.role !== 'super_admin' && chat.tenant_id !== user.tenant_id) {
             return res.status(403).json({ success: false, error: 'Forbidden' });
         }
 
-        const messages = await db.getMessagesByTicket(ticketId);
+        const messages = await db.getMessagesByChat(ticketId);
         res.json({ success: true, messages });
     } catch (error) {
         console.error('Error fetching messages:', error);
@@ -1157,19 +1321,22 @@ router.post('/tickets/:id/messages', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Message text required' });
         }
 
-        const ticketResult = await db.query('SELECT * FROM tickets WHERE id = $1', [ticketId]);
-        const ticket = ticketResult.rows[0];
-        if (!ticket) {
-            return res.status(404).json({ success: false, error: 'Ticket not found' });
+        const chatResult = await db.query('SELECT * FROM chats WHERE id = $1', [ticketId]);
+        const chat = chatResult.rows[0];
+        if (!chat) {
+            return res.status(404).json({ success: false, error: 'Ticket (Chat) not found' });
         }
-        if (user.role !== 'super_admin' && ticket.tenant_id !== user.tenant_id) {
+        if (user.role !== 'super_admin' && chat.tenant_id !== user.tenant_id) {
             return res.status(403).json({ success: false, error: 'Forbidden' });
         }
 
         const message = await db.logMessage({
-            ticket_id: ticketId,
-            sender_type: 'agent',
-            message_text: messageText
+            chatId: ticketId,
+            senderType: 'agent',
+            senderId: user.id,
+            senderName: user.name,
+            body: messageText,
+            isFromMe: true
         });
 
         res.status(201).json({ success: true, message });
@@ -1235,10 +1402,121 @@ router.post('/notifier-session', requireRole('super_admin'), async (req, res) =>
     }
 });
 
+/**
+ * GET /api/v1/admin/wa/groups
+ * Fetch joined groups for the tenant's WhatsApp session (safely)
+ */
+router.get('/wa/groups', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        let sessionId = user?.tenant_session_id || user?.tenant_session_id;
+
+        // Fallback: get tenant session id from DB
+        if (!sessionId && user?.tenant_id) {
+            const tenant = await db.getTenantById(user.tenant_id);
+            sessionId = tenant?.session_id;
+        }
+
+        // Super admin may query a specific session
+        if (!sessionId && user?.role === 'super_admin' && req.query.session_id) {
+            sessionId = req.query.session_id.toString().trim();
+        }
+
+        if (!sessionId) {
+            return res.json({ success: true, groups: [] }); // No session = empty groups
+        }
+
+        try {
+            // Try to authenticate silently
+            await ensureGatewayToken(sessionId);
+        } catch (err) {
+            console.warn(`[Groups] Gateway auth warning for ${sessionId}:`, err.message);
+        }
+
+        try {
+            const response = await waGateway.getGroups(sessionId);
+            if (response.status === true || response.status === 'success') {
+                return res.json({ success: true, groups: response.data || [] });
+            }
+        } catch (gwError) {
+            console.warn(`[Groups] Gateway fetch failed for ${sessionId}:`, gwError.message);
+        }
+
+        // Fallback: return empty list instead of crashing
+        return res.json({ success: true, groups: [] });
+
+    } catch (error) {
+        console.error('Error fetching WA groups:', error);
+        // CRITICAL FIX: Return empty list to prevent frontend crash (500)
+        res.json({ success: true, groups: [] });
+    }
+});
+
+/**
+ * GET /api/v1/admin/wa/contacts
+ * Fetch contacts for the tenant's WhatsApp session (safely)
+ */
+router.get('/wa/contacts', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        let sessionId = user?.tenant_session_id || user?.tenant_session_id;
+
+        if (!sessionId && user?.tenant_id) {
+            const tenant = await db.getTenantById(user.tenant_id);
+            sessionId = tenant?.session_id;
+        }
+
+        if (!sessionId && user?.role === 'super_admin' && req.query.session_id) {
+            sessionId = req.query.session_id.toString().trim();
+        }
+
+        if (!sessionId) {
+            return res.json({ success: true, contacts: [] }); // No session = empty contacts
+        }
+
+        try {
+            // Try to authenticate silently
+            await ensureGatewayToken(sessionId);
+        } catch (err) {
+            console.warn(`[Contacts] Gateway auth warning for ${sessionId}:`, err.message);
+        }
+
+        try {
+            const response = await waGateway.getContacts(sessionId);
+            if (response.status === true || response.status === 'success') {
+                return res.json({ success: true, contacts: response.data || [] });
+            }
+        } catch (gwError) {
+            console.warn(`[Contacts] Gateway fetch failed for ${sessionId}:`, gwError.message);
+        }
+
+        // Fallback: return empty list instead of crashing
+        return res.json({ success: true, contacts: [] });
+
+    } catch (error) {
+        console.error('Error fetching WA contacts:', error);
+        // CRITICAL FIX: Return empty list to prevent frontend crash (500)
+        res.json({ success: true, contacts: [] });
+    }
+});
+
+async function ensureGatewayToken(sessionId) {
+    if (waGateway.getSessionToken(sessionId)) return true;
+    if (!gatewayPassword) throw new Error('Gateway password tidak dikonfigurasi');
+
+    const authResp = await waGateway.authenticate(sessionId, gatewayPassword);
+    if (authResp?.status && authResp.data?.token) {
+        waGateway.setSessionToken(sessionId, authResp.data.token);
+        return true;
+    }
+    throw new Error(authResp?.message || 'Autentikasi gateway gagal');
+}
+
 module.exports = {
     router,
     requireAuth,
     requireRole,
     requireTenantAccess,
-    ensureSuperAdmin
+    ensureSuperAdmin,
+    syncContactsForTenant
 };

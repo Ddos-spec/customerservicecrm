@@ -4,6 +4,9 @@ import Login from './pages/Login';
 import MainLayout from './layouts/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import SuperAdminTickets from './pages/SuperAdminTickets';
+import SuperAdminUsers from './pages/SuperAdminUsers';
+import SuperAdminSessions from './pages/SuperAdminSessions';
 import TenantManagement from './pages/TenantManagement';
 import AgentManagement from './pages/AgentManagement';
 import AgentWorkspace from './pages/AgentWorkspace';
@@ -11,10 +14,12 @@ import ChatHistory from './pages/ChatHistory';
 import InviteAccept from './pages/InviteAccept';
 import SuperAdminSettings from './pages/SuperAdminSettings';
 import SuperAdminApiDocs from './pages/SuperAdminApiDocs';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminTickets from './pages/AdminTickets';
+import AdminReports from './pages/AdminReports';
+import AgentDashboard from './pages/AgentDashboard';
 import { Toaster } from 'sonner';
 import { useThemeStore } from './store/useThemeStore';
-
-import AgentDashboard from './pages/AgentDashboard';
 
 function App() {
   const isDarkMode = useThemeStore((state) => state.isDarkMode);
@@ -75,6 +80,9 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
             <Route path="/super-admin" element={<MainLayout />}>
               <Route index element={<SuperAdminDashboard />} />
+              <Route path="tickets" element={<SuperAdminTickets />} />
+              <Route path="users" element={<SuperAdminUsers />} />
+              <Route path="sessions" element={<SuperAdminSessions />} />
               <Route path="tenants" element={<TenantManagement />} />
               <Route path="settings" element={<SuperAdminSettings />} />
               <Route path="api-docs" element={<SuperAdminApiDocs />} />
@@ -84,8 +92,10 @@ function App() {
           {/* Admin Agent Routes */}
           <Route element={<ProtectedRoute allowedRoles={['admin_agent']} />}>
             <Route path="/admin" element={<MainLayout />}>
-              <Route index element={<AgentDashboard />} /> {/* Home = Dashboard Statistik */}
-              <Route path="chat" element={<AgentWorkspace />} /> {/* Menu Chat terpisah */}
+              <Route index element={<AdminDashboard />} /> {/* Updated to AdminDashboard */}
+              <Route path="tickets" element={<AdminTickets />} />
+              <Route path="reports" element={<AdminReports />} />
+              <Route path="chat" element={<AgentWorkspace />} />
               <Route path="history" element={<ChatHistory />} />
               <Route path="agents" element={<AgentManagement />} />
             </Route>

@@ -1360,3 +1360,38 @@ func WhatsAppGroupLeave(jid string, gjid string) error {
 	// Return Error WhatsApp Client is not Valid
 	return errors.New("WhatsApp Client is not Valid")
 }
+
+// WhatsAppContactsGet returns contact list from client store with JID included
+func WhatsAppContactsGet(jid string) ([]map[string]interface{}, error) {
+	if WhatsAppClient[jid] != nil {
+		var err error
+
+		// Make Sure WhatsApp Client is OK
+		err = WhatsAppIsClientOK(jid)
+		if err != nil {
+			return nil, err
+		}
+
+		contactMap, err := WhatsAppClient[jid].Store.Contacts.GetAllContacts(context.Background())
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert map to slice of maps to include the JID (key)
+		contacts := make([]map[string]interface{}, 0, len(contactMap))
+		for jid, info := range contactMap {
+			contacts = append(contacts, map[string]interface{}{
+				"JID":          jid.String(),
+				"FirstName":    info.FirstName,
+				"FullName":     info.FullName,
+				"PushName":     info.PushName,
+				"BusinessName": info.BusinessName,
+				"Found":        info.Found,
+			})
+		}
+
+		return contacts, nil
+	}
+
+	return nil, errors.New("WhatsApp Client is not Valid")
+}
