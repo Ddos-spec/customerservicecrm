@@ -50,12 +50,13 @@ CREATE TABLE "public"."contacts" (
   CONSTRAINT "contacts_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE
 );
 
-CREATE TABLE "public"."chats" ( 
+CREATE TABLE "public"."chats" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid(),
   "tenant_id" UUID NOT NULL,
   "contact_id" UUID NOT NULL,
   "assigned_to" UUID NULL,
   "status" VARCHAR(20) NULL DEFAULT 'open',
+  "is_group" BOOLEAN NOT NULL DEFAULT false,
   "unread_count" INTEGER NULL DEFAULT 0,
   "last_message_preview" TEXT NULL,
   "last_message_time" TIMESTAMP WITH TIME ZONE NULL DEFAULT now(),
