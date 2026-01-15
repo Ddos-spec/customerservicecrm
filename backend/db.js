@@ -185,13 +185,36 @@ async function logMessage({ chatId, senderType, senderId, senderName, messageTyp
 
 async function getChatsByTenant(tenantId, limit = 50, offset = 0) {
     const result = await query(`
-        SELECT c.*, con.full_name as display_name, con.full_name as push_name, con.phone_number, con.jid, con.profile_pic_url, u.name as agent_name
-        FROM chats c
-        JOIN contacts con ON c.contact_id = con.id
+        SELECT
+            COALESCE(c.id, gen_random_uuid()) as id,
+            con.id as contact_id,
+            $1::uuid as tenant_id,
+            c.assigned_to,
+            COALESCE(c.status, 'open') as status,
+            COALESCE(c.is_group, con.jid LIKE '%@g.us') as is_group,
+            COALESCE(c.unread_count, 0) as unread_count,
+            c.last_message_preview,
+            c.last_message_time,
+            COALESCE(c.last_message_type, 'text') as last_message_type,
+            COALESCE(c.created_at, con.created_at) as created_at,
+            COALESCE(c.updated_at, con.updated_at) as updated_at,
+            con.full_name as display_name,
+            con.full_name as push_name,
+            con.phone_number,
+            con.jid,
+            con.profile_pic_url,
+            u.name as agent_name,
+            (c.id IS NULL) as is_contact_only
+        FROM contacts con
+        LEFT JOIN chats c ON c.contact_id = con.id AND c.tenant_id = $1
         LEFT JOIN users u ON c.assigned_to = u.id
-        WHERE c.tenant_id = $1
-          AND con.jid NOT LIKE '%@broadcast'   -- Exclude Status Updates/Broadcasts only
-        ORDER BY c.updated_at DESC
+        WHERE con.tenant_id = $1
+          AND con.jid NOT LIKE '%@broadcast'
+          AND con.jid NOT LIKE '%@lid'
+          AND con.jid NOT LIKE '%@newsletter'
+        ORDER BY
+            c.updated_at DESC NULLS LAST,
+            con.updated_at DESC
         LIMIT $2 OFFSET $3
     `, [tenantId, limit, offset]);
     return result.rows;
