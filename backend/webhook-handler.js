@@ -10,6 +10,7 @@ const router = express.Router();
 const db = require('./db');
 const waGateway = require('./wa-gateway-client');
 const { normalizeJid, getJidUser } = require('./utils/jid');
+const { sendAlertWebhook } = require('./utils/alert-webhook');
 
 // Event handlers map (can be extended by other modules)
 const eventHandlers = new Map();
@@ -438,6 +439,16 @@ async function notifySessionDisconnected(sessionId, status, reason) {
             }
         })
     );
+
+    await sendAlertWebhook('session_disconnected', {
+        session_id: sessionId,
+        status,
+        reason: reason || null,
+        owner_type: ownerType,
+        owner_name: ownerName,
+        tenant_id: tenant?.id || null,
+        tenant_name: tenant?.company_name || null
+    });
 }
 
 /**

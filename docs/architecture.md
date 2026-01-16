@@ -99,9 +99,12 @@ Webhook and automation:
 ## Notes and limits
 - Ticketing is removed; chats are the primary unit.
 - Multi-gateway routing uses tenants.gateway_url; empty uses default gateway.
+- Setting tenant session_id will auto-assign a gateway when none is provided and enforce `GATEWAY_MAX_SESSIONS`.
 - Session status is persisted in Redis and rehydrated on startup.
+- Contact sync runs via a per-session Redis queue with backoff.
 - Super admin can query gateway fleet health via `/api/v1/admin/gateways/health`.
 - Infra health (Postgres/Redis/gateway) is available at `/api/v1/health/infra`.
+- Alerting for gateway down/over-capacity/disconnect uses the notifier session and optional alert webhook.
 - Operations checklist is in `docs/operations.md`.
 
 ## Future (if needed)
