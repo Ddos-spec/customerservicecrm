@@ -43,7 +43,7 @@ const AgentManagement = () => {
       }
     } catch (error) {
       console.error('Failed to fetch agents:', error);
-      toast.error('Gagal memuat data agen');
+      toast.error('Gagal memuat data staff');
     } finally {
       setIsLoading(false);
     }
@@ -64,7 +64,7 @@ const AgentManagement = () => {
   const handleAddAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isAtLimit) {
-      toast.error('Slot agen penuh. Hapus/aktifkan slot dulu.');
+      toast.error('Slot staff penuh. Hapus/aktifkan slot dulu.');
       return;
     }
     if (!formData.name.trim() || !formData.email.trim()) {
@@ -95,21 +95,21 @@ const AgentManagement = () => {
       }
     } catch (error: any) {
       console.error('Failed to create agent:', error);
-      toast.error(error.response?.data?.error || 'Gagal menambahkan agen');
+      toast.error(error.response?.data?.error || 'Gagal menambahkan staff');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeleteAgent = async (agent: AgentUser) => {
-    if (!confirm('Hapus agen ini?')) return;
+    if (!confirm('Hapus staff ini?')) return;
     try {
       await api.delete(`/admin/users/${agent.id}`);
       setAgents(agents.filter((a) => a.id !== agent.id));
-      toast.success('Agen berhasil dihapus');
+      toast.success('Staff berhasil dihapus');
     } catch (error: any) {
       console.error('Failed to delete agent:', error);
-      toast.error(error.response?.data?.error || 'Gagal menghapus agen');
+      toast.error(error.response?.data?.error || 'Gagal menghapus staff');
     }
   };
 
@@ -132,7 +132,7 @@ const AgentManagement = () => {
           className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-slate-800 dark:disabled:text-gray-500 text-white px-6 py-3.5 rounded-2xl transition-all shadow-xl shadow-blue-100 dark:shadow-blue-900/30 font-black uppercase tracking-widest text-xs active:scale-95"
         >
           <UserPlus size={18} />
-          <span>Tambah Agen Baru</span>
+          <span>Tambah Staff Baru</span>
         </button>
       </div>
 
@@ -161,7 +161,7 @@ const AgentManagement = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {currentData.map((agent) => {
               const statusLabel = agent.status === 'active' ? 'Aktif' : 'Nonaktif';
-              const roleLabel = agent.role === 'admin_agent' ? 'Admin Agent (Pemilik)' : 'Support Agent';
+              const roleLabel = agent.role === 'admin_agent' ? 'Owner (Pemilik)' : 'Support Staff';
               return (
                 <div key={agent.id} className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-slate-700 p-8 hover:shadow-2xl hover:shadow-blue-100 dark:hover:shadow-blue-900/30 transition-all group relative overflow-hidden">
                   <div className="flex justify-between items-start mb-6">
@@ -219,7 +219,7 @@ const AgentManagement = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
           <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 relative">
             <div className="flex justify-between items-center mb-6">
-               <h2 className="text-2xl font-black text-gray-900 dark:text-white">Undang Agen</h2>
+               <h2 className="text-2xl font-black text-gray-900 dark:text-white">Undang Staff</h2>
                <button onClick={() => setIsModalOpen(false)}><X className="text-gray-400 dark:text-gray-500" /></button>
             </div>
             <form onSubmit={handleAddAgent} className="space-y-4">
@@ -273,7 +273,7 @@ const AgentManagement = () => {
                   </button>
                   <button
                     onClick={() => {
-                      const subject = encodeURIComponent('Undangan Akun Agent CRM');
+                      const subject = encodeURIComponent('Undangan Akun Staff CRM');
                       const body = encodeURIComponent(`Halo ${inviteRecipient.name || ''},\n\nSilakan klik link undangan ini untuk aktivasi akun:\n${inviteLink}\n\nTerima kasih.`);
                       window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(inviteRecipient.email || '')}&su=${subject}&body=${body}`, '_blank');
                     }}

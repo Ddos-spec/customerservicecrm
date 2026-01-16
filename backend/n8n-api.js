@@ -413,13 +413,13 @@ function initializeN8nApi(deps) {
                 return res.status(503).json({ success: false, error: 'Gateway service not initialized' });
             }
 
-            const result = await scheduleMessageSend(sessionId, () =>
-                waGateway.sendText(sessionId, destination, message_text)
-            );
-
-            if (!(result?.status === true || result?.status === 'success')) {
-                return res.status(500).json({ success: false, error: result?.message || 'Gateway failed to send' });
-            }
+            const result = await scheduleMessageSend(sessionId, async () => {
+                const response = await waGateway.sendText(sessionId, destination, message_text);
+                if (!(response?.status === true || response?.status === 'success')) {
+                    throw new Error(response?.message || 'Gateway failed to send');
+                }
+                return response;
+            });
 
             // 4. Log to Database
             const message = await db.logMessage({

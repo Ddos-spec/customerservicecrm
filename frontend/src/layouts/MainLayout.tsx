@@ -18,6 +18,19 @@ const MainLayout = () => {
   const { isDarkMode, toggleDarkMode } = useThemeStore();
 
   const isSuperAdmin = user?.role === 'super_admin';
+  const getRoleLabel = (role?: string | null) => {
+    switch (role) {
+      case 'super_admin':
+        return 'Super Admin';
+      case 'admin_agent':
+        return 'Owner';
+      case 'agent':
+        return 'Staff';
+      default:
+        return role || '';
+    }
+  };
+  const roleLabel = user?.tenant_name || getRoleLabel(user?.role);
 
   const handleLogout = () => {
     logout();
@@ -37,7 +50,7 @@ const MainLayout = () => {
           { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
           { to: '/admin/chat', icon: MessageSquare, label: 'Workspace' },
           { to: '/admin/history', icon: Clock, label: 'Riwayat' },
-          { to: '/admin/agents', icon: Users, label: 'Tim Agen' },
+          { to: '/admin/agents', icon: Users, label: 'Tim Staff' },
         ];
       case 'agent':
         return [
@@ -133,7 +146,7 @@ const MainLayout = () => {
                 </div>
                 <div className="text-left hidden xl:block">
                   <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{user?.name}</p>
-                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest pt-1">{user?.tenant_name || user?.role}</p>
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest pt-1">{roleLabel}</p>
                 </div>
                 <ChevronDown size={14} className="text-gray-300 dark:text-gray-600" />
               </button>
@@ -178,7 +191,7 @@ const MainLayout = () => {
           </div>
           <div className="overflow-hidden">
              <p className="font-black text-lg truncate text-gray-900 dark:text-white leading-tight">{user?.name}</p>
-             <p className={clsx("text-xs font-bold uppercase tracking-widest mt-1 truncate", isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400")}>{user?.tenant_name || user?.role}</p>
+             <p className={clsx("text-xs font-bold uppercase tracking-widest mt-1 truncate", isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400")}>{roleLabel}</p>
           </div>
         </div>
 

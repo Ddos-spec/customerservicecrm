@@ -55,6 +55,19 @@ const AgentDashboard = () => {
 
   const isDemo = user?.isDemo;
   const canManageSession = user?.role === 'admin_agent';
+  const getRoleLabel = (role?: string | null) => {
+    switch (role) {
+      case 'super_admin':
+        return 'Super Admin';
+      case 'admin_agent':
+        return 'Owner';
+      case 'agent':
+        return 'Staff';
+      default:
+        return role || '';
+    }
+  };
+  const roleLabel = getRoleLabel(user?.role);
   const sessionId = user?.tenant_session_id || '';
 
   const [stats, setStats] = useState<any>(null);
@@ -145,7 +158,7 @@ const AgentDashboard = () => {
 
   const handleRequestQr = async () => {
     if (!canManageSession) {
-      toast.error('Hanya Admin Agent yang bisa menghubungkan nomor');
+      toast.error('Hanya Owner yang bisa menghubungkan nomor');
       return;
     }
     if (!sessionId) {
@@ -167,7 +180,7 @@ const AgentDashboard = () => {
 
   const handleNotifyAdmin = () => {
     if (!adminContact?.email) {
-      toast.error('Kontak admin belum tersedia');
+      toast.error('Kontak owner belum tersedia');
       return;
     }
     const subject = encodeURIComponent('Koneksi WhatsApp Offline');
@@ -258,7 +271,7 @@ const AgentDashboard = () => {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Selamat Datang, {user?.name || 'Agen'}!</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Selamat Datang, {user?.name || 'Staff'}!</h1>
           <p className="text-gray-500 dark:text-gray-400">Pantau performa pelayanan pelanggan Anda hari ini.</p>
         </div>
 
@@ -285,13 +298,13 @@ const AgentDashboard = () => {
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Koneksi WhatsApp sedang offline.</p>
-            <p className="text-xs text-amber-600 dark:text-amber-400">Beritahu Admin Agent untuk scan QR.</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">Beritahu Owner untuk scan QR.</p>
           </div>
           <button
             onClick={handleNotifyAdmin}
             className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl"
           >
-            Hubungi Admin
+            Hubungi Owner
           </button>
         </div>
       )}
@@ -453,7 +466,7 @@ const AgentDashboard = () => {
                     disabled={!canManageSession || !sessionId}
                     className="px-4 py-2 bg-blue-600 disabled:bg-gray-200 disabled:text-gray-500 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors"
                   >
-                    {canManageSession ? (waStatus === 'connected' ? 'Reconnect' : 'Connect') : 'Hanya Admin'}
+                    {canManageSession ? (waStatus === 'connected' ? 'Reconnect' : 'Connect') : 'Hanya Owner'}
                   </button>
                 </div>
               </div>
@@ -531,7 +544,7 @@ const AgentDashboard = () => {
                 <div className="space-y-2 ml-11">
                   <p className="text-xs"><span className="text-gray-500 dark:text-gray-400">Nama:</span> <span className="font-medium text-gray-900 dark:text-white">{user?.name}</span></p>
                   <p className="text-xs"><span className="text-gray-500 dark:text-gray-400">Email:</span> <span className="font-medium text-gray-900 dark:text-white">{user?.email}</span></p>
-                  <p className="text-xs"><span className="text-gray-500 dark:text-gray-400">Role:</span> <span className="font-medium text-gray-900 dark:text-white capitalize">{user?.role?.replace('_', ' ')}</span></p>
+                  <p className="text-xs"><span className="text-gray-500 dark:text-gray-400">Role:</span> <span className="font-medium text-gray-900 dark:text-white">{roleLabel}</span></p>
                 </div>
               </div>
 

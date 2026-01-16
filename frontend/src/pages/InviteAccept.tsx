@@ -69,7 +69,7 @@ const InviteAccept = () => {
             <ShieldCheck size={24} />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-gray-900 dark:text-white">Aktivasi Akun Agent</h1>
+            <h1 className="text-2xl font-black text-gray-900 dark:text-white">Aktivasi Akun Staff</h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">Selesaikan aktivasi agar bisa login.</p>
           </div>
         </div>

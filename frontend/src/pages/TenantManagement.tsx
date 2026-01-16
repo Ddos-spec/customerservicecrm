@@ -152,7 +152,7 @@ const TenantManagement = () => {
       return;
     }
     if (!formData.admin_name.trim() || !formData.admin_email.trim() || !formData.admin_password.trim()) {
-      toast.error('Data Admin Agent harus lengkap');
+      toast.error('Data Owner harus lengkap');
       return;
     }
     if (formData.admin_password.trim().length < 6) {
@@ -331,7 +331,7 @@ const TenantManagement = () => {
                 phone_number: admin.phone_number || ''
             });
         } else {
-             toast.error('Admin agent tidak ditemukan');
+             toast.error('Owner tidak ditemukan');
              setIsAdminModalOpen(false);
         }
     } catch (error) {
@@ -371,7 +371,7 @@ const TenantManagement = () => {
         const res = await api.patch(`/admin/users/${adminUser.id}`, payload);
 
         if (res.data.success) {
-            toast.success('Data Admin Agent berhasil diperbarui');
+            toast.success('Data Owner berhasil diperbarui');
             setIsAdminModalOpen(false);
         }
     } catch (error: any) {
@@ -469,7 +469,7 @@ const TenantManagement = () => {
                               Kelola Webhook
                             </button>
                             <button onClick={() => openAdminModal(tenant)} className="w-full px-5 py-3 text-xs text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-bold uppercase tracking-wider block">
-                              Kelola Admin Agent
+                              Kelola Owner
                             </button>
                             <button onClick={() => openSessionModal(tenant)} className="w-full px-5 py-3 text-xs text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-bold uppercase tracking-wider block">
                               Atur Session WA
@@ -519,7 +519,7 @@ const TenantManagement = () => {
                              Kelola Webhook
                            </button>
                            <button onClick={() => openAdminModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-purple-600 dark:text-purple-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
-                             Kelola Admin Agent
+                             Kelola Owner
                            </button>
                            <button onClick={() => openSessionModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Atur Session WA
@@ -575,28 +575,28 @@ const TenantManagement = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Nama Admin Agent</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Nama Owner</label>
                   <input
                     required
-                    placeholder="Contoh: Admin Toko"
+                    placeholder="Contoh: Owner Toko"
                     value={formData.admin_name}
                     className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     onChange={(e) => setFormData({...formData, admin_name: e.target.value})}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Email Admin Agent (Username)</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Email Owner (Username)</label>
                   <input
                     required
                     type="email"
-                    placeholder="admin@tokomaju.com"
+                    placeholder="owner@tokomaju.com"
                     value={formData.admin_email}
                     className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     onChange={(e) => setFormData({...formData, admin_email: e.target.value})}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Password Admin Agent</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Password Owner</label>
                   <div className="relative">
                     <input
                       required
@@ -616,7 +616,7 @@ const TenantManagement = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">No. WhatsApp Admin (opsional)</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">No. WhatsApp Owner (opsional)</label>
                   <input
                     type="tel"
                     placeholder="62xxxxxxxxxx"
@@ -636,7 +636,7 @@ const TenantManagement = () => {
                   />
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Admin Agent dibuat otomatis. Login menggunakan email sebagai username.
+                  Owner dibuat otomatis. Login menggunakan email sebagai username.
                 </p>
                 <button
                   type="submit"
@@ -755,13 +755,13 @@ const TenantManagement = () => {
         </div>
       )}
 
-      {/* MODAL: Manage Admin Agent */}
+      {/* MODAL: Manage Owner */}
       {isAdminModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h2 className="text-2xl font-black text-gray-900 dark:text-white">Kelola Admin Agent</h2>
+                <h2 className="text-2xl font-black text-gray-900 dark:text-white">Kelola Owner</h2>
                 {adminUser && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">ID: {adminUser.id}</p>}
               </div>
               <button onClick={() => setIsAdminModalOpen(false)}><X className="text-gray-400 dark:text-gray-500" /></button>
@@ -774,7 +774,7 @@ const TenantManagement = () => {
             ) : (
                 <form onSubmit={handleUpdateAdmin} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Nama Admin</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Nama Owner</label>
                     <input
                       required
                       value={adminFormData.name}

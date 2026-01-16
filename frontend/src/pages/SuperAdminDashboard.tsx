@@ -233,7 +233,7 @@ const SuperAdminDashboard = () => {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-emerald-600 dark:text-emerald-300">
                     Notifier
                   </p>
-                  <p className="font-semibold text-gray-900 dark:text-white text-lg">WhatsApp Admin Alerts</p>
+                  <p className="font-semibold text-gray-900 dark:text-white text-lg">WhatsApp Owner Alerts</p>
                 </div>
               </div>
               <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] font-bold uppercase tracking-widest ${statusTone}`}>
@@ -244,7 +244,7 @@ const SuperAdminDashboard = () => {
               </span>
             </div>
             <p className="relative mt-3 text-sm text-gray-600 dark:text-gray-300 max-w-3xl">
-              Dipakai untuk notifikasi admin ketika ada session WhatsApp tenant yang disconnect atau logout.
+              Dipakai untuk notifikasi owner ketika ada session WhatsApp tenant yang disconnect atau logout.
             </p>
             <div className="relative mt-4 flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

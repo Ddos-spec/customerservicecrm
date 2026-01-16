@@ -16,7 +16,7 @@ const Login = () => {
     email: 'admin@tokomaju.com',
     role: 'admin_agent' as const,
     id: 'tenant-admin',
-    name: 'Admin Toko Maju',
+    name: 'Owner Toko Maju',
     tenant_name: 'Toko Maju Jaya'
   };
 
@@ -156,24 +156,24 @@ const Login = () => {
                 Login as System Super Admin
               </button>
 
-              {/* 1. Admin Agent */}
+              {/* 1. Owner */}
               <button onClick={() => handleDemoLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-slate-700 hover:border-blue-500 bg-white dark:bg-slate-800 group transition-all">
                 <div className="text-left">
-                  <span className="block text-xs font-bold text-gray-800 dark:text-gray-100">1. Admin Agen (Pemilik Toko)</span>
+                  <span className="block text-xs font-bold text-gray-800 dark:text-gray-100">1. Owner (Pemilik Toko)</span>
                   <span className="text-[10px] text-gray-400 dark:text-gray-500">Toko Maju Jaya</span>
                 </div>
                 <span className="text-[10px] bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 px-2 py-1 rounded group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 group-hover:text-blue-700 dark:group-hover:text-blue-300">Login</span>
               </button>
 
-              {/* 2. User Agents Group */}
+              {/* 2. Staff Group */}
               <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-800">
                 <button 
                   onClick={() => setShowAgents(!showAgents)}
                   className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-700/60 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-gray-700 dark:text-gray-200">2. User Agents (Karyawan)</span>
-                    <span className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200 px-2 py-0.5 rounded-full">3 Agen</span>
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-200">2. Staff (Karyawan)</span>
+                    <span className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200 px-2 py-0.5 rounded-full">3 Staff</span>
                   </div>
                   {showAgents ? <ChevronUp size={16} className="text-gray-500 dark:text-gray-400"/> : <ChevronDown size={16} className="text-gray-500 dark:text-gray-400"/>}
                 </button>

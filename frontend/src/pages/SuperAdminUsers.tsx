@@ -102,11 +102,24 @@ const SuperAdminUsers = () => {
     }
   };
 
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'super_admin':
+        return 'Super Admin';
+      case 'admin_agent':
+        return 'Owner';
+      case 'agent':
+        return 'Staff';
+      default:
+        return role.replace('_', ' ');
+    }
+  };
+
   const stats = [
     { label: 'Total Users', count: users.length, filter: 'all' },
     { label: 'Super Admin', count: users.filter(u => u.role === 'super_admin').length, filter: 'super_admin' },
-    { label: 'Admin Agent', count: users.filter(u => u.role === 'admin_agent').length, filter: 'admin_agent' },
-    { label: 'Agent', count: users.filter(u => u.role === 'agent').length, filter: 'agent' },
+    { label: 'Owner', count: users.filter(u => u.role === 'admin_agent').length, filter: 'admin_agent' },
+    { label: 'Staff', count: users.filter(u => u.role === 'agent').length, filter: 'agent' },
   ];
 
   return (
@@ -238,7 +251,7 @@ const SuperAdminUsers = () => {
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${getRoleColor(user.role)}`}>
                         {getRoleIcon(user.role)}
-                        {user.role.replace('_', ' ')}
+                        {getRoleLabel(user.role)}
                       </span>
                     </td>
                     <td className="px-6 py-4">

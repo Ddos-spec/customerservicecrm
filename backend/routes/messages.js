@@ -265,6 +265,9 @@ function buildMessagesRouter(deps) {
                 await new Promise((resolve) => setTimeout(resolve, typingDelay));
                 const result = await sendMessage(targetSession.sock, destination, messagePayload);
                 await targetSession.sock.sendPresenceUpdate('paused', destination);
+                if (!result || result.status !== 'success') {
+                    throw new Error(result?.message || 'Failed to send message');
+                }
                 return result;
             }).catch((error) => ({
                 status: 'error',
