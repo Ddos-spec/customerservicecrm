@@ -32,6 +32,7 @@ const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
 const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 const { getGatewayHealthSummary } = require('./utils/gateway-health');
+const { sendAlertWebhook } = require('./utils/alert-webhook');
 
 const SESSION_STATUS_TTL_SEC = parseInt(process.env.SESSION_STATUS_TTL_SEC || `${7 * 24 * 60 * 60}`, 10);
 const CONTACT_SYNC_INTERVAL_MINUTES = parseInt(process.env.CONTACT_SYNC_INTERVAL_MINUTES || '360', 10);
@@ -366,7 +367,11 @@ const CONTACT_SYNC_BACKOFF_BASE_MS = CONTACT_SYNC_BACKOFF_BASE_MINUTES * 60 * 10
 const CONTACT_SYNC_BACKOFF_MAX_MS = CONTACT_SYNC_BACKOFF_MAX_MINUTES * 60 * 1000;
 const CONTACT_SYNC_TICK_MS = parseInt(process.env.CONTACT_SYNC_TICK_SECONDS || '120', 10) * 1000;
 const CONTACT_SYNC_BATCH_SIZE = parseInt(process.env.CONTACT_SYNC_BATCH_SIZE || '10', 10);
+const CONTACT_SYNC_QUEUE_NAME = 'wa:sync:queue';
 let contactSyncRunning = false;
+let contactSyncSeededAt = 0;
+const GATEWAY_ALERT_TICK_MS = 60 * 1000;
+const ALERT_THROTTLE_MS = 30 * 60 * 1000;
 
 async function shouldSyncContacts(sessionId) {
     if (!redisClient?.isOpen) return false;
@@ -380,11 +385,69 @@ async function shouldSyncContacts(sessionId) {
     return now - lastAt >= CONTACT_SYNC_INTERVAL_MS;
 }
 
+function normalizeSyncSessionId(sessionId) {
+    const normalized = String(sessionId || '').trim();
+    return normalized;
+}
+
+async function scheduleNextContactSync(sessionId, nextAt) {
+    if (!redisClient?.isOpen) return;
+    const normalized = normalizeSyncSessionId(sessionId);
+    if (!normalized) return;
+    await redisClient.set(`wa:sync:next:${normalized}`, String(nextAt));
+    await redisClient.zAdd(CONTACT_SYNC_QUEUE_NAME, [{ score: nextAt, value: normalized }]);
+}
+
+async function clearContactSyncState(sessionId) {
+    if (!redisClient?.isOpen) return;
+    const normalized = normalizeSyncSessionId(sessionId);
+    if (!normalized) return;
+    await redisClient.del(`wa:sync:fail:${normalized}`);
+    await redisClient.del(`wa:sync:next:${normalized}`);
+    await redisClient.zRem(CONTACT_SYNC_QUEUE_NAME, normalized);
+}
+
+async function seedContactSyncQueue(force = false) {
+    if (!redisClient?.isOpen) return;
+    const now = Date.now();
+    if (!force && now - contactSyncSeededAt < CONTACT_SYNC_INTERVAL_MS) return;
+    contactSyncSeededAt = now;
+
+    const tenants = await db.getAllTenants();
+    const entries = [];
+    tenants.forEach((tenant) => {
+        if (!tenant?.session_id) return;
+        const normalized = normalizeSyncSessionId(tenant.session_id);
+        if (!normalized) return;
+        const jitter = Math.floor(Math.random() * CONTACT_SYNC_INTERVAL_MS);
+        entries.push({ score: now + jitter, value: normalized });
+    });
+
+    if (entries.length > 0) {
+        await redisClient.zAdd(CONTACT_SYNC_QUEUE_NAME, entries, { NX: true });
+    }
+}
+
+async function getDueContactSyncSessions(limit) {
+    if (!redisClient?.isOpen) return [];
+    const now = Date.now();
+    const sessionsDue = await redisClient.zRangeByScore(
+        CONTACT_SYNC_QUEUE_NAME,
+        0,
+        now,
+        { LIMIT: { offset: 0, count: limit } }
+    );
+    if (!sessionsDue.length) return [];
+    await redisClient.zRem(CONTACT_SYNC_QUEUE_NAME, sessionsDue);
+    return sessionsDue;
+}
+
 async function markSyncSuccess(sessionId) {
     if (!redisClient?.isOpen) return;
-    await redisClient.set(`wa:sync:last:${sessionId}`, String(Date.now()));
+    const now = Date.now();
+    await redisClient.set(`wa:sync:last:${sessionId}`, String(now));
     await redisClient.del(`wa:sync:fail:${sessionId}`);
-    await redisClient.del(`wa:sync:next:${sessionId}`);
+    await scheduleNextContactSync(sessionId, now + CONTACT_SYNC_INTERVAL_MS);
 }
 
 async function markSyncFailure(sessionId, error) {
@@ -408,34 +471,176 @@ async function markSyncFailure(sessionId, error) {
         lastError: error?.message || 'unknown',
         lastAt: new Date().toISOString()
     }));
-    await redisClient.set(`wa:sync:next:${sessionId}`, String(nextAt));
+    await scheduleNextContactSync(sessionId, nextAt);
 }
 
 async function runScheduledContactSync() {
     if (contactSyncRunning || isTest) return;
     contactSyncRunning = true;
     try {
-        const sessionsSnapshot = getSessionsDetails().filter((s) => s.status === 'CONNECTED');
-        const candidates = sessionsSnapshot.slice(0, CONTACT_SYNC_BATCH_SIZE);
-        for (const session of candidates) {
-            if (!(await shouldSyncContacts(session.sessionId))) continue;
-            try {
-                const tenant = await db.getTenantBySessionId(session.sessionId);
-                if (!tenant) continue;
-                const result = await syncContactsForTenant(tenant.id, session.sessionId);
-                if (result?.synced > 0) {
-                    logger.info(`[Sync] Scheduled sync: ${result.synced} contacts for ${tenant.company_name}`);
+        if (redisClient?.isOpen) {
+            await seedContactSyncQueue();
+            const dueSessions = await getDueContactSyncSessions(CONTACT_SYNC_BATCH_SIZE);
+
+            for (const sessionId of dueSessions) {
+                const session = sessions.get(sessionId);
+                if (!session || session.status !== 'CONNECTED') {
+                    await markSyncFailure(sessionId, new Error('Session not connected'));
+                    continue;
                 }
-                await markSyncSuccess(session.sessionId);
-            } catch (err) {
-                logger.warn(`[Sync] Scheduled sync failed for ${session.sessionId}: ${err.message}`);
-                await markSyncFailure(session.sessionId, err);
+
+                const tenant = await db.getTenantBySessionId(sessionId);
+                if (!tenant) {
+                    logger.warn(`[Sync] Tenant not found for session ${sessionId}, removing from queue.`);
+                    await clearContactSyncState(sessionId);
+                    continue;
+                }
+
+                try {
+                    const result = await syncContactsForTenant(tenant.id, sessionId);
+                    if (result?.synced > 0) {
+                        logger.info(`[Sync] Scheduled sync: ${result.synced} contacts for ${tenant.company_name}`);
+                    }
+                    await markSyncSuccess(sessionId);
+                } catch (err) {
+                    logger.warn(`[Sync] Scheduled sync failed for ${sessionId}: ${err.message}`);
+                    await markSyncFailure(sessionId, err);
+                }
+            }
+        } else {
+            const sessionsSnapshot = getSessionsDetails().filter((s) => s.status === 'CONNECTED');
+            const candidates = sessionsSnapshot.slice(0, CONTACT_SYNC_BATCH_SIZE);
+            for (const session of candidates) {
+                if (!(await shouldSyncContacts(session.sessionId))) continue;
+                try {
+                    const tenant = await db.getTenantBySessionId(session.sessionId);
+                    if (!tenant) continue;
+                    const result = await syncContactsForTenant(tenant.id, session.sessionId);
+                    if (result?.synced > 0) {
+                        logger.info(`[Sync] Scheduled sync: ${result.synced} contacts for ${tenant.company_name}`);
+                    }
+                    await markSyncSuccess(session.sessionId);
+                } catch (err) {
+                    logger.warn(`[Sync] Scheduled sync failed for ${session.sessionId}: ${err.message}`);
+                    await markSyncFailure(session.sessionId, err);
+                }
             }
         }
     } catch (err) {
         logger.warn(`[Sync] Scheduled sync loop failed: ${err.message}`);
     } finally {
         contactSyncRunning = false;
+    }
+}
+
+// --- Gateway Alerts ---
+let gatewayAlertRunning = false;
+
+function buildGatewayAlertKey(type, url) {
+    const safeUrl = encodeURIComponent(String(url || 'unknown'));
+    return `wa:alert:${type}:${safeUrl}`;
+}
+
+async function shouldSendAlert(key) {
+    if (!redisClient?.isOpen) return true;
+    const exists = await redisClient.get(key);
+    if (exists) return false;
+    await redisClient.set(key, '1', { EX: Math.ceil(ALERT_THROTTLE_MS / 1000) });
+    return true;
+}
+
+async function sendGatewayNotifierMessage(message) {
+    const notifierSessionId = await db.getSystemSetting('notifier_session_id');
+    const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+
+    if (!notifierSessionId || !gatewayPassword) return false;
+
+    const supers = await db.getSuperAdminsWithPhone();
+    const uniquePhones = Array.from(new Set(supers
+        .map((u) => (u.phone_number || '').trim())
+        .filter(Boolean)));
+
+    if (!uniquePhones.length) return false;
+
+    const auth = await waGateway.authenticate(notifierSessionId, gatewayPassword);
+    if (auth?.status && auth.data?.token) {
+        waGateway.setSessionToken(notifierSessionId, auth.data.token);
+    } else {
+        throw new Error('Auth ke gateway (notifier) gagal');
+    }
+
+    await Promise.allSettled(
+        uniquePhones.map(async (phone) => {
+            try {
+                await waGateway.sendText(notifierSessionId, phone, message);
+            } catch (err) {
+                logger.warn(`[Notifier] Gagal kirim ke ${phone}: ${err.message}`);
+            }
+        })
+    );
+
+    return true;
+}
+
+async function notifyGatewayAlert(type, gateway, payload) {
+    const key = buildGatewayAlertKey(type, gateway.url);
+    const allowed = await shouldSendAlert(key);
+    if (!allowed) return;
+
+    const label = gateway.is_default ? 'Default Gateway' : gateway.url;
+    let message = '';
+
+    if (type === 'gateway_over_capacity') {
+        message = `Gateway OVER CAPACITY: ${label} (${gateway.session_count}/${gateway.max_sessions}). Tenants: ${gateway.tenant_count}.`;
+    } else {
+        const status = gateway.health?.status || 'error';
+        const detail = gateway.health?.message ? ` (${gateway.health.message})` : '';
+        message = `Gateway DOWN: ${label}. Status: ${status}${detail}. Tenants: ${gateway.tenant_count}, Sessions: ${gateway.session_count}.`;
+    }
+
+    try {
+        await sendGatewayNotifierMessage(message);
+    } catch (err) {
+        logger.warn(`[Alert] Notifier failed for ${gateway.url}: ${err.message}`);
+    }
+
+    await sendAlertWebhook(type, {
+        gateway_url: gateway.url,
+        gateway_is_default: gateway.is_default,
+        tenant_count: gateway.tenant_count,
+        session_count: gateway.session_count,
+        max_sessions: gateway.max_sessions || null,
+        health: gateway.health || null,
+        ...payload
+    });
+}
+
+async function runGatewayAlerts() {
+    if (gatewayAlertRunning || isTest) return;
+    gatewayAlertRunning = true;
+    try {
+        const tenants = await db.getAllTenants();
+        const gateways = await getGatewayHealthSummary(tenants);
+
+        for (const gateway of gateways) {
+            if (!gateway?.url) continue;
+            const shouldReport = gateway.is_default || gateway.tenant_count > 0;
+            if (!shouldReport) continue;
+
+            if (!isHealthyStatus(gateway.health?.status)) {
+                await notifyGatewayAlert('gateway_down', gateway, {
+                    reason: gateway.health?.message || null
+                });
+            }
+
+            if (gateway.max_sessions && gateway.over_capacity) {
+                await notifyGatewayAlert('gateway_over_capacity', gateway, {});
+            }
+        }
+    } catch (err) {
+        logger.warn(`[Alert] Gateway alert loop failed: ${err.message}`);
+    } finally {
+        gatewayAlertRunning = false;
     }
 }
 
@@ -1011,9 +1216,13 @@ webhookHandler.on('connection', (sessionId, data) => {
                     if (result.synced > 0) {
                         console.log(`[Auto-Sync] Synced ${result.synced} contacts for ${tenant.company_name}`);
                     }
+                    await markSyncSuccess(sessionId);
+                } else {
+                    await clearContactSyncState(sessionId);
                 }
             } catch (err) {
                 console.warn(`[Auto-Sync] Failed for session ${sessionId}: ${err.message}`);
+                await markSyncFailure(sessionId, err);
             }
         });
     } else if (newStatus === 'LOGGED_OUT' || newStatus === 'DISCONNECTED') {
@@ -1085,6 +1294,7 @@ if (!isTest) {
 
         await hydrateGatewayMappingsFromTenants();
         await loadTokens();
+        await seedContactSyncQueue(true);
 
         // Check Go gateway health
         try {
@@ -1173,6 +1383,10 @@ if (!isTest) {
             void runScheduledContactSync();
         }, CONTACT_SYNC_TICK_MS);
         console.log(`[Cron] Scheduled contact sync enabled (tick ${CONTACT_SYNC_TICK_MS / 1000}s, interval ${CONTACT_SYNC_INTERVAL_MINUTES}m)`);
+        setInterval(() => {
+            void runGatewayAlerts();
+        }, GATEWAY_ALERT_TICK_MS);
+        console.log(`[Cron] Gateway alert checks enabled (tick ${GATEWAY_ALERT_TICK_MS / 1000}s)`);
     });
 }
 

@@ -13,6 +13,107 @@ const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
 const { getGatewayHealthSummary } = require('./utils/gateway-health');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+const DEFAULT_GATEWAY_URL = process.env.WA_GATEWAY_URL || 'http://localhost:3001/api/v1/whatsapp';
+const MAX_GATEWAY_SESSIONS_RAW = Number.parseInt(process.env.GATEWAY_MAX_SESSIONS || '0', 10);
+const MAX_GATEWAY_SESSIONS = Number.isFinite(MAX_GATEWAY_SESSIONS_RAW) && MAX_GATEWAY_SESSIONS_RAW > 0
+    ? MAX_GATEWAY_SESSIONS_RAW
+    : 0;
+
+function resolveGatewayUrl(rawUrl) {
+    return waGateway.normalizeGatewayUrl(rawUrl || DEFAULT_GATEWAY_URL);
+}
+
+function isHealthyGatewayStatus(value) {
+    return value === true || value === 'ok' || value === 'success';
+}
+
+function buildGatewaySessionCounts(tenants, excludeTenantId = null) {
+    const counts = new Map();
+    const defaultUrl = resolveGatewayUrl(null);
+    counts.set(defaultUrl, 0);
+
+    (tenants || []).forEach((tenant) => {
+        if (!tenant?.session_id) return;
+        if (excludeTenantId && tenant.id === excludeTenantId) return;
+        const url = resolveGatewayUrl(tenant.gateway_url || null);
+        counts.set(url, (counts.get(url) || 0) + 1);
+    });
+
+    return counts;
+}
+
+async function chooseAutoGateway(tenants, sessionId, excludeTenantId = null) {
+    const summary = await getGatewayHealthSummary(tenants);
+    const defaultUrl = resolveGatewayUrl(null);
+    const baseCounts = buildGatewaySessionCounts(tenants, excludeTenantId);
+
+    const candidates = summary.map((gateway) => {
+        const url = resolveGatewayUrl(gateway?.url || null);
+        const base = baseCounts.get(url) || 0;
+        const nextCount = sessionId ? base + 1 : base;
+        const healthy = isHealthyGatewayStatus(gateway?.health?.status);
+        const overCapacity = MAX_GATEWAY_SESSIONS > 0 && nextCount > MAX_GATEWAY_SESSIONS;
+
+        return {
+            url,
+            nextCount,
+            healthy,
+            overCapacity,
+            isDefault: url === defaultUrl
+        };
+    });
+
+    const available = candidates.filter((candidate) => !candidate.overCapacity);
+    if (available.length === 0) {
+        return { error: 'Gateway capacity exceeded' };
+    }
+
+    const healthy = available.filter((candidate) => candidate.healthy);
+    const pool = healthy.length > 0 ? healthy : available;
+
+    pool.sort((a, b) => {
+        if (a.nextCount !== b.nextCount) return a.nextCount - b.nextCount;
+        if (a.isDefault && !b.isDefault) return -1;
+        if (!a.isDefault && b.isDefault) return 1;
+        return a.url.localeCompare(b.url);
+    });
+
+    return { url: pool[0].url };
+}
+
+async function resolveGatewayAssignment({ tenants, existingTenant, sessionId, gatewayUrl, hasGatewayUrl, hasSessionId }) {
+    if (!sessionId) {
+        return { gatewayUrl, resolvedUrl: resolveGatewayUrl(gatewayUrl) };
+    }
+
+    const defaultResolved = resolveGatewayUrl(null);
+    let resolvedGatewayUrl = gatewayUrl;
+
+    const shouldAutoAssign = hasSessionId && sessionId && !hasGatewayUrl && !existingTenant?.gateway_url;
+    if (shouldAutoAssign) {
+        const autoPick = await chooseAutoGateway(tenants, sessionId, existingTenant?.id || null);
+        if (autoPick?.error) {
+            return { error: autoPick.error };
+        }
+        resolvedGatewayUrl = autoPick.url === defaultResolved ? null : autoPick.url;
+    }
+
+    const desiredResolved = resolveGatewayUrl(resolvedGatewayUrl);
+    const hadSession = Boolean(existingTenant?.session_id);
+    const willHaveSession = Boolean(sessionId);
+    const currentResolved = resolveGatewayUrl(existingTenant?.gateway_url);
+    const addsSession = willHaveSession && (!hadSession || currentResolved !== desiredResolved);
+
+    if (MAX_GATEWAY_SESSIONS > 0 && addsSession) {
+        const baseCounts = buildGatewaySessionCounts(tenants, existingTenant?.id || null);
+        const nextCount = (baseCounts.get(desiredResolved) || 0) + 1;
+        if (nextCount > MAX_GATEWAY_SESSIONS) {
+            return { error: 'Gateway capacity exceeded' };
+        }
+    }
+
+    return { gatewayUrl: resolvedGatewayUrl, resolvedUrl: desiredResolved };
+}
 
 // Sync contacts helper - can be called from login or cron
 async function syncContactsForTenant(tenantId, sessionId) {
@@ -528,6 +629,8 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         const adminPassword = req.body?.admin_password || '';
         const sessionIdRaw = req.body?.session_id;
         const gatewayUrlRaw = req.body?.gateway_url;
+        const hasSessionId = typeof sessionIdRaw !== 'undefined';
+        const hasGatewayUrl = typeof gatewayUrlRaw !== 'undefined';
         
         // Normalize Session ID (Force 62 format)
         let sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : '';
@@ -560,6 +663,23 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
             return res.status(409).json({ success: false, error: 'Email already exists' });
         }
 
+        let assignedGatewayUrl = normalizedGatewayUrl;
+        if (normalizedSessionId) {
+            const tenants = await db.getAllTenants();
+            const assignment = await resolveGatewayAssignment({
+                tenants,
+                existingTenant: null,
+                sessionId: normalizedSessionId,
+                gatewayUrl: normalizedGatewayUrl,
+                hasGatewayUrl,
+                hasSessionId
+            });
+            if (assignment?.error) {
+                return res.status(409).json({ success: false, error: assignment.error });
+            }
+            assignedGatewayUrl = assignment.gatewayUrl;
+        }
+
         const client = await db.getClient();
         try {
             await client.query('BEGIN');
@@ -567,7 +687,7 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
                 `INSERT INTO tenants (company_name, status, session_id, gateway_url)
                  VALUES ($1, 'active', $2, $3)
                  RETURNING id, company_name, status, created_at, session_id, gateway_url`,
-                [companyName, normalizedSessionId, normalizedGatewayUrl]
+                [companyName, normalizedSessionId, assignedGatewayUrl]
             );
             const tenant = tenantResult.rows[0];
 
@@ -581,8 +701,8 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
 
             await client.query('COMMIT');
 
-            if (normalizedSessionId && normalizedGatewayUrl) {
-                waGateway.setSessionGatewayUrl(normalizedSessionId, normalizedGatewayUrl);
+            if (normalizedSessionId && assignedGatewayUrl) {
+                waGateway.setSessionGatewayUrl(normalizedSessionId, assignedGatewayUrl);
             }
 
             // Notify n8n webhook for new tenant admin
@@ -694,6 +814,24 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             }
         }
 
+        const tenants = await db.getAllTenants();
+        const assignment = await resolveGatewayAssignment({
+            tenants,
+            existingTenant,
+            sessionId: normalizedSessionId,
+            gatewayUrl: normalizedGatewayUrl,
+            hasGatewayUrl,
+            hasSessionId
+        });
+        if (assignment?.error) {
+            return res.status(409).json({ success: false, error: assignment.error });
+        }
+        normalizedGatewayUrl = assignment.gatewayUrl;
+
+        const previousResolved = resolveGatewayUrl(existingTenant.gateway_url);
+        const nextResolved = resolveGatewayUrl(normalizedGatewayUrl);
+        const gatewayChanged = previousResolved !== nextResolved;
+
         const tenant = await db.updateTenantSessionGateway(id, normalizedSessionId, normalizedGatewayUrl);
 
         if (existingTenant.session_id && existingTenant.session_id !== normalizedSessionId) {
@@ -702,7 +840,7 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         }
 
         if (normalizedSessionId) {
-            if (hasGatewayUrl && existingTenant.gateway_url !== normalizedGatewayUrl) {
+            if (gatewayChanged) {
                 waGateway.removeSessionToken(normalizedSessionId);
             }
             waGateway.setSessionGatewayUrl(normalizedSessionId, normalizedGatewayUrl);
