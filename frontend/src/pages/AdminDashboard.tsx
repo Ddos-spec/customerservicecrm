@@ -217,13 +217,13 @@ const AdminDashboard = () => {
       description: 'Perlu respon segera'
     },
     {
-      label: 'Total Agent',
+      label: 'Total Staff',
       value: stats?.users?.total_users || '0',
       icon: Users,
       color: 'text-purple-600',
       bg: 'bg-purple-50',
       onClick: () => navigate('/admin/agents'),
-      description: 'Kelola tim agent'
+      description: 'Kelola tim staff'
     }
   ];
 
@@ -232,7 +232,7 @@ const AdminDashboard = () => {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Admin Console</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Owner Console</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
             Manajemen operasional untuk <span className="font-bold text-blue-600 dark:text-blue-400">{user?.tenant_name || 'Perusahaan'}</span>
           </p>
@@ -372,7 +372,7 @@ const AdminDashboard = () => {
         <div className="space-y-6">
           <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-8 rounded-3xl text-white shadow-xl shadow-blue-200 dark:shadow-blue-900/30 relative overflow-hidden">
             <Shield className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10 rotate-12" />
-            <h4 className="text-lg font-bold mb-2">Manajemen Agent</h4>
+            <h4 className="text-lg font-bold mb-2">Manajemen Staff</h4>
             <p className="text-sm text-blue-100 mb-6 leading-relaxed">Kelola hak akses dan performa tim Customer Service Anda.</p>
             <button 
               onClick={() => navigate('/admin/agents')}

@@ -64,12 +64,12 @@ const AdminReports = () => {
       trendUp: false
     },
     {
-      label: 'Active Agents',
+      label: 'Active Staff',
       value: stats?.users?.agent_count?.toString() || '0',
       icon: Users,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
-      trend: `${stats?.users?.admin_count || 0} admins`,
+      trend: `${stats?.users?.admin_count || 0} owners`,
       trendUp: true
     },
     {
@@ -239,13 +239,13 @@ const AdminReports = () => {
           </h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">Admin Agents</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Owners</span>
               <span className="text-lg font-bold text-gray-900 dark:text-white">
                 {stats?.users?.admin_count || 0}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600 dark:text-gray-400">Agents</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Staff</span>
               <span className="text-lg font-bold text-gray-900 dark:text-white">
                 {stats?.users?.agent_count || 0}
               </span>

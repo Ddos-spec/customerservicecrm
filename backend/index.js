@@ -32,6 +32,15 @@ const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
 const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 
+const SESSION_STATUS_TTL_SEC = parseInt(process.env.SESSION_STATUS_TTL_SEC || `${7 * 24 * 60 * 60}`, 10);
+const CONTACT_SYNC_INTERVAL_MINUTES = parseInt(process.env.CONTACT_SYNC_INTERVAL_MINUTES || '360', 10);
+const CONTACT_SYNC_BACKOFF_BASE_MINUTES = parseInt(process.env.CONTACT_SYNC_BACKOFF_BASE_MINUTES || '5', 10);
+const CONTACT_SYNC_BACKOFF_MAX_MINUTES = parseInt(process.env.CONTACT_SYNC_BACKOFF_MAX_MINUTES || '120', 10);
+const MESSAGE_SEND_RETRIES = parseInt(process.env.MESSAGE_SEND_RETRIES || '2', 10);
+const MESSAGE_SEND_RETRY_DELAY_MS = parseInt(process.env.MESSAGE_SEND_RETRY_DELAY_MS || '2000', 10);
+const MESSAGE_SEND_RETRY_BACKOFF = parseFloat(process.env.MESSAGE_SEND_RETRY_BACKOFF || '2');
+const MESSAGE_SEND_QUEUE_DELAY_MS = parseInt(process.env.MESSAGE_SEND_QUEUE_DELAY_MS || '2000', 10);
+
 const app = express();
 // Detect production if NODE_ENV is set OR if FRONTEND_URL is https (common in deployments)
 // On Easypanel, NODE_ENV is usually 'production'.
@@ -119,6 +128,7 @@ if (!isTest) {
             await redisClient.connect();
             await redisSessionClient.connect();
             console.log('Redis connected');
+            await hydrateSessionsFromRedis();
         } catch (err) {
             console.error('Redis connection error:', err.message);
         }
@@ -128,6 +138,50 @@ if (!isTest) {
 // Session state (synced from Go gateway via webhooks)
 const sessions = new Map();
 const sessionTokens = new Map();
+
+// --- Session Status Persistence (Redis) ---
+async function persistSessionStatus(sessionId, status) {
+    if (!redisClient?.isOpen) return;
+    try {
+        const payload = {
+            status: status?.status || 'UNKNOWN',
+            qr: status?.qr || null,
+            connectedNumber: status?.connectedNumber || null,
+            updatedAt: new Date().toISOString()
+        };
+        await redisClient.set(`wa:session_status:${sessionId}`, JSON.stringify(payload), { EX: SESSION_STATUS_TTL_SEC });
+    } catch (err) {
+        logger.warn(`Failed to persist session status for ${sessionId}: ${err.message}`);
+    }
+}
+
+async function loadSessionStatus(sessionId) {
+    if (!redisClient?.isOpen) return null;
+    try {
+        const raw = await redisClient.get(`wa:session_status:${sessionId}`);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch (err) {
+        logger.warn(`Failed to load session status for ${sessionId}: ${err.message}`);
+        return null;
+    }
+}
+
+async function hydrateSessionsFromRedis() {
+    if (!redisClient?.isOpen || sessionTokens.size === 0) return;
+    for (const sessionId of sessionTokens.keys()) {
+        const cached = await loadSessionStatus(sessionId);
+        if (!cached) continue;
+        const existing = sessions.get(sessionId);
+        const base = existing || { sessionId, sock: createCompatSocket(sessionId) };
+        sessions.set(sessionId, {
+            ...base,
+            status: cached.status || base.status || 'UNKNOWN',
+            qr: cached.qr || null,
+            connectedNumber: cached.connectedNumber || null
+        });
+    }
+}
 
 // Register session error callback to auto-disconnect on Gateway errors
 waGateway.setSessionErrorCallback((sessionId, error) => {
@@ -206,6 +260,7 @@ async function loadTokens() {
                 loadedCount++;
             }
             console.log(`[System] Successfully loaded ${loadedCount} tokens into memory.`);
+            await hydrateSessionsFromRedis();
 
             // Re-authenticate gateway JWTs - AWAIT this to ensure JWTs are ready before sync
             const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
@@ -276,8 +331,105 @@ async function saveSessionSettings(sessionId, settings) {
     await redisClient.set(`wa:settings:${sessionId}`, JSON.stringify(settings));
 }
 
+// --- Scheduled Contact Sync ---
+const CONTACT_SYNC_INTERVAL_MS = CONTACT_SYNC_INTERVAL_MINUTES * 60 * 1000;
+const CONTACT_SYNC_BACKOFF_BASE_MS = CONTACT_SYNC_BACKOFF_BASE_MINUTES * 60 * 1000;
+const CONTACT_SYNC_BACKOFF_MAX_MS = CONTACT_SYNC_BACKOFF_MAX_MINUTES * 60 * 1000;
+const CONTACT_SYNC_TICK_MS = parseInt(process.env.CONTACT_SYNC_TICK_SECONDS || '120', 10) * 1000;
+const CONTACT_SYNC_BATCH_SIZE = parseInt(process.env.CONTACT_SYNC_BATCH_SIZE || '10', 10);
+let contactSyncRunning = false;
+
+async function shouldSyncContacts(sessionId) {
+    if (!redisClient?.isOpen) return false;
+    const now = Date.now();
+    const nextAtRaw = await redisClient.get(`wa:sync:next:${sessionId}`);
+    const nextAt = nextAtRaw ? Number(nextAtRaw) : 0;
+    if (nextAt && now < nextAt) return false;
+    const lastRaw = await redisClient.get(`wa:sync:last:${sessionId}`);
+    const lastAt = lastRaw ? Number(lastRaw) : 0;
+    if (!lastAt) return true;
+    return now - lastAt >= CONTACT_SYNC_INTERVAL_MS;
+}
+
+async function markSyncSuccess(sessionId) {
+    if (!redisClient?.isOpen) return;
+    await redisClient.set(`wa:sync:last:${sessionId}`, String(Date.now()));
+    await redisClient.del(`wa:sync:fail:${sessionId}`);
+    await redisClient.del(`wa:sync:next:${sessionId}`);
+}
+
+async function markSyncFailure(sessionId, error) {
+    if (!redisClient?.isOpen) return;
+    const key = `wa:sync:fail:${sessionId}`;
+    let failCount = 0;
+    try {
+        const raw = await redisClient.get(key);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            failCount = Number(parsed?.count) || 0;
+        }
+    } catch (err) {
+        failCount = 0;
+    }
+    failCount += 1;
+    const delay = Math.min(CONTACT_SYNC_BACKOFF_MAX_MS, CONTACT_SYNC_BACKOFF_BASE_MS * Math.pow(2, failCount - 1));
+    const nextAt = Date.now() + delay;
+    await redisClient.set(key, JSON.stringify({
+        count: failCount,
+        lastError: error?.message || 'unknown',
+        lastAt: new Date().toISOString()
+    }));
+    await redisClient.set(`wa:sync:next:${sessionId}`, String(nextAt));
+}
+
+async function runScheduledContactSync() {
+    if (contactSyncRunning || isTest) return;
+    contactSyncRunning = true;
+    try {
+        const sessionsSnapshot = getSessionsDetails().filter((s) => s.status === 'CONNECTED');
+        const candidates = sessionsSnapshot.slice(0, CONTACT_SYNC_BATCH_SIZE);
+        for (const session of candidates) {
+            if (!(await shouldSyncContacts(session.sessionId))) continue;
+            try {
+                const tenant = await db.getTenantBySessionId(session.sessionId);
+                if (!tenant) continue;
+                const result = await syncContactsForTenant(tenant.id, session.sessionId);
+                if (result?.synced > 0) {
+                    logger.info(`[Sync] Scheduled sync: ${result.synced} contacts for ${tenant.company_name}`);
+                }
+                await markSyncSuccess(session.sessionId);
+            } catch (err) {
+                logger.warn(`[Sync] Scheduled sync failed for ${session.sessionId}: ${err.message}`);
+                await markSyncFailure(session.sessionId, err);
+            }
+        }
+    } catch (err) {
+        logger.warn(`[Sync] Scheduled sync loop failed: ${err.message}`);
+    } finally {
+        contactSyncRunning = false;
+    }
+}
+
 // --- Message Queue ---
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const isTransientSendError = (error) => {
+    const message = (error?.message || '').toLowerCase();
+    const patterns = [
+        'timeout',
+        'timed out',
+        'connection closed',
+        'not connected',
+        'session disconnected',
+        'session tidak tersedia',
+        'session not available',
+        'gateway',
+        'server error',
+        'econnreset',
+        'econnrefused',
+        'socket'
+    ];
+    return patterns.some((pattern) => message.includes(pattern));
+};
 
 function ensureSessionQueueState(sessionId) {
     if (!sessions.has(sessionId)) {
@@ -290,6 +442,12 @@ function ensureSessionQueueState(sessionId) {
         });
     }
     const session = sessions.get(sessionId);
+    if (!Array.isArray(session.queue)) {
+        session.queue = [];
+    }
+    if (typeof session.processing !== 'boolean') {
+        session.processing = false;
+    }
     // Ensure sock exists
     if (!session.sock) {
         session.sock = createCompatSocket(sessionId);
@@ -303,19 +461,39 @@ async function processSessionQueue(sessionId) {
     state.processing = true;
     while (state.queue && state.queue.length > 0) {
         const job = state.queue.shift();
+        if (!job) continue;
         try {
             const res = await job.operation();
             job.resolve(res);
-        } catch (e) { job.reject(e); }
-        await sleep(2000);
+        } catch (e) {
+            job.attempts += 1;
+            const shouldRetry = job.attempts <= job.maxRetries && job.shouldRetry(e);
+            if (shouldRetry) {
+                const delay = Math.floor(job.retryDelayMs * Math.pow(job.retryBackoff, job.attempts - 1));
+                await sleep(delay);
+                state.queue.unshift(job);
+                continue;
+            }
+            job.reject(e);
+        }
+        await sleep(MESSAGE_SEND_QUEUE_DELAY_MS);
     }
     state.processing = false;
 }
 
-function scheduleMessageSend(sessionId, operation) {
+function scheduleMessageSend(sessionId, operation, options = {}) {
     const state = ensureSessionQueueState(sessionId);
     return new Promise((resolve, reject) => {
-        state.queue.push({ operation, resolve, reject });
+        state.queue.push({
+            operation,
+            resolve,
+            reject,
+            attempts: 0,
+            maxRetries: typeof options.maxRetries === 'number' ? options.maxRetries : MESSAGE_SEND_RETRIES,
+            retryDelayMs: typeof options.retryDelayMs === 'number' ? options.retryDelayMs : MESSAGE_SEND_RETRY_DELAY_MS,
+            retryBackoff: typeof options.retryBackoff === 'number' ? options.retryBackoff : MESSAGE_SEND_RETRY_BACKOFF,
+            shouldRetry: typeof options.shouldRetry === 'function' ? options.shouldRetry : isTransientSendError
+        });
         processSessionQueue(sessionId);
     });
 }
@@ -443,6 +621,11 @@ function updateSessionStatus(sessionId, status, qr = null) {
         current.status = status;
         current.qr = qr;
         sessions.set(sessionId, current);
+        persistSessionStatus(sessionId, {
+            status: current.status,
+            qr: current.qr,
+            connectedNumber: current.connectedNumber || null
+        });
         broadcastSessionUpdate();
     }
 }
@@ -502,6 +685,12 @@ async function createSession(sessionId) {
             sessions.set(sessionId, session);
         }
 
+        await persistSessionStatus(sessionId, {
+            status: session.status,
+            qr: session.qr,
+            connectedNumber: session.connectedNumber || null
+        });
+
         broadcastSessionUpdate();
 
         return { token };
@@ -536,6 +725,7 @@ async function deleteSession(sessionId) {
         // Clear session data from Redis
         await redisClient.del(`wa:contacts:${sessionId}`);
         await redisClient.del(`wa:settings:${sessionId}`);
+        await redisClient.del(`wa:session_status:${sessionId}`);
 
         logger.info(`Session ${sessionId} deleted and cleaned up`);
         broadcastSessionUpdate();
@@ -683,6 +873,11 @@ webhookHandler.on('connection', (sessionId, data) => {
         session.sock = createCompatSocket(sessionId);
     }
     sessions.set(sessionId, session);
+    persistSessionStatus(sessionId, {
+        status: session.status,
+        qr: session.qr,
+        connectedNumber: session.connectedNumber || null
+    });
     
     // CRITICAL FIX: Persistence
     // If Gateway says "Connected" but we don't have it in file, SAVE IT!
@@ -846,6 +1041,11 @@ if (!isTest) {
                         }
 
                         sessions.set(sessionId, session);
+                        await persistSessionStatus(sessionId, {
+                            status: session.status,
+                            qr: session.qr,
+                            connectedNumber: session.connectedNumber || null
+                        });
                     } catch (err) {
                         console.warn(`Failed to sync session ${sessionId}: ${err.message}`);
                     }
@@ -857,48 +1057,10 @@ if (!isTest) {
         }
 
         console.log(`CRM Backend running on port ${PORT}`);
-
-        // --- Periodic Contact Sync (every 5 minutes) ---
-        const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
-        setInterval(async () => {
-            try {
-                // Get all active tenants with session_id
-                const tenantsResult = await db.query(`
-                    SELECT id, company_name, session_id
-                    FROM tenants
-                    WHERE status = 'active' AND session_id IS NOT NULL
-                `);
-                const tenants = tenantsResult.rows;
-
-                if (tenants.length === 0) return;
-
-                console.log(`[Cron] Starting periodic sync for ${tenants.length} tenants...`);
-
-                for (const tenant of tenants) {
-                    try {
-                        // Skip syncing for sessions that are known to be DISCONNECTED
-                        const session = sessions.get(tenant.session_id);
-                        if (session && (session.status === 'DISCONNECTED' || session.status === 'LOGGED_OUT')) {
-                            console.log(`[Cron] Skipping sync for ${tenant.company_name} - session is ${session.status}`);
-                            continue;
-                        }
-
-                        const result = await syncContactsForTenant(tenant.id, tenant.session_id);
-                        if (result.synced > 0) {
-                            console.log(`[Cron] Synced ${result.synced} contacts for ${tenant.company_name}`);
-                        }
-                    } catch (err) {
-                        console.warn(`[Cron] Sync failed for ${tenant.company_name}: ${err.message}`);
-                    }
-                    // Small delay between tenants to avoid overwhelming gateway
-                    await new Promise(r => setTimeout(r, 1000));
-                }
-            } catch (err) {
-                console.error('[Cron] Periodic sync error:', err.message);
-            }
-        }, SYNC_INTERVAL);
-
-        console.log(`[Cron] Periodic contact sync enabled (every ${SYNC_INTERVAL / 60000} minutes)`);
+        setInterval(() => {
+            void runScheduledContactSync();
+        }, CONTACT_SYNC_TICK_MS);
+        console.log(`[Cron] Scheduled contact sync enabled (tick ${CONTACT_SYNC_TICK_MS / 1000}s, interval ${CONTACT_SYNC_INTERVAL_MINUTES}m)`);
     });
 }
 

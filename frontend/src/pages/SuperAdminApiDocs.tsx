@@ -42,7 +42,7 @@ const SuperAdminApiDocs = () => {
     },
     {
       title: 'Escalate to Human',
-      description: 'Pindahkan percakapan dari AI ke Antrian Agen Manusia.',
+      description: 'Pindahkan percakapan dari AI ke Antrian Staff Manusia.',
       icon: <AlertCircle className="text-rose-500" />,
       curl: `curl -X POST "${apiUrl}/n8n/escalate" \
   -H "Content-Type: application/json" \

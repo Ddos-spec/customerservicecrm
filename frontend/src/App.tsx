@@ -87,7 +87,7 @@ function App() {
             </Route>
           </Route>
 
-          {/* Admin Agent Routes */}
+          {/* Owner Routes */}
           <Route element={<ProtectedRoute allowedRoles={['admin_agent']} />}>
             <Route path="/admin" element={<MainLayout />}>
               <Route index element={<AdminDashboard />} /> {/* Updated to AdminDashboard */}
@@ -99,7 +99,7 @@ function App() {
             </Route>
           </Route>
 
-          {/* Agent Routes */}
+          {/* Staff Routes */}
           <Route element={<ProtectedRoute allowedRoles={['agent']} />}>
             <Route path="/agent" element={<MainLayout />}>
               <Route index element={<AgentDashboard />} /> {/* Home = Dashboard Statistik */}
