@@ -12,6 +12,7 @@ const { normalizeJid, getJidUser } = require('./utils/jid');
 const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
 const { getGatewayHealthSummary } = require('./utils/gateway-health');
+const { getWebhookUrl } = require('./api_v1');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 const DEFAULT_GATEWAY_URL = process.env.WA_GATEWAY_URL || 'http://localhost:3001/api/v1/whatsapp';
 const MAX_GATEWAY_SESSIONS_RAW = Number.parseInt(process.env.GATEWAY_MAX_SESSIONS || '0', 10);
@@ -1044,6 +1045,48 @@ router.delete('/tenants/:id/webhooks/:webhookId', requireRole('super_admin'), as
     }
 });
 
+/**
+ * POST /api/v1/admin/sessions/:sessionId/webhook-test
+ * Send a test payload to the stored session webhook (super admin only)
+ */
+router.post('/sessions/:sessionId/webhook-test', requireRole('super_admin'), async (req, res) => {
+    try {
+        const sessionId = (req.params.sessionId || '').toString().trim();
+        if (!sessionId) {
+            return res.status(400).json({ success: false, error: 'sessionId is required' });
+        }
+
+        const url = await getWebhookUrl(sessionId);
+        if (!url) {
+            return res.status(404).json({ success: false, error: 'Webhook URL not set for this session' });
+        }
+
+        const payload = {
+            event: 'webhook_test',
+            sessionId,
+            timestamp: new Date().toISOString(),
+            message: {
+                id: 'test-message',
+                from: 'system',
+                text: 'Webhook test from Super Admin'
+            }
+        };
+
+        const response = await axios.post(url, payload, {
+            timeout: 5000,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Webhook-Test': 'true'
+            }
+        });
+
+        res.json({ success: true, status: response.status, url });
+    } catch (error) {
+        console.error('Error sending webhook test:', error);
+        res.status(502).json({ success: false, error: error.message });
+    }
+});
+
 // ===== USER MANAGEMENT =====
 
 /**
@@ -1534,26 +1577,13 @@ router.post('/notifier-session', requireRole('super_admin'), async (req, res) =>
 
 /**
  * GET /api/v1/admin/wa/groups
- * Fetch joined groups for the tenant's WhatsApp session (safely)
+ * Fetch joined groups for a specific WhatsApp session (super admin only)
  */
-router.get('/wa/groups', requireAuth, async (req, res) => {
+router.get('/wa/groups', requireRole('super_admin'), async (req, res) => {
     try {
-        const user = req.session.user;
-        let sessionId = user?.tenant_session_id || user?.tenant_session_id;
-
-        // Fallback: get tenant session id from DB
-        if (!sessionId && user?.tenant_id) {
-            const tenant = await db.getTenantById(user.tenant_id);
-            sessionId = tenant?.session_id;
-        }
-
-        // Super admin may query a specific session
-        if (!sessionId && user?.role === 'super_admin' && req.query.session_id) {
-            sessionId = req.query.session_id.toString().trim();
-        }
-
+        const sessionId = req.query.session_id ? req.query.session_id.toString().trim() : '';
         if (!sessionId) {
-            return res.json({ success: true, groups: [] }); // No session = empty groups
+            return res.status(400).json({ success: false, error: 'session_id is required' });
         }
 
         try {
@@ -1584,24 +1614,13 @@ router.get('/wa/groups', requireAuth, async (req, res) => {
 
 /**
  * GET /api/v1/admin/wa/contacts
- * Fetch contacts for the tenant's WhatsApp session (safely)
+ * Fetch contacts for a specific WhatsApp session (super admin only)
  */
-router.get('/wa/contacts', requireAuth, async (req, res) => {
+router.get('/wa/contacts', requireRole('super_admin'), async (req, res) => {
     try {
-        const user = req.session.user;
-        let sessionId = user?.tenant_session_id || user?.tenant_session_id;
-
-        if (!sessionId && user?.tenant_id) {
-            const tenant = await db.getTenantById(user.tenant_id);
-            sessionId = tenant?.session_id;
-        }
-
-        if (!sessionId && user?.role === 'super_admin' && req.query.session_id) {
-            sessionId = req.query.session_id.toString().trim();
-        }
-
+        const sessionId = req.query.session_id ? req.query.session_id.toString().trim() : '';
         if (!sessionId) {
-            return res.json({ success: true, contacts: [] }); // No session = empty contacts
+            return res.status(400).json({ success: false, error: 'session_id is required' });
         }
 
         try {

@@ -34,6 +34,21 @@ const TenantManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 7;
   const apiUrl = import.meta.env.VITE_API_URL || window.location.origin + '/api/v1';
+  const RAW_PREVIEW_LIMIT = 200;
+
+  const getRawJid = (item: any) => item?.JID || item?.jid || item?.their_jid || '';
+  const getRawContactName = (item: any) =>
+    item?.FullName ||
+    item?.full_name ||
+    item?.FirstName ||
+    item?.first_name ||
+    item?.PushName ||
+    item?.push_name ||
+    item?.BusinessName ||
+    item?.business_name ||
+    getRawJid(item);
+  const getRawGroupName = (item: any) =>
+    item?.Subject || item?.subject || item?.Name || item?.name || getRawJid(item);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
@@ -57,6 +72,21 @@ const TenantManagement = () => {
   const [isSessionTokenLoading, setIsSessionTokenLoading] = useState(false);
   const [isSessionTokenRegenerating, setIsSessionTokenRegenerating] = useState(false);
   const [showSessionToken, setShowSessionToken] = useState(false);
+  const [sessionWebhookUrl, setSessionWebhookUrl] = useState('');
+  const [isSessionWebhookLoading, setIsSessionWebhookLoading] = useState(false);
+  const [isSessionWebhookSaving, setIsSessionWebhookSaving] = useState(false);
+  const [isSessionWebhookDeleting, setIsSessionWebhookDeleting] = useState(false);
+  const [isSessionWebhookTesting, setIsSessionWebhookTesting] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [isFixingContacts, setIsFixingContacts] = useState(false);
+
+  const [isRawModalOpen, setIsRawModalOpen] = useState(false);
+  const [rawTenant, setRawTenant] = useState<Tenant | null>(null);
+  const [rawContacts, setRawContacts] = useState<any[]>([]);
+  const [rawGroups, setRawGroups] = useState<any[]>([]);
+  const [rawSearch, setRawSearch] = useState('');
+  const [isRawLoadingContacts, setIsRawLoadingContacts] = useState(false);
+  const [isRawLoadingGroups, setIsRawLoadingGroups] = useState(false);
 
   // Admin Management State
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
@@ -342,6 +372,213 @@ const TenantManagement = () => {
     toast.success('Token disalin');
   };
 
+  const getSessionAuthConfig = () => {
+    if (!sessionToken) {
+      toast.error('Token belum ada. Load/Generate dulu.');
+      return null;
+    }
+    return { headers: { apikey: sessionToken } };
+  };
+
+  const fetchSessionWebhook = async () => {
+    const trimmed = sessionIdInput.trim();
+    if (!trimmed) {
+      toast.error('Session ID harus diisi dulu');
+      return;
+    }
+    const config = getSessionAuthConfig();
+    if (!config) return;
+    setIsSessionWebhookLoading(true);
+    try {
+      const res = await api.get('/sessions/webhook', {
+        ...config,
+        params: { sessionId: trimmed }
+      });
+      if (res.data?.status === 'success') {
+        setSessionWebhookUrl(res.data.url || '');
+        toast.success(res.data.url ? 'Webhook loaded' : 'Webhook belum diset');
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch session webhook:', error);
+      toast.error(error.response?.data?.message || 'Gagal memuat webhook session');
+    } finally {
+      setIsSessionWebhookLoading(false);
+    }
+  };
+
+  const handleSaveSessionWebhook = async () => {
+    const trimmed = sessionIdInput.trim();
+    const url = sessionWebhookUrl.trim();
+    if (!trimmed) {
+      toast.error('Session ID harus diisi dulu');
+      return;
+    }
+    if (!url) {
+      toast.error('URL webhook wajib diisi');
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error('Webhook URL harus diawali http:// atau https://');
+      return;
+    }
+    const config = getSessionAuthConfig();
+    if (!config) return;
+    setIsSessionWebhookSaving(true);
+    try {
+      const res = await api.post('/sessions/webhook', { url, sessionId: trimmed }, config);
+      if (res.data?.status === 'success') {
+        toast.success('Webhook session tersimpan');
+      }
+    } catch (error: any) {
+      console.error('Failed to save session webhook:', error);
+      toast.error(error.response?.data?.message || 'Gagal menyimpan webhook session');
+    } finally {
+      setIsSessionWebhookSaving(false);
+    }
+  };
+
+  const handleDeleteSessionWebhook = async () => {
+    const trimmed = sessionIdInput.trim();
+    if (!trimmed) {
+      toast.error('Session ID harus diisi dulu');
+      return;
+    }
+    if (!confirm('Hapus webhook session ini?')) return;
+    const config = getSessionAuthConfig();
+    if (!config) return;
+    setIsSessionWebhookDeleting(true);
+    try {
+      const res = await api.delete('/sessions/webhook', {
+        ...config,
+        data: { sessionId: trimmed }
+      });
+      if (res.data?.status === 'success') {
+        setSessionWebhookUrl('');
+        toast.success('Webhook session dihapus');
+      }
+    } catch (error: any) {
+      console.error('Failed to delete session webhook:', error);
+      toast.error(error.response?.data?.message || 'Gagal menghapus webhook session');
+    } finally {
+      setIsSessionWebhookDeleting(false);
+    }
+  };
+
+  const handleTestSessionWebhook = async () => {
+    const trimmed = sessionIdInput.trim();
+    if (!trimmed) {
+      toast.error('Session ID harus diisi dulu');
+      return;
+    }
+    setIsSessionWebhookTesting(true);
+    try {
+      const res = await api.post(`/admin/sessions/${encodeURIComponent(trimmed)}/webhook-test`);
+      if (res.data?.success) {
+        toast.success('Test webhook terkirim');
+      }
+    } catch (error: any) {
+      console.error('Failed to test session webhook:', error);
+      toast.error(error.response?.data?.error || 'Gagal test webhook');
+    } finally {
+      setIsSessionWebhookTesting(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (!sessionTenant) return;
+    setIsManualSyncing(true);
+    try {
+      const res = await api.post('/sync/contacts', { tenant_id: sessionTenant.id });
+      if (res.data?.status === 'success') {
+        const details = res.data.details;
+        const note = details ? ` (${details.contacts} kontak, ${details.groups} grup)` : '';
+        toast.success(`Sync selesai${note}`);
+      }
+    } catch (error: any) {
+      console.error('Failed to sync contacts:', error);
+      toast.error(error.response?.data?.message || 'Gagal sync kontak');
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
+
+  const handleFixContacts = async () => {
+    if (!confirm('Jalankan fix-contacts global?')) return;
+    setIsFixingContacts(true);
+    try {
+      const res = await api.post('/admin/fix-contacts');
+      if (res.data?.success) {
+        toast.success(res.data.message || 'Fix contacts selesai');
+      }
+    } catch (error: any) {
+      console.error('Failed to fix contacts:', error);
+      toast.error(error.response?.data?.error || 'Gagal fix contacts');
+    } finally {
+      setIsFixingContacts(false);
+    }
+  };
+
+  const openRawModal = (tenant: Tenant) => {
+    setActiveDropdown(null);
+    setRawTenant(tenant);
+    setIsRawModalOpen(true);
+    setRawContacts([]);
+    setRawGroups([]);
+    setRawSearch('');
+  };
+
+  const closeRawModal = () => {
+    setIsRawModalOpen(false);
+    setRawTenant(null);
+    setRawContacts([]);
+    setRawGroups([]);
+    setRawSearch('');
+  };
+
+  const loadRawContacts = async () => {
+    if (!rawTenant?.session_id) {
+      toast.error('Session ID belum diatur');
+      return;
+    }
+    setIsRawLoadingContacts(true);
+    try {
+      const res = await api.get('/admin/wa/contacts', {
+        params: { session_id: rawTenant.session_id }
+      });
+      if (res.data?.success) {
+        setRawContacts(res.data.contacts || []);
+        toast.success('Kontak raw dimuat');
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch raw contacts:', error);
+      toast.error(error.response?.data?.error || 'Gagal memuat kontak raw');
+    } finally {
+      setIsRawLoadingContacts(false);
+    }
+  };
+
+  const loadRawGroups = async () => {
+    if (!rawTenant?.session_id) {
+      toast.error('Session ID belum diatur');
+      return;
+    }
+    setIsRawLoadingGroups(true);
+    try {
+      const res = await api.get('/admin/wa/groups', {
+        params: { session_id: rawTenant.session_id }
+      });
+      if (res.data?.success) {
+        setRawGroups(res.data.groups || []);
+        toast.success('Grup raw dimuat');
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch raw groups:', error);
+      toast.error(error.response?.data?.error || 'Gagal memuat grup raw');
+    } finally {
+      setIsRawLoadingGroups(false);
+    }
+  };
+
   const openSessionModal = (tenant: Tenant) => {
     setActiveDropdown(null);
     setSessionTenant(tenant);
@@ -350,6 +587,7 @@ const TenantManagement = () => {
     setSessionToken(null);
     setSessionTokenSessionId('');
     setShowSessionToken(false);
+    setSessionWebhookUrl('');
     setIsSessionModalOpen(true);
     if (tenant.session_id) {
       void fetchSessionToken(tenant.session_id, { silent: true });
@@ -364,6 +602,7 @@ const TenantManagement = () => {
     setSessionToken(null);
     setSessionTokenSessionId('');
     setShowSessionToken(false);
+    setSessionWebhookUrl('');
   };
 
   useEffect(() => {
@@ -476,6 +715,18 @@ const TenantManagement = () => {
     }
   };
 
+  const rawQuery = rawSearch.trim().toLowerCase();
+  const matchRaw = (item: any, nameGetter: (value: any) => string) => {
+    if (!rawQuery) return true;
+    const jid = getRawJid(item).toLowerCase();
+    const name = (nameGetter(item) || '').toLowerCase();
+    return jid.includes(rawQuery) || name.includes(rawQuery);
+  };
+  const filteredContacts = rawContacts.filter((item) => matchRaw(item, getRawContactName));
+  const filteredGroups = rawGroups.filter((item) => matchRaw(item, getRawGroupName));
+  const displayedContacts = filteredContacts.slice(0, RAW_PREVIEW_LIMIT);
+  const displayedGroups = filteredGroups.slice(0, RAW_PREVIEW_LIMIT);
+
   return (
     <div className="animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
@@ -571,6 +822,9 @@ const TenantManagement = () => {
                             <button onClick={() => openSessionModal(tenant)} className="w-full px-5 py-3 text-xs text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-bold uppercase tracking-wider block">
                               Atur Session WA
                             </button>
+                            <button onClick={() => openRawModal(tenant)} className="w-full px-5 py-3 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/30 font-bold uppercase tracking-wider block">
+                              Raw Kontak/Grup
+                            </button>
                             <button onClick={() => handleStatusToggle(tenant)} className="w-full px-5 py-3 text-xs text-orange-600 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 font-bold uppercase tracking-wider block">
                               {tenant.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
                             </button>
@@ -621,6 +875,9 @@ const TenantManagement = () => {
                            </button>
                            <button onClick={() => openSessionModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Atur Session WA
+                           </button>
+                           <button onClick={() => openRawModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
+                             Raw Kontak/Grup
                            </button>
                            <button onClick={() => handleStatusToggle(tenant)} className="w-full p-3 text-center text-xs font-bold text-orange-600 dark:text-orange-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              {tenant.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
@@ -920,6 +1177,84 @@ const TenantManagement = () => {
                   </pre>
                 </div>
               </div>
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Session Webhook</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Dipicu saat ada pesan masuk. Pakai token session.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={fetchSessionWebhook}
+                      disabled={isSessionWebhookLoading || !sessionToken}
+                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
+                    >
+                      {isSessionWebhookLoading ? 'Loading...' : 'Load'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTestSessionWebhook}
+                      disabled={isSessionWebhookTesting}
+                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      {isSessionWebhookTesting ? 'Testing...' : 'Test'}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    placeholder="https://example.com/webhook"
+                    value={sessionWebhookUrl}
+                    onChange={(e) => setSessionWebhookUrl(e.target.value)}
+                    className="flex-1 p-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-slate-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveSessionWebhook}
+                    disabled={isSessionWebhookSaving || !sessionToken}
+                    className="px-4 py-3 text-[11px] font-black uppercase tracking-widest rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
+                  >
+                    {isSessionWebhookSaving ? 'Saving...' : 'Simpan'}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDeleteSessionWebhook}
+                    disabled={isSessionWebhookDeleting || !sessionToken}
+                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-700 text-rose-600 dark:text-rose-300 hover:border-rose-400 transition-colors disabled:opacity-60"
+                  >
+                    {isSessionWebhookDeleting ? 'Deleting...' : 'Hapus'}
+                  </button>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Wajib Load/Generate token dulu.</p>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Maintenance</p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Tools admin untuk sync & perbaikan raw.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleManualSync}
+                    disabled={isManualSyncing}
+                    className="px-4 py-3 text-[11px] font-black uppercase tracking-widest rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
+                  >
+                    {isManualSyncing ? 'Syncing...' : 'Force Sync'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFixContacts}
+                    disabled={isFixingContacts}
+                    className="px-4 py-3 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
+                  >
+                    {isFixingContacts ? 'Fixing...' : 'Fix Contacts'}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">Fix contacts berlaku global (semua tenant).</p>
+              </div>
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 Kosongkan untuk melepas session dari tenant ini.
               </p>
@@ -932,6 +1267,109 @@ const TenantManagement = () => {
                 <span>{isSessionSaving ? 'Menyimpan...' : 'Simpan'}</span>
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Raw WA Data (Super Admin Only) */}
+      {isRawModalOpen && rawTenant && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-5xl rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
+              <div>
+                <h2 className="text-2xl font-black text-gray-900 dark:text-white">Raw Kontak & Grup</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {rawTenant.company_name} • Session: {rawTenant.session_id || '-'}
+                </p>
+              </div>
+              <button onClick={closeRawModal}><X className="text-gray-400 dark:text-gray-500" /></button>
+            </div>
+
+            <div className="flex flex-col lg:flex-row gap-3 mb-6">
+              <input
+                placeholder="Cari nama atau JID..."
+                value={rawSearch}
+                onChange={(e) => setRawSearch(e.target.value)}
+                className="flex-1 p-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={loadRawContacts}
+                  disabled={isRawLoadingContacts}
+                  className="px-4 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
+                >
+                  {isRawLoadingContacts ? 'Loading...' : 'Load Kontak'}
+                </button>
+                <button
+                  type="button"
+                  onClick={loadRawGroups}
+                  disabled={isRawLoadingGroups}
+                  className="px-4 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60 transition-colors"
+                >
+                  {isRawLoadingGroups ? 'Loading...' : 'Load Grup'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-gray-700 dark:text-gray-200">Kontak</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                      {filteredContacts.length} total{filteredContacts.length > RAW_PREVIEW_LIMIT ? ` (showing ${RAW_PREVIEW_LIMIT})` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {displayedContacts.length > 0 ? displayedContacts.map((item, idx) => {
+                    const jid = getRawJid(item) || '-';
+                    const name = getRawContactName(item) || '-';
+                    return (
+                      <div key={`${jid}-${idx}`} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800">
+                        <div className="text-xs font-black text-gray-900 dark:text-white">{name}</div>
+                        <div className="text-[11px] font-mono text-gray-500 dark:text-gray-400">{jid}</div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
+                      {rawContacts.length === 0 ? 'Belum ada data kontak.' : 'Tidak ada hasil.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-gray-700 dark:text-gray-200">Grup</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                      {filteredGroups.length} total{filteredGroups.length > RAW_PREVIEW_LIMIT ? ` (showing ${RAW_PREVIEW_LIMIT})` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {displayedGroups.length > 0 ? displayedGroups.map((item, idx) => {
+                    const jid = getRawJid(item) || '-';
+                    const name = getRawGroupName(item) || '-';
+                    return (
+                      <div key={`${jid}-${idx}`} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">GRUP</span>
+                          <span className="text-xs font-black text-gray-900 dark:text-white">{name}</span>
+                        </div>
+                        <div className="text-[11px] font-mono text-gray-500 dark:text-gray-400">{jid}</div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
+                      {rawGroups.length === 0 ? 'Belum ada data grup.' : 'Tidak ada hasil.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
