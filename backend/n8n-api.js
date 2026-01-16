@@ -10,6 +10,54 @@ const express = require('express');
 const db = require('./db');
 const { formatPhoneNumber } = require('./phone-utils');
 
+function normalizeRecipient(phoneNumber) {
+    const raw = phoneNumber ? phoneNumber.toString().trim() : '';
+    if (!raw) {
+        return { raw: '', normalizedPhone: '', jid: '', isGroup: false };
+    }
+
+    const isGroup = raw.includes('@g.us');
+    if (raw.includes('@')) {
+        const user = raw.split('@')[0] || '';
+        return { raw, normalizedPhone: user, jid: raw, isGroup };
+    }
+
+    const normalizedPhone = formatPhoneNumber(raw);
+    return {
+        raw,
+        normalizedPhone,
+        jid: `${normalizedPhone}@s.whatsapp.net`,
+        isGroup: false
+    };
+}
+
+async function resolveChatByPhone({ tenantId, phoneNumber, customerName, createIfMissing = true }) {
+    const recipient = normalizeRecipient(phoneNumber);
+    if (!recipient.jid || !tenantId) {
+        return { chat: null, recipient };
+    }
+
+    if (createIfMissing) {
+        const chat = await db.getOrCreateChat(
+            tenantId,
+            recipient.jid,
+            customerName || recipient.normalizedPhone || null,
+            recipient.isGroup
+        );
+        return { chat, recipient };
+    }
+
+    const contact = await db.getContactByJid(tenantId, recipient.jid);
+    if (!contact) return { chat: null, recipient };
+
+    const chatRes = await db.query(
+        'SELECT * FROM chats WHERE tenant_id = $1 AND contact_id = $2 ORDER BY created_at DESC LIMIT 1',
+        [tenantId, contact.id]
+    );
+
+    return { chat: chatRes.rows[0] || null, recipient };
+}
+
 // ===== WEBHOOK AUTH (Simple API Key) =====
 
 /**
@@ -69,29 +117,39 @@ function initializeN8nApi(deps) {
             }
 
             // Normalize sender_type
-            const normalizedSenderType = sender_type === 'me' ? 'agent' : 'customer';
+            const normalizedSenderType = sender_type === 'me' ? 'agent' : sender_type;
+            const senderType = ['agent', 'customer', 'system'].includes(normalizedSenderType)
+                ? normalizedSenderType
+                : 'customer';
 
-            // Get or create ticket for this conversation
-            const ticket = await db.getOrCreateTicket({
-                tenant_id: tenant_id,
-                customer_name: customer_name || phone_number,
-                customer_contact: phone_number ? formatPhoneNumber(phone_number) : phone_number
+            const { chat } = await resolveChatByPhone({
+                tenantId: tenant_id,
+                phoneNumber: phone_number,
+                customerName: customer_name,
+                createIfMissing: true
             });
+
+            if (!chat) {
+                return res.status(404).json({ success: false, error: 'Chat tidak ditemukan' });
+            }
 
             // Log the message
             const message = await db.logMessage({
-                ticket_id: ticket.id,
-                sender_type: normalizedSenderType,
-                message_text: message_text
+                chatId: chat.id,
+                senderType,
+                senderName: senderType === 'customer' ? customer_name : null,
+                messageType: 'text',
+                body: message_text,
+                isFromMe: senderType !== 'customer'
             });
 
             res.json({
                 success: true,
                 data: {
                     message_id: message.id,
-                    ticket_id: ticket.id,
-                    ticket_status: ticket.status,
-                    sender_type: normalizedSenderType
+                    chat_id: chat.id,
+                    chat_status: chat.status,
+                    sender_type: senderType
                 }
             });
 
@@ -119,19 +177,32 @@ function initializeN8nApi(deps) {
             const results = [];
             for (const msg of messages) {
                 try {
-                    const ticket = await db.getOrCreateTicket({
-                        tenant_id: msg.tenant_id,
-                        customer_name: msg.customer_name || msg.phone_number,
-                        customer_contact: msg.phone_number ? formatPhoneNumber(msg.phone_number) : msg.phone_number
+                    const normalizedSenderType = msg.sender_type === 'me' ? 'agent' : msg.sender_type;
+                    const senderType = ['agent', 'customer', 'system'].includes(normalizedSenderType)
+                        ? normalizedSenderType
+                        : 'customer';
+
+                    const { chat } = await resolveChatByPhone({
+                        tenantId: msg.tenant_id,
+                        phoneNumber: msg.phone_number,
+                        customerName: msg.customer_name,
+                        createIfMissing: true
                     });
+
+                    if (!chat) {
+                        throw new Error('Chat tidak ditemukan');
+                    }
 
                     const message = await db.logMessage({
-                        ticket_id: ticket.id,
-                        sender_type: msg.sender_type === 'me' ? 'agent' : 'customer',
-                        message_text: msg.message_text
+                        chatId: chat.id,
+                        senderType,
+                        senderName: senderType === 'customer' ? msg.customer_name : null,
+                        messageType: 'text',
+                        body: msg.message_text,
+                        isFromMe: senderType !== 'customer'
                     });
 
-                    results.push({ success: true, message_id: message.id, ticket_id: ticket.id });
+                    results.push({ success: true, message_id: message.id, chat_id: chat.id });
                 } catch (err) {
                     results.push({ success: false, error: err.message, phone: msg.phone_number });
                 }
@@ -149,7 +220,7 @@ function initializeN8nApi(deps) {
 
     /**
      * POST /api/v1/n8n/escalate
-     * Mark a ticket as escalated (needs human attention)
+     * Mark a chat as escalated (needs human attention)
      */
     router.post('/escalate', async (req, res) => {
         try {
@@ -162,38 +233,33 @@ function initializeN8nApi(deps) {
                 });
             }
 
-            // Find existing ticket
-            const result = await db.query(
-                `SELECT * FROM tickets
-                 WHERE tenant_id = $1 AND customer_contact = $2 AND status NOT IN ('closed')
-                 ORDER BY created_at DESC LIMIT 1`,
-                [tenant_id, phone_number ? formatPhoneNumber(phone_number) : phone_number]
-            );
+            const { chat } = await resolveChatByPhone({
+                tenantId: tenant_id,
+                phoneNumber: phone_number,
+                createIfMissing: false
+            });
 
-            if (result.rows.length === 0) {
+            if (!chat || chat.status === 'closed') {
                 return res.status(404).json({
                     success: false,
-                    error: 'No active ticket found for this phone number'
+                    error: 'No active chat found for this phone number'
                 });
             }
 
-            const ticket = result.rows[0];
-
-            // Build escalation note
-            let note = reason || 'Escalated by AI';
-            if (ai_summary) {
-                note += `\nAI Summary: ${ai_summary}`;
-            }
-
-            // Escalate the ticket
-            const updated = await db.escalateTicket(ticket.id, note);
+            const updatedRes = await db.query(
+                'UPDATE chats SET status = $1, updated_at = now() WHERE id = $2 RETURNING *',
+                ['escalated', chat.id]
+            );
+            const updated = updatedRes.rows[0];
 
             res.json({
                 success: true,
                 data: {
-                    ticket_id: updated.id,
-                    status: updated.status,
-                    escalated: true
+                    chat_id: updated?.id || chat.id,
+                    status: updated?.status || 'escalated',
+                    escalated: true,
+                    note: reason || null,
+                    ai_summary: ai_summary || null
                 }
             });
 
@@ -254,7 +320,7 @@ function initializeN8nApi(deps) {
 
     /**
      * GET /api/v1/n8n/escalation-queue
-     * Get list of escalated tickets (for human agents)
+     * Get list of escalated chats (for human agents)
      */
     router.get('/escalation-queue', async (req, res) => {
         try {
@@ -268,19 +334,22 @@ function initializeN8nApi(deps) {
             }
 
             const result = await db.query(
-                `SELECT t.*,
-                        (SELECT COUNT(*) FROM messages WHERE ticket_id = t.id) as message_count,
-                        (SELECT message_text FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message
-                 FROM tickets t
-                 WHERE t.tenant_id = $1 AND t.status = 'escalated'
-                 ORDER BY t.updated_at DESC
+                `SELECT c.*,
+                        con.full_name as customer_name,
+                        con.phone_number as customer_contact,
+                        (SELECT COUNT(*) FROM messages WHERE chat_id = c.id) as message_count,
+                        (SELECT body FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
+                 FROM chats c
+                 JOIN contacts con ON con.id = c.contact_id
+                 WHERE c.tenant_id = $1 AND COALESCE(c.status, 'open') = 'escalated'
+                 ORDER BY c.updated_at DESC
                  LIMIT $2`,
                 [tenant_id, Number.parseInt(limit, 10)]
             );
 
             res.json({
                 success: true,
-                tickets: result.rows,
+                chats: result.rows,
                 count: result.rows.length
             });
 
@@ -325,9 +394,18 @@ function initializeN8nApi(deps) {
 
             const sessionId = tenant.session_id;
 
-            // 2. Normalize Phone Number (Go Gateway handles this but good to ensure)
-            const normalizedPhone = formatPhoneNumber(phone_number);
-            const destination = normalizedPhone.includes('@') ? normalizedPhone : `${normalizedPhone}@s.whatsapp.net`;
+            const { chat, recipient } = await resolveChatByPhone({
+                tenantId: tenant_id,
+                phoneNumber: phone_number,
+                customerName: phone_number,
+                createIfMissing: true
+            });
+
+            if (!chat) {
+                return res.status(404).json({ success: false, error: 'Chat tidak ditemukan' });
+            }
+
+            const destination = recipient.raw.includes('@') ? recipient.raw : recipient.normalizedPhone;
 
             // 3. Send via Gateway (Queue)
             // Using scheduleMessageSend to ensure it respects the queue
@@ -335,31 +413,28 @@ function initializeN8nApi(deps) {
                 return res.status(503).json({ success: false, error: 'Gateway service not initialized' });
             }
 
-            const result = await scheduleMessageSend(sessionId, () => 
-                waGateway.sendMessage(sessionId, destination, message_text)
+            const result = await scheduleMessageSend(sessionId, () =>
+                waGateway.sendText(sessionId, destination, message_text)
             );
 
-            if (!result.status) {
-                return res.status(500).json({ success: false, error: result.message || 'Gateway failed to send' });
+            if (!(result?.status === true || result?.status === 'success')) {
+                return res.status(500).json({ success: false, error: result?.message || 'Gateway failed to send' });
             }
 
             // 4. Log to Database
-            const ticket = await db.getOrCreateTicket({
-                tenant_id: tenant_id,
-                customer_name: phone_number,
-                customer_contact: normalizedPhone
-            });
-
             const message = await db.logMessage({
-                ticket_id: ticket.id,
-                sender_type: 'agent', // AI/Bot is considered an agent
-                message_text: message_text,
-                external_message_id: result.data?.id || null
+                chatId: chat.id,
+                senderType: 'agent',
+                messageType: 'text',
+                body: message_text,
+                waMessageId: result.data?.msgid || null,
+                isFromMe: true
             });
 
             res.json({
                 success: true,
                 message_id: message.id,
+                chat_id: chat.id,
                 gateway_response: result.data
             });
 
@@ -384,36 +459,38 @@ function initializeN8nApi(deps) {
                 });
             }
 
-            // Find ticket
-            const normalizedPhone = formatPhoneNumber(phone_number);
-            const ticketResult = await db.query(
-                `SELECT * FROM tickets
-                 WHERE tenant_id = $1 AND customer_contact = $2
-                 ORDER BY created_at DESC LIMIT 1`,
-                [tenant_id, normalizedPhone]
-            );
+            const { chat, recipient } = await resolveChatByPhone({
+                tenantId: tenant_id,
+                phoneNumber: phone_number,
+                createIfMissing: false
+            });
 
-            if (ticketResult.rows.length === 0) {
+            if (!chat) {
                 return res.json({
                     success: true,
-                    ticket: null,
+                    chat: null,
                     messages: []
                 });
             }
 
-            const ticket = ticketResult.rows[0];
-            const messages = await db.getMessagesByTicket(ticket.id);
+            const contactRes = await db.query(
+                'SELECT full_name, phone_number FROM contacts WHERE id = $1',
+                [chat.contact_id]
+            );
+            const contact = contactRes.rows[0] || {};
+
+            const messages = await db.getMessagesByChat(chat.id, Number.parseInt(limit, 10));
 
             res.json({
                 success: true,
-                ticket: {
-                    id: ticket.id,
-                    status: ticket.status,
-                    customer_name: ticket.customer_name,
-                    customer_contact: ticket.customer_contact,
-                    created_at: ticket.created_at
+                chat: {
+                    id: chat.id,
+                    status: chat.status,
+                    customer_name: contact.full_name || null,
+                    customer_contact: contact.phone_number || recipient.normalizedPhone,
+                    created_at: chat.created_at
                 },
-                messages: messages.slice(-Number.parseInt(limit, 10))
+                messages
             });
 
         } catch (error) {
@@ -423,48 +500,64 @@ function initializeN8nApi(deps) {
     });
 
     /**
-     * POST /api/v1/n8n/close-ticket
-     * Close a ticket (conversation ended)
+     * POST /api/v1/n8n/close-chat
+     * Close a chat (conversation ended)
      */
-    router.post('/close-ticket', async (req, res) => {
+    const closeChatHandler = async (req, res) => {
         try {
-            const { phone_number, tenant_id, ticket_id } = req.body;
+            const { phone_number, tenant_id } = req.body;
+            const chatId = (req.body?.chat_id || req.body?.chatId || '').toString().trim();
 
-            let ticketToClose;
+            let chatToClose = null;
 
-            if (ticket_id) {
-                ticketToClose = { id: ticket_id };
-            } else if (phone_number && tenant_id) {
-                const result = await db.query(
-                    `SELECT id FROM tickets
-                     WHERE tenant_id = $1 AND customer_contact = $2 AND status != 'closed'
-                     ORDER BY created_at DESC LIMIT 1`,
-                    [tenant_id, phone_number]
-                );
-                if (result.rows.length === 0) {
-                    return res.status(404).json({ success: false, error: 'No active ticket found' });
+            if (chatId) {
+                const params = [chatId];
+                let sql = 'SELECT * FROM chats WHERE id = $1';
+                if (tenant_id) {
+                    sql += ' AND tenant_id = $2';
+                    params.push(tenant_id);
                 }
-                ticketToClose = result.rows[0];
+                const chatRes = await db.query(sql, params);
+                chatToClose = chatRes.rows[0];
+                if (!chatToClose) {
+                    return res.status(404).json({ success: false, error: 'Chat tidak ditemukan' });
+                }
+            } else if (phone_number && tenant_id) {
+                const { chat } = await resolveChatByPhone({
+                    tenantId: tenant_id,
+                    phoneNumber: phone_number,
+                    createIfMissing: false
+                });
+                if (!chat || chat.status === 'closed') {
+                    return res.status(404).json({ success: false, error: 'No active chat found' });
+                }
+                chatToClose = chat;
             } else {
                 return res.status(400).json({
                     success: false,
-                    error: 'ticket_id or (phone_number + tenant_id) required'
+                    error: 'chat_id or (phone_number + tenant_id) required'
                 });
             }
 
-            const updated = await db.updateTicketStatus(ticketToClose.id, 'closed');
+            const updatedRes = await db.query(
+                'UPDATE chats SET status = $1, updated_at = now() WHERE id = $2 RETURNING *',
+                ['closed', chatToClose.id]
+            );
+            const updated = updatedRes.rows[0];
 
             res.json({
                 success: true,
-                ticket_id: updated.id,
+                chat_id: updated?.id || chatToClose.id,
                 status: 'closed'
             });
 
         } catch (error) {
-            console.error('n8n close-ticket error:', error);
+            console.error('n8n close-chat error:', error);
             res.status(500).json({ success: false, error: error.message });
         }
-    });
+    };
+
+    router.post('/close-chat', closeChatHandler);
 
     return router;
 }

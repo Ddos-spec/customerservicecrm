@@ -51,12 +51,11 @@ function buildMessagesRouter(deps) {
 
         const rawPhone = (req.body?.phone || req.body?.to || '').toString().trim();
         const messageText = (req.body?.message_text || req.body?.text || '').toString().trim();
-        const ticketId = (req.body?.ticket_id || req.body?.ticketId || '').toString().trim();
+        const chatId = (req.body?.chat_id || req.body?.chatId || '').toString().trim();
         const isGroup = req.body?.is_group === true || rawPhone.endsWith('@g.us');
 
         if (!rawPhone) return res.status(400).json({ status: 'error', message: 'Nomor tujuan wajib diisi' });
         if (!messageText) return res.status(400).json({ status: 'error', message: 'Pesan tidak boleh kosong' });
-        if (!ticketId) return res.status(400).json({ status: 'error', message: 'ticket_id wajib diisi' });
         if (!isGroup && !isValidPhoneNumber(rawPhone)) return res.status(400).json({ status: 'error', message: 'Format nomor tidak valid' });
         if (messageText.length > 4096) return res.status(400).json({ status: 'error', message: 'Pesan terlalu panjang' });
 
@@ -73,7 +72,21 @@ function buildMessagesRouter(deps) {
 
             if (!sessionId) return res.status(400).json({ status: 'error', message: 'Session WA belum diatur' });
 
-            const chat = await db.getOrCreateChat(user.tenant_id, destination, null, isGroup);
+            let chat = null;
+            if (chatId) {
+                const chatRes = await db.query(
+                    'SELECT * FROM chats WHERE id = $1 AND tenant_id = $2',
+                    [chatId, user.tenant_id]
+                );
+                chat = chatRes.rows[0] || null;
+                if (!chat) {
+                    return res.status(404).json({ status: 'error', message: 'Chat tidak ditemukan' });
+                }
+            }
+
+            if (!chat) {
+                chat = await db.getOrCreateChat(user.tenant_id, destination, null, isGroup);
+            }
 
             // Internal Rate Limit (Tenant level)
             // (Optional: can be re-implemented for Chats if needed)

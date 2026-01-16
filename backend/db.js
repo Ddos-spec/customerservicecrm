@@ -183,7 +183,13 @@ async function logMessage({ chatId, senderType, senderId, senderName, messageTyp
     return res.rows[0];
 }
 
-async function getChatsByTenant(tenantId, limit = 50, offset = 0) {
+async function getChatsByTenant(tenantId, limit = 50, offset = 0, status = null) {
+    const params = [tenantId, limit, offset];
+    const normalizedStatus = typeof status === 'string' && status.trim() !== '' ? status.trim() : null;
+    const statusFilter = normalizedStatus
+        ? `AND COALESCE(c.status, 'open') = $${params.push(normalizedStatus)}`
+        : '';
+
     const result = await query(`
         SELECT
             COALESCE(c.id, gen_random_uuid()) as id,
@@ -212,11 +218,12 @@ async function getChatsByTenant(tenantId, limit = 50, offset = 0) {
           AND con.jid NOT LIKE '%@broadcast'
           AND con.jid NOT LIKE '%@lid'
           AND con.jid NOT LIKE '%@newsletter'
+          ${statusFilter}
         ORDER BY
             c.updated_at DESC NULLS LAST,
             con.updated_at DESC
         LIMIT $2 OFFSET $3
-    `, [tenantId, limit, offset]);
+    `, params);
     return result.rows;
 }
 
@@ -251,8 +258,26 @@ async function markChatAsRead(chatId) {
 
 async function getDashboardStats(tenantId) {
     const [chatStats, userStats] = await Promise.all([
-        query('SELECT COUNT(*) as total_chats, SUM(unread_count) as total_unread FROM chats WHERE tenant_id = $1', [tenantId]),
-        query('SELECT COUNT(*) as total_users FROM users WHERE tenant_id = $1', [tenantId])
+        query(`
+            SELECT
+                COUNT(*) as total_chats,
+                COALESCE(SUM(unread_count), 0) as total_unread,
+                COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'open') as open_chats,
+                COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'pending') as pending_chats,
+                COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'closed') as closed_chats,
+                COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'escalated') as escalated_chats,
+                COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) as today_chats
+            FROM chats
+            WHERE tenant_id = $1
+        `, [tenantId]),
+        query(`
+            SELECT
+                COUNT(*) as total_users,
+                COUNT(*) FILTER (WHERE role = 'admin_agent') as admin_count,
+                COUNT(*) FILTER (WHERE role = 'agent') as agent_count
+            FROM users
+            WHERE tenant_id = $1
+        `, [tenantId])
     ]);
     return {
         chats: chatStats.rows[0],
@@ -263,8 +288,24 @@ async function getDashboardStats(tenantId) {
 async function getSuperAdminStats() {
     const [tenantStats, userStats, chatStats] = await Promise.all([
         query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'active') as active FROM tenants"),
-        query('SELECT COUNT(*) as total FROM users'),
-        query('SELECT COUNT(*) as total, SUM(unread_count) as total_unread FROM chats')
+        query(`
+            SELECT
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE role = 'admin_agent') as admin_count,
+                COUNT(*) FILTER (WHERE role = 'agent') as agent_count
+            FROM users
+        `),
+        query(`
+            SELECT
+                COUNT(*) as total,
+                COALESCE(SUM(unread_count), 0) as total_unread,
+                COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'open') as open_chats,
+                COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'pending') as pending_chats,
+                COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'closed') as closed_chats,
+                COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'escalated') as escalated_chats,
+                COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) as today_chats
+            FROM chats
+        `)
     ]);
     return {
         tenants: tenantStats.rows[0],

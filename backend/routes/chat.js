@@ -41,7 +41,9 @@ function buildChatRouter(deps) {
                 try {
                     const limit = parseInt(req.query.limit) || 50;
                     const offset = parseInt(req.query.offset) || 0;
-                    const chats = await db.getChatsByTenant(req.query.tenant_id, limit, offset);
+                    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+                    const normalizedStatus = status && status !== 'all' ? status : null;
+                    const chats = await db.getChatsByTenant(req.query.tenant_id, limit, offset, normalizedStatus);
                     return res.json({ status: 'success', data: chats });
                 } catch (error) {
                     return res.status(500).json({ status: 'error', message: error.message });
@@ -56,7 +58,9 @@ function buildChatRouter(deps) {
         try {
             const limit = parseInt(req.query.limit) || 50;
             const offset = parseInt(req.query.offset) || 0;
-            const chats = await db.getChatsByTenant(user.tenant_id, limit, offset);
+            const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+            const normalizedStatus = status && status !== 'all' ? status : null;
+            const chats = await db.getChatsByTenant(user.tenant_id, limit, offset, normalizedStatus);
             res.json({ status: 'success', data: chats });
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });

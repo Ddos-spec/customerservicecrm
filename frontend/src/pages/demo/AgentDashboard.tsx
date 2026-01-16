@@ -58,7 +58,7 @@ const AgentDashboard = () => {
   const sessionId = user?.tenant_session_id || '';
 
   const [stats, setStats] = useState<any>(null);
-  const [recentTickets, setRecentTickets] = useState<any[]>([]);
+  const [recentChatData, setRecentChatData] = useState<any[]>([]);
 
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>(isDemo ? 'connected' : 'disconnected');
   const [qrUrl, setQrUrl] = useState('');
@@ -84,16 +84,16 @@ const AgentDashboard = () => {
   const fetchDashboard = useCallback(async () => {
     if (isDemo) return;
     try {
-      const [statsRes, ticketsRes] = await Promise.all([
+      const [statsRes, chatsRes] = await Promise.all([
         api.get('/admin/stats'),
-        api.get('/admin/tickets?limit=6&offset=0')
+        api.get('/chats?limit=6&offset=0')
       ]);
 
       if (statsRes.data?.success) {
         setStats(statsRes.data.stats);
       }
-      if (ticketsRes.data?.success) {
-        setRecentTickets(ticketsRes.data.tickets || []);
+      if (chatsRes.data?.status === 'success') {
+        setRecentChatData(chatsRes.data.data || []);
       }
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
@@ -190,46 +190,46 @@ const AgentDashboard = () => {
     return () => clearInterval(interval);
   }, [isDemo, fetchSessionStatus]);
 
-  const totalTickets = toNumber(stats?.tickets?.total_tickets);
-  const openTickets = toNumber(stats?.tickets?.open_tickets);
-  const pendingTickets = toNumber(stats?.tickets?.pending_tickets);
-  const closedTickets = toNumber(stats?.tickets?.closed_tickets);
-  const todayTickets = toNumber(stats?.tickets?.today_tickets);
-  const avgResponseMinutes = Number(stats?.tickets?.avg_response_minutes);
+  const totalChats = toNumber(stats?.chats?.total_chats);
+  const openChats = toNumber(stats?.chats?.open_chats);
+  const pendingChats = toNumber(stats?.chats?.pending_chats);
+  const closedChats = toNumber(stats?.chats?.closed_chats);
+  const todayChats = toNumber(stats?.chats?.today_chats);
+  const avgResponseMinutes = Number(stats?.chats?.avg_response_minutes);
   const avgResponseLabel = Number.isFinite(avgResponseMinutes) ? `${avgResponseMinutes.toFixed(1)} mnt` : '-';
-  const satisfactionScore = totalTickets > 0 ? ((closedTickets / totalTickets) * 5).toFixed(1) : '0.0';
+  const satisfactionScore = totalChats > 0 ? ((closedChats / totalChats) * 5).toFixed(1) : '0.0';
 
   const statCards = useMemo(() => (
     isDemo ? DEMO_STATS : [
-      { label: 'Total Chat Hari Ini', value: String(todayTickets), icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', trend: `${totalTickets} Total` },
-      { label: 'Waktu Respon Rata-rata', value: avgResponseLabel, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', trend: `${openTickets} Open` },
-      { label: 'Kepuasan Pelanggan', value: `${satisfactionScore}/5`, icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: `${closedTickets} Closed` },
-      { label: 'Chat Terselesaikan', value: String(closedTickets), icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50', trend: `${pendingTickets} Pending` },
+      { label: 'Total Chat Hari Ini', value: String(todayChats), icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-50', trend: `${totalChats} Total` },
+      { label: 'Waktu Respon Rata-rata', value: avgResponseLabel, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', trend: `${openChats} Open` },
+      { label: 'Kepuasan Pelanggan', value: `${satisfactionScore}/5`, icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: `${closedChats} Closed` },
+      { label: 'Chat Terselesaikan', value: String(closedChats), icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50', trend: `${pendingChats} Pending` },
     ]
-  ), [isDemo, todayTickets, totalTickets, avgResponseLabel, openTickets, satisfactionScore, closedTickets, pendingTickets]);
+  ), [isDemo, todayChats, totalChats, avgResponseLabel, openChats, satisfactionScore, closedChats, pendingChats]);
 
   const recentChats = useMemo(() => (
-    isDemo ? DEMO_RECENT_CHATS : recentTickets.slice(0, 4).map((t) => {
-      const name = t.customer_name || t.customer_contact || `Customer #${t.id}`;
+    isDemo ? DEMO_RECENT_CHATS : recentChatData.slice(0, 4).map((chat) => {
+      const name = chat.display_name || chat.phone_number || `Customer #${chat.id}`;
       const initials = name.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase();
       return {
-        id: t.id,
+        id: chat.id,
         name,
-        message: t.last_message || 'Belum ada pesan',
-        time: formatRelativeTime(t.last_message_at || t.updated_at || t.created_at),
-        status: t.last_sender_type === 'customer' ? 'unread' : 'read',
+        message: chat.last_message_preview || 'Belum ada pesan',
+        time: formatRelativeTime(chat.last_message_time || chat.updated_at || chat.created_at),
+        status: (chat.unread_count || 0) > 0 ? 'unread' : 'read',
         avatar: initials
       };
     })
-  ), [isDemo, recentTickets]);
+  ), [isDemo, recentChatData]);
 
   const teamActivity = useMemo(() => (
-    isDemo ? DEMO_ACTIVITY : recentTickets.slice(0, 3).map((t) => ({
-      user: t.agent_name || 'Unassigned',
-      action: t.status === 'closed' ? `Menutup tiket #${t.id}` : `Update tiket #${t.id}`,
-      time: formatRelativeTime(t.updated_at || t.created_at)
+    isDemo ? DEMO_ACTIVITY : recentChatData.slice(0, 3).map((chat) => ({
+      user: chat.agent_name || 'Unassigned',
+      action: chat.status === 'closed' ? `Menutup chat #${chat.id}` : `Update chat #${chat.id}`,
+      time: formatRelativeTime(chat.updated_at || chat.created_at)
     }))
-  ), [isDemo, recentTickets]);
+  ), [isDemo, recentChatData]);
 
   // Handle help form submit
   const handleHelpSubmit = () => {

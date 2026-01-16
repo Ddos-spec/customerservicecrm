@@ -308,7 +308,7 @@ const AgentWorkspace = () => {
       const res = await api.post('/internal/messages', {
         phone: recipient,
         message_text: textToSend,
-        ticket_id: selectedChat.id, // Sending Chat ID as ticket_id for compatibility
+        chat_id: selectedChat.id,
         is_group: selectedChat.is_group
       });
 
