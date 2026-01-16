@@ -13,6 +13,20 @@ const SuperAdminApiDocs = () => {
 
   const docs = [
     {
+      title: 'Direct Send (API Token)',
+      description: 'Kirim pesan WhatsApp langsung via API token per session (per nomor).',
+      icon: <Terminal className="text-slate-500" />,
+      curl: `curl -X POST "${apiUrl}/messages" \
+  -H "Content-Type: application/json" \
+  -H "apikey: SESSION_TOKEN" \
+  -d '{ 
+    "sessionId": "628123456789",
+    "to": "628123456789",
+    "type": "text",
+    "text": { "body": "Halo! Ini pesan otomatis." }
+  }'`
+    },
+    {
       title: 'Incoming Message Log',
       description: 'Gunakan ini untuk mencatat pesan yang masuk dari customer ke database CRM.',
       icon: <MessageSquare className="text-emerald-500" />,
@@ -79,8 +93,8 @@ const SuperAdminApiDocs = () => {
             <div>
               <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">Security Note</h3>
               <p className="text-emerald-700/80 dark:text-emerald-300/80 text-sm mt-1 leading-relaxed">
-                Semua request wajib menyertakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code>. 
-                Pastikan variabel <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">N8N_API_KEY</code> sudah diatur di file <code className="italic">.env</code> backend lu.
+                Endpoint <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n</code> pakai header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code> (isi dari <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">N8N_API_KEY</code>).
+                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages</code> gunakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">apikey</code> (token per session, bisa diambil di menu Tenant).
               </p>
             </div>
           </div>

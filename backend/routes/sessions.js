@@ -21,6 +21,17 @@ function buildSessionsRouter(deps) {
         refreshSession,
     } = deps;
 
+    const requireSuperAdminSession = (req, res, next) => {
+        const user = req.session?.user;
+        if (!user) {
+            return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
+        if (user.role !== 'super_admin') {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+        return next();
+    };
+
     router.post('/sessions', async (req, res) => {
         // ... (truncated for brevity, logic remains same)
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
@@ -190,6 +201,52 @@ function buildSessionsRouter(deps) {
         } catch (error) {
             log('API error', 'SYSTEM', { event: 'api-error', error: error.message, endpoint: req.originalUrl });
             res.status(500).json({ status: 'error', message: `Failed to regenerate token: ${error.message}` });
+        }
+    });
+
+    router.get('/sessions/:sessionId/token', requireSuperAdminSession, async (req, res) => {
+        const sessionId = (req.params.sessionId || '').toString().trim();
+        if (!sessionId) {
+            return res.status(400).json({ status: 'error', message: 'sessionId is required' });
+        }
+        const token = sessionTokens.get(sessionId) || null;
+        const session = sessions.get(sessionId);
+        return res.status(200).json({
+            status: 'success',
+            sessionId,
+            token,
+            connected: session?.status || 'UNKNOWN'
+        });
+    });
+
+    router.post('/sessions/:sessionId/token', requireSuperAdminSession, async (req, res) => {
+        const sessionId = (req.params.sessionId || '').toString().trim();
+        const regenerate = req.body?.regenerate === true;
+        if (!sessionId) {
+            return res.status(400).json({ status: 'error', message: 'sessionId is required' });
+        }
+
+        const existing = sessionTokens.get(sessionId);
+        if (existing && !regenerate) {
+            return res.status(200).json({
+                status: 'success',
+                sessionId,
+                token: existing,
+                regenerated: false
+            });
+        }
+
+        try {
+            const token = await regenerateSessionToken(sessionId);
+            return res.status(200).json({
+                status: 'success',
+                sessionId,
+                token,
+                regenerated: true
+            });
+        } catch (error) {
+            log('API error', 'SYSTEM', { event: 'api-error', error: error.message, endpoint: req.originalUrl });
+            return res.status(500).json({ status: 'error', message: `Failed to generate token: ${error.message}` });
         }
     });
 

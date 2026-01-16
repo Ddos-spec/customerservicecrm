@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, MoreVertical, Building2, X, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, Search, MoreVertical, Building2, X, Loader2, RefreshCw, Trash2, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
 import api from '../lib/api';
@@ -33,6 +33,7 @@ const TenantManagement = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 7;
+  const apiUrl = import.meta.env.VITE_API_URL || window.location.origin + '/api/v1';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
@@ -51,6 +52,11 @@ const TenantManagement = () => {
   const [sessionIdInput, setSessionIdInput] = useState('');
   const [gatewayUrlInput, setGatewayUrlInput] = useState('');
   const [isSessionSaving, setIsSessionSaving] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [sessionTokenSessionId, setSessionTokenSessionId] = useState('');
+  const [isSessionTokenLoading, setIsSessionTokenLoading] = useState(false);
+  const [isSessionTokenRegenerating, setIsSessionTokenRegenerating] = useState(false);
+  const [showSessionToken, setShowSessionToken] = useState(false);
 
   // Admin Management State
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
@@ -283,12 +289,71 @@ const TenantManagement = () => {
     }
   };
 
+  const fetchSessionToken = async (sessionId: string, options: { silent?: boolean } = {}) => {
+    const trimmed = sessionId.trim();
+    if (!trimmed) return;
+    setIsSessionTokenLoading(true);
+    try {
+      const res = await api.get(`/sessions/${encodeURIComponent(trimmed)}/token`);
+      if (res.data?.status === 'success') {
+        setSessionToken(res.data.token || null);
+        setSessionTokenSessionId(trimmed);
+        if (!res.data.token && !options.silent) {
+          toast.info('Token belum dibuat. Klik Generate untuk membuat.');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch session token:', error);
+      if (!options.silent) {
+        toast.error('Gagal memuat token session');
+      }
+    } finally {
+      setIsSessionTokenLoading(false);
+    }
+  };
+
+  const handleRegenerateSessionToken = async () => {
+    const trimmed = sessionIdInput.trim();
+    if (!trimmed) {
+      toast.error('Session ID harus diisi dulu');
+      return;
+    }
+    if (!confirm('Regenerate token? Token lama akan tidak berlaku.')) return;
+    setIsSessionTokenRegenerating(true);
+    try {
+      const res = await api.post(`/sessions/${encodeURIComponent(trimmed)}/token`, { regenerate: true });
+      if (res.data?.status === 'success') {
+        setSessionToken(res.data.token || null);
+        setSessionTokenSessionId(trimmed);
+        setShowSessionToken(true);
+        toast.success('Token berhasil diperbarui');
+      }
+    } catch (error: any) {
+      console.error('Failed to regenerate session token:', error);
+      toast.error(error.response?.data?.message || 'Gagal regenerate token');
+    } finally {
+      setIsSessionTokenRegenerating(false);
+    }
+  };
+
+  const handleCopySessionToken = async () => {
+    if (!sessionToken) return;
+    await navigator.clipboard.writeText(sessionToken);
+    toast.success('Token disalin');
+  };
+
   const openSessionModal = (tenant: Tenant) => {
     setActiveDropdown(null);
     setSessionTenant(tenant);
     setSessionIdInput(tenant.session_id || '');
     setGatewayUrlInput(tenant.gateway_url || '');
+    setSessionToken(null);
+    setSessionTokenSessionId('');
+    setShowSessionToken(false);
     setIsSessionModalOpen(true);
+    if (tenant.session_id) {
+      void fetchSessionToken(tenant.session_id, { silent: true });
+    }
   };
 
   const closeSessionModal = () => {
@@ -296,7 +361,19 @@ const TenantManagement = () => {
     setSessionTenant(null);
     setSessionIdInput('');
     setGatewayUrlInput('');
+    setSessionToken(null);
+    setSessionTokenSessionId('');
+    setShowSessionToken(false);
   };
+
+  useEffect(() => {
+    const trimmed = sessionIdInput.trim();
+    if (sessionTokenSessionId && trimmed && trimmed !== sessionTokenSessionId) {
+      setSessionToken(null);
+      setSessionTokenSessionId('');
+      setShowSessionToken(false);
+    }
+  }, [sessionIdInput, sessionTokenSessionId]);
 
   const handleSaveSessionId = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -783,6 +860,65 @@ const TenantManagement = () => {
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
                   Kosongkan untuk pakai gateway default.
                 </p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">API Token</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Token ini dipakai buat header <span className="font-bold">apikey</span>.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isSessionTokenLoading}
+                      onClick={() => fetchSessionToken(sessionIdInput)}
+                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
+                    >
+                      {isSessionTokenLoading ? 'Loading...' : 'Load'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSessionTokenRegenerating}
+                      onClick={handleRegenerateSessionToken}
+                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
+                    >
+                      {isSessionTokenRegenerating ? 'Generating...' : 'Generate'}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={sessionToken ? (showSessionToken ? sessionToken : '********') : '-'}
+                    className="flex-1 p-3 bg-white dark:bg-slate-900 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-slate-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSessionToken((prev) => !prev)}
+                    disabled={!sessionToken}
+                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
+                  >
+                    {showSessionToken ? 'Hide' : 'Show'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopySessionToken}
+                    disabled={!sessionToken}
+                    className="p-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
+                    title="Copy token"
+                  >
+                    <Copy size={14} />
+                  </button>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">Contoh cURL (langsung kirim pesan):</p>
+                  <pre className="bg-slate-900 text-slate-300 p-4 rounded-xl overflow-x-auto font-mono text-[11px] leading-relaxed border border-slate-800">
+{`curl -X POST "${apiUrl}/messages" \\
+  -H "Content-Type: application/json" \\
+  -H "apikey: ${sessionToken || 'SESSION_TOKEN'}" \\
+  -d '{ "sessionId": "${sessionIdInput.trim() || '628123456789'}", "to": "628123456789", "type": "text", "text": { "body": "Halo!" } }'`}
+                  </pre>
+                </div>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 Kosongkan untuk melepas session dari tenant ini.
