@@ -28,11 +28,20 @@ interface GatewayHealth {
   is_default: boolean;
   tenant_count: number;
   session_count: number;
+  max_sessions?: number | null;
+  over_capacity?: boolean;
   health: {
     status: string | boolean;
     message?: string | null;
     checked_at?: string;
   };
+}
+
+interface InfraHealth {
+  status: string;
+  postgres?: { status: string; message?: string | null };
+  redis?: { status: string; message?: string | null };
+  gateway_default?: { status: string | boolean; message?: string | null };
 }
 
 const SuperAdminDashboard = () => {
@@ -45,6 +54,7 @@ const SuperAdminDashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [notifierSessionId, setNotifierSessionId] = useState<string | null>(null);
   const [gatewayHealth, setGatewayHealth] = useState<GatewayHealth[]>([]);
+  const [infraHealth, setInfraHealth] = useState<InfraHealth | null>(null);
   
   const ws = useRef<WebSocket | null>(null);
 
@@ -65,6 +75,14 @@ const SuperAdminDashboard = () => {
         }
         if (notifierRes.data.success) {
             setNotifierSessionId(notifierRes.data.notifier_session_id || null);
+        }
+
+        try {
+            const infraRes = await api.get('/health/infra');
+            setInfraHealth(infraRes.data || null);
+        } catch (error) {
+            console.error('Failed to fetch infra health:', error);
+            setInfraHealth(null);
         }
 
         try {
@@ -137,6 +155,22 @@ const SuperAdminDashboard = () => {
     ? sessions.length
     : (stats?.whatsapp_sessions?.total || 0);
   const connectedCount = sessions.filter(s => s.status === 'CONNECTED').length;
+
+  const resolveStatus = (status?: string | boolean) => {
+    const healthy = status === true || status === 'ok' || status === 'success';
+    if (typeof status === 'undefined' || status === null) {
+      return { label: 'Unknown', tone: 'text-gray-400 dark:text-gray-500' };
+    }
+    return healthy
+      ? { label: 'Active', tone: 'text-emerald-600 dark:text-emerald-400' }
+      : { label: 'Down', tone: 'text-rose-600 dark:text-rose-400' };
+  };
+
+  const mainNodeStatus = infraHealth?.status === 'degraded'
+    ? { label: 'Degraded', tone: 'text-amber-600 dark:text-amber-400' }
+    : resolveStatus(infraHealth?.status);
+  const postgresStatus = resolveStatus(infraHealth?.postgres?.status);
+  const redisStatus = resolveStatus(infraHealth?.redis?.status);
 
   const formatGatewayLabel = (url: string) => {
     try {
@@ -376,14 +410,21 @@ const SuperAdminDashboard = () => {
                             <Server size={16} />
                             <span>Main Node (Easypanel)</span>
                         </div>
-                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Active</span>
+                        <span className={`text-[10px] font-bold ${mainNodeStatus.tone}`}>{mainNodeStatus.label}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-300">
+                            <Database size={16} />
+                            <span>Postgres</span>
+                        </div>
+                        <span className={`text-[10px] font-bold ${postgresStatus.tone}`}>{postgresStatus.label}</span>
                     </div>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-300">
                             <Database size={16} />
                             <span>Redis Cache</span>
                         </div>
-                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Active</span>
+                        <span className={`text-[10px] font-bold ${redisStatus.tone}`}>{redisStatus.label}</span>
                     </div>
                 </div>
                 <div className="pt-4 mt-4 border-t border-gray-100 dark:border-slate-700">
@@ -399,6 +440,13 @@ const SuperAdminDashboard = () => {
                         {gatewayHealth.length > 0 ? gatewayHealth.map((gateway) => {
                             const status = gateway.health?.status;
                             const isHealthy = status === true || status === 'ok' || status === 'success';
+                            const isOverCapacity = gateway.over_capacity === true;
+                            const statusLabel = isOverCapacity ? 'Over' : isHealthy ? 'Active' : 'Down';
+                            const statusTone = isOverCapacity
+                                ? 'text-amber-600 dark:text-amber-400'
+                                : isHealthy
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-rose-600 dark:text-rose-400';
                             return (
                                 <div key={gateway.url} className="flex items-center justify-between gap-3">
                                     <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-300 min-w-0">
@@ -409,11 +457,12 @@ const SuperAdminDashboard = () => {
                                             </div>
                                             <div className="text-[10px] text-gray-400 dark:text-gray-500">
                                                 {gateway.tenant_count} tenants · {gateway.session_count} sessions
+                                                {gateway.max_sessions ? ` · limit ${gateway.max_sessions}` : ''}
                                             </div>
                                         </div>
                                     </div>
-                                    <span className={`text-[10px] font-bold ${isHealthy ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                        {isHealthy ? 'Active' : 'Down'}
+                                    <span className={`text-[10px] font-bold ${statusTone}`}>
+                                        {statusLabel}
                                     </span>
                                 </div>
                             );
