@@ -15,7 +15,7 @@ for super admin, owner (tenant), and staff.
 ## Phase tracker
 - Phase 1 (Session reliability): done.
 - Phase 2 (Multi-gateway routing + tenant assignment): done.
-- Phase 3 (Scale hardening + observability): pending.
+- Phase 3 (Scale hardening + observability): done.
 - Phase 4 (Launch readiness): pending.
 
 ## Roles and capabilities
@@ -100,6 +100,7 @@ Webhook and automation:
 - Ticketing is removed; chats are the primary unit.
 - Multi-gateway routing uses tenants.gateway_url; empty uses default gateway.
 - Session status is persisted in Redis and rehydrated on startup.
+- Super admin can query gateway fleet health via `/api/v1/admin/gateways/health`.
 
 ## Future (if needed)
 - Per-gateway health checks and dashboards.
