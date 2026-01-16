@@ -31,6 +31,7 @@ const axios = require('axios');
 // Go WhatsApp Gateway Client
 const waGateway = require('./wa-gateway-client');
 const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
+const { getGatewayHealthSummary } = require('./utils/gateway-health');
 
 const SESSION_STATUS_TTL_SEC = parseInt(process.env.SESSION_STATUS_TTL_SEC || `${7 * 24 * 60 * 60}`, 10);
 const CONTACT_SYNC_INTERVAL_MINUTES = parseInt(process.env.CONTACT_SYNC_INTERVAL_MINUTES || '360', 10);
@@ -40,6 +41,7 @@ const MESSAGE_SEND_RETRIES = parseInt(process.env.MESSAGE_SEND_RETRIES || '2', 1
 const MESSAGE_SEND_RETRY_DELAY_MS = parseInt(process.env.MESSAGE_SEND_RETRY_DELAY_MS || '2000', 10);
 const MESSAGE_SEND_RETRY_BACKOFF = parseFloat(process.env.MESSAGE_SEND_RETRY_BACKOFF || '2');
 const MESSAGE_SEND_QUEUE_DELAY_MS = parseInt(process.env.MESSAGE_SEND_QUEUE_DELAY_MS || '2000', 10);
+const HEALTH_CHECK_TOKEN = process.env.HEALTH_CHECK_TOKEN || '';
 
 const app = express();
 // Detect production if NODE_ENV is set OR if FRONTEND_URL is https (common in deployments)
@@ -820,6 +822,41 @@ app.use(session({
     }
 }));
 
+function isHealthyStatus(value) {
+    return value === true || value === 'ok' || value === 'success';
+}
+
+async function checkPostgresHealth() {
+    try {
+        await db.query('SELECT 1');
+        return { status: 'ok' };
+    } catch (error) {
+        return { status: 'error', message: error.message };
+    }
+}
+
+async function checkRedisHealth(client) {
+    if (!client?.isOpen) {
+        return { status: 'error', message: 'Redis not connected' };
+    }
+    try {
+        await client.ping();
+        return { status: 'ok' };
+    } catch (error) {
+        return { status: 'error', message: error.message };
+    }
+}
+
+function ensureHealthToken(req, res) {
+    if (!HEALTH_CHECK_TOKEN) return true;
+    const token = req.headers['x-health-token'];
+    if (token !== HEALTH_CHECK_TOKEN) {
+        res.status(401).json({ status: 'error', message: 'Unauthorized' });
+        return false;
+    }
+    return true;
+}
+
 // --- Health Check Endpoints ---
 app.get('/', (req, res) => res.json({
     status: 'online',
@@ -840,6 +877,49 @@ app.get('/api/v1/gateway/health', async (req, res) => {
     } catch (error) {
         res.status(503).json({ status: 'error', message: error.message });
     }
+});
+
+app.get('/api/v1/health/infra', async (req, res) => {
+    if (!ensureHealthToken(req, res)) return;
+
+    const [postgres, redis, gatewayDefault] = await Promise.all([
+        checkPostgresHealth(),
+        checkRedisHealth(redisClient),
+        waGateway.checkHealth()
+    ]);
+
+    let gateways = [];
+    let gatewayError = null;
+    if (postgres.status === 'ok') {
+        try {
+            const tenants = await db.getAllTenants();
+            gateways = await getGatewayHealthSummary(tenants);
+        } catch (error) {
+            gatewayError = error.message;
+        }
+    } else {
+        gatewayError = 'Postgres unavailable';
+    }
+
+    const gatewayIssues = gateways.length > 0
+        ? gateways.filter(g => !isHealthyStatus(g.health?.status)).length
+        : (isHealthyStatus(gatewayDefault?.status) ? 0 : 1);
+
+    const status = (postgres.status !== 'ok' || redis.status !== 'ok')
+        ? 'error'
+        : gatewayIssues > 0
+            ? 'degraded'
+            : 'ok';
+
+    res.json({
+        status,
+        timestamp: new Date().toISOString(),
+        postgres,
+        redis,
+        gateway_default: gatewayDefault,
+        gateways,
+        gateway_error: gatewayError
+    });
 });
 
 // DEBUG: Check Session/Proxy Config

@@ -2,6 +2,8 @@ const waGateway = require('../wa-gateway-client');
 
 const DEFAULT_GATEWAY_URL = process.env.WA_GATEWAY_URL || 'http://localhost:3001/api/v1/whatsapp';
 const HEALTH_TTL_MS = parseInt(process.env.GATEWAY_HEALTH_TTL_MS || '30000', 10);
+const MAX_SESSIONS_RAW = Number.parseInt(process.env.GATEWAY_MAX_SESSIONS || '0', 10);
+const MAX_SESSIONS = Number.isFinite(MAX_SESSIONS_RAW) && MAX_SESSIONS_RAW > 0 ? MAX_SESSIONS_RAW : 0;
 
 const healthCache = new Map();
 
@@ -37,7 +39,11 @@ function buildGatewaySummary(tenants = []) {
         }
     });
 
-    return Array.from(map.values()).sort((a, b) => {
+    return Array.from(map.values()).map((entry) => ({
+        ...entry,
+        max_sessions: MAX_SESSIONS || null,
+        over_capacity: MAX_SESSIONS > 0 ? entry.session_count > MAX_SESSIONS : false
+    })).sort((a, b) => {
         if (a.is_default && !b.is_default) return -1;
         if (!a.is_default && b.is_default) return 1;
         return a.url.localeCompare(b.url);
