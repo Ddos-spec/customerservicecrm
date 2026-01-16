@@ -9,21 +9,40 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const GATEWAY_URL = process.env.WA_GATEWAY_URL || 'http://localhost:3001/api/v1/whatsapp';
+const DEFAULT_GATEWAY_URL = process.env.WA_GATEWAY_URL || 'http://localhost:3001/api/v1/whatsapp';
 const GATEWAY_TIMEOUT = parseInt(process.env.WA_GATEWAY_TIMEOUT || '30000', 10);
 
-// Create axios instance with default config
-const gatewayClient = axios.create({
-    baseURL: GATEWAY_URL,
-    timeout: GATEWAY_TIMEOUT,
-    maxBodyLength: Infinity,
-    headers: {
-        'Content-Type': 'application/json',
-    },
-});
+const gatewayClients = new Map();
+
+function normalizeGatewayUrl(url) {
+    const trimmed = (url || '').toString().trim();
+    if (!trimmed) return '';
+    return trimmed.replace(/\/+$/, '');
+}
+
+function getGatewayClient(baseUrl) {
+    const normalized = normalizeGatewayUrl(baseUrl || DEFAULT_GATEWAY_URL);
+    if (!gatewayClients.has(normalized)) {
+        gatewayClients.set(normalized, axios.create({
+            baseURL: normalized,
+            timeout: GATEWAY_TIMEOUT,
+            maxBodyLength: Infinity,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        }));
+    }
+    return gatewayClients.get(normalized);
+}
+
+// Default client (fallback)
+const gatewayClient = getGatewayClient(DEFAULT_GATEWAY_URL);
 
 // Session tokens cache (JID -> JWT token)
 const sessionTokens = new Map();
+
+// Session -> gateway URL mapping (JID -> gateway URL)
+const sessionGatewayUrls = new Map();
 
 // Error callback for session invalidation
 let onSessionError = null;
@@ -70,6 +89,43 @@ function normalizeJid(jid) {
         clean = '62' + clean.slice(1);
     }
     return clean;
+}
+
+/**
+ * Set the gateway URL for a session
+ */
+function setSessionGatewayUrl(jid, gatewayUrl) {
+    const cleanJid = normalizeJid(jid);
+    if (!cleanJid) return;
+    const normalizedUrl = normalizeGatewayUrl(gatewayUrl);
+    if (!normalizedUrl) {
+        sessionGatewayUrls.delete(cleanJid);
+        return;
+    }
+    sessionGatewayUrls.set(cleanJid, normalizedUrl);
+}
+
+/**
+ * Get the gateway URL for a session (if mapped)
+ */
+function getSessionGatewayUrl(jid) {
+    const cleanJid = normalizeJid(jid);
+    if (!cleanJid) return null;
+    return sessionGatewayUrls.get(cleanJid) || null;
+}
+
+/**
+ * Reset all gateway URL mappings
+ */
+function resetSessionGatewayUrls() {
+    sessionGatewayUrls.clear();
+}
+
+/**
+ * Resolve gateway URL for a session (fallback to default)
+ */
+function resolveGatewayUrl(jid) {
+    return getSessionGatewayUrl(jid) || DEFAULT_GATEWAY_URL;
 }
 
 /**
@@ -214,17 +270,19 @@ async function resolveFileSource(source, fallbackName, fallbackMime = 'applicati
     throw new Error('Media source tidak ditemukan atau tidak didukung');
 }
 
-async function postFormData(route, form, headers = {}) {
+async function postFormData(route, form, headers = {}, sessionId = null) {
     const formHeaders = typeof form.getHeaders === 'function'
         ? form.getHeaders()
         : { 'Content-Type': 'multipart/form-data' };
     const finalHeaders = { ...formHeaders, ...headers };
-    const response = await gatewayClient.post(route, form, { headers: finalHeaders });
+    const client = getGatewayClient(resolveGatewayUrl(sessionId));
+    const response = await client.post(route, form, { headers: finalHeaders });
     return unwrap(response);
 }
 
-async function postUrlEncoded(route, params, headers = {}) {
-    const response = await gatewayClient.post(route, params, {
+async function postUrlEncoded(route, params, headers = {}, sessionId = null) {
+    const client = getGatewayClient(resolveGatewayUrl(sessionId));
+    const response = await client.post(route, params, {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             ...headers,
@@ -233,8 +291,9 @@ async function postUrlEncoded(route, params, headers = {}) {
     return unwrap(response);
 }
 
-async function getWithAuth(route, headers = {}, params = {}) {
-    const response = await gatewayClient.get(route, {
+async function getWithAuth(route, headers = {}, params = {}, sessionId = null) {
+    const client = getGatewayClient(resolveGatewayUrl(sessionId));
+    const response = await client.get(route, {
         headers,
         params,
     });
@@ -246,7 +305,8 @@ async function getWithAuth(route, headers = {}, params = {}) {
  */
 async function authenticate(username, password) {
     try {
-        const response = await gatewayClient.get('/auth', {
+        const client = getGatewayClient(resolveGatewayUrl(username));
+        const response = await client.get('/auth', {
             auth: { username, password },
         });
         const payload = unwrap(response);
@@ -267,7 +327,7 @@ async function authenticate(username, password) {
 async function login(jid) {
     try {
         const form = buildUrlEncoded({ output: 'json' });
-        const payload = await postUrlEncoded('/login', form, getAuthHeader(jid));
+        const payload = await postUrlEncoded('/login', form, getAuthHeader(jid), jid);
         return payload;
     } catch (error) {
         throw new Error(`Login failed: ${error.message}`);
@@ -282,7 +342,7 @@ async function login(jid) {
 async function loginWithPairingCode(jid) {
     try {
         const form = buildUrlEncoded({});
-        const payload = await postUrlEncoded('/login/pair', form, getAuthHeader(jid));
+        const payload = await postUrlEncoded('/login/pair', form, getAuthHeader(jid), jid);
         return payload;
     } catch (error) {
         throw new Error(`Pairing login failed: ${error.message}`);
@@ -296,7 +356,7 @@ async function loginWithPairingCode(jid) {
 async function logout(jid) {
     try {
         const form = buildUrlEncoded({});
-        const payload = await postUrlEncoded('/logout', form, getAuthHeader(jid));
+        const payload = await postUrlEncoded('/logout', form, getAuthHeader(jid), jid);
         removeSessionToken(jid);
         return payload;
     } catch (error) {
@@ -311,7 +371,7 @@ async function logout(jid) {
  */
 async function checkRegistered(jid, phone) {
     try {
-        const payload = await getWithAuth('/registered', getAuthHeader(jid), { msisdn: phone });
+        const payload = await getWithAuth('/registered', getAuthHeader(jid), { msisdn: phone }, jid);
         return payload;
     } catch (error) {
         throw new Error(`Check registered failed: ${error.message}`);
@@ -327,7 +387,7 @@ async function checkRegistered(jid, phone) {
 async function sendText(jid, to, message) {
     try {
         const form = buildUrlEncoded({ msisdn: to, message });
-        return await postUrlEncoded('/send/text', form, getAuthHeader(jid));
+        return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send text failed: ${error.message}`);
@@ -352,7 +412,7 @@ async function sendImage(jid, to, image, caption = '', viewOnce = false) {
         const { file, filename } = await resolveFileSource(image, 'image');
         formData.append('image', file, filename);
 
-        return await postFormData('/send/image', formData, getAuthHeader(jid));
+        return await postFormData('/send/image', formData, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send image failed: ${error.message}`);
@@ -373,7 +433,7 @@ async function sendDocument(jid, to, document, filename) {
         const { file, filename: resolvedName } = await resolveFileSource(document, filename || 'document');
         formData.append('document', file, resolvedName);
 
-        return await postFormData('/send/document', formData, getAuthHeader(jid));
+        return await postFormData('/send/document', formData, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send document failed: ${error.message}`);
@@ -393,7 +453,7 @@ async function sendAudio(jid, to, audio) {
         const { file, filename } = await resolveFileSource(audio, 'audio');
         formData.append('audio', file, filename);
 
-        return await postFormData('/send/audio', formData, getAuthHeader(jid));
+        return await postFormData('/send/audio', formData, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send audio failed: ${error.message}`);
@@ -417,7 +477,7 @@ async function sendVideo(jid, to, video, caption = '', viewOnce = false) {
         const { file, filename } = await resolveFileSource(video, 'video');
         formData.append('video', file, filename);
 
-        return await postFormData('/send/video', formData, getAuthHeader(jid));
+        return await postFormData('/send/video', formData, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send video failed: ${error.message}`);
@@ -437,7 +497,7 @@ async function sendSticker(jid, to, sticker) {
         const { file, filename } = await resolveFileSource(sticker, 'sticker');
         formData.append('sticker', file, filename);
 
-        return await postFormData('/send/sticker', formData, getAuthHeader(jid));
+        return await postFormData('/send/sticker', formData, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send sticker failed: ${error.message}`);
@@ -454,7 +514,7 @@ async function sendSticker(jid, to, sticker) {
 async function sendLocation(jid, to, latitude, longitude) {
     try {
         const form = buildUrlEncoded({ msisdn: to, latitude, longitude });
-        return await postUrlEncoded('/send/location', form, getAuthHeader(jid));
+        return await postUrlEncoded('/send/location', form, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send location failed: ${error.message}`);
@@ -471,7 +531,7 @@ async function sendLocation(jid, to, latitude, longitude) {
 async function sendContact(jid, to, name, phone) {
     try {
         const form = buildUrlEncoded({ msisdn: to, name, phone });
-        return await postUrlEncoded('/send/contact', form, getAuthHeader(jid));
+        return await postUrlEncoded('/send/contact', form, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send contact failed: ${error.message}`);
@@ -488,7 +548,7 @@ async function sendContact(jid, to, name, phone) {
 async function sendLink(jid, to, url, caption = '') {
     try {
         const form = buildUrlEncoded({ msisdn: to, url, caption });
-        return await postUrlEncoded('/send/link', form, getAuthHeader(jid));
+        return await postUrlEncoded('/send/link', form, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send link failed: ${error.message}`);
@@ -506,7 +566,7 @@ async function sendPoll(jid, to, question, options = [], multiAnswer = false) {
             options: options.join(', '),
             multianswer: String(Boolean(multiAnswer)),
         });
-        return await postUrlEncoded('/send/poll', form, getAuthHeader(jid));
+        return await postUrlEncoded('/send/poll', form, getAuthHeader(jid), jid);
     } catch (error) {
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send poll failed: ${error.message}`);
@@ -519,7 +579,7 @@ async function sendPoll(jid, to, question, options = [], multiAnswer = false) {
  */
 async function getGroups(jid) {
     try {
-        const payload = await getWithAuth('/group', getAuthHeader(jid));
+        const payload = await getWithAuth('/group', getAuthHeader(jid), {}, jid);
         return payload;
     } catch (error) {
         throw new Error(`Get groups failed: ${error.message}`);
@@ -532,7 +592,7 @@ async function getGroups(jid) {
  */
 async function getContacts(jid) {
     try {
-        const payload = await getWithAuth('/contact', getAuthHeader(jid));
+        const payload = await getWithAuth('/contact', getAuthHeader(jid), {}, jid);
         return payload;
     } catch (error) {
         throw new Error(`Get contacts failed: ${error.message}`);
@@ -545,7 +605,7 @@ async function getContacts(jid) {
  */
 async function getContactsFromDB(jid) {
     try {
-        const payload = await getWithAuth('/contact/db', getAuthHeader(jid));
+        const payload = await getWithAuth('/contact/db', getAuthHeader(jid), {}, jid);
         return payload;
     } catch (error) {
         throw new Error(`Get contacts from DB failed: ${error.message}`);
@@ -560,7 +620,7 @@ async function getContactsFromDB(jid) {
 async function joinGroup(jid, link) {
     try {
         const form = buildUrlEncoded({ link });
-        return await postUrlEncoded('/group/join', form, getAuthHeader(jid));
+        return await postUrlEncoded('/group/join', form, getAuthHeader(jid), jid);
     } catch (error) {
         throw new Error(`Join group failed: ${error.message}`);
     }
@@ -575,7 +635,7 @@ async function leaveGroup(jid, groupId) {
     try {
         // Gateway expects "groupid" (no underscore)
         const form = buildUrlEncoded({ groupid: groupId });
-        return await postUrlEncoded('/group/leave', form, getAuthHeader(jid));
+        return await postUrlEncoded('/group/leave', form, getAuthHeader(jid), jid);
     } catch (error) {
         throw new Error(`Leave group failed: ${error.message}`);
     }
@@ -591,7 +651,7 @@ async function leaveGroup(jid, groupId) {
 async function editMessage(jid, to, messageId, newMessage) {
     try {
         const form = buildUrlEncoded({ msisdn: to, messageid: messageId, message: newMessage });
-        return await postUrlEncoded('/message/edit', form, getAuthHeader(jid));
+        return await postUrlEncoded('/message/edit', form, getAuthHeader(jid), jid);
     } catch (error) {
         throw new Error(`Edit message failed: ${error.message}`);
     }
@@ -606,7 +666,7 @@ async function editMessage(jid, to, messageId, newMessage) {
 async function deleteMessage(jid, to, messageId) {
     try {
         const form = buildUrlEncoded({ msisdn: to, messageid: messageId });
-        return await postUrlEncoded('/message/delete', form, getAuthHeader(jid));
+        return await postUrlEncoded('/message/delete', form, getAuthHeader(jid), jid);
     } catch (error) {
         throw new Error(`Delete message failed: ${error.message}`);
     }
@@ -622,7 +682,7 @@ async function deleteMessage(jid, to, messageId) {
 async function reactToMessage(jid, to, messageId, emoji) {
     try {
         const form = buildUrlEncoded({ msisdn: to, messageid: messageId, emoji });
-        return await postUrlEncoded('/message/react', form, getAuthHeader(jid));
+        return await postUrlEncoded('/message/react', form, getAuthHeader(jid), jid);
     } catch (error) {
         throw new Error(`React to message failed: ${error.message}`);
     }
@@ -645,6 +705,11 @@ module.exports = {
     setSessionToken,
     getSessionToken,
     removeSessionToken,
+
+    // Gateway routing
+    setSessionGatewayUrl,
+    getSessionGatewayUrl,
+    resetSessionGatewayUrls,
 
     // Error handling callback
     setSessionErrorCallback,

@@ -18,6 +18,13 @@ async function syncContactsForTenant(tenantId, sessionId) {
     if (!sessionId || !tenantId) return { synced: 0 };
 
     try {
+        if (!waGateway.getSessionGatewayUrl(sessionId)) {
+            const tenant = await db.getTenantById(tenantId);
+            if (tenant?.gateway_url) {
+                waGateway.setSessionGatewayUrl(sessionId, tenant.gateway_url);
+            }
+        }
+
         // Ensure gateway token
         if (!waGateway.getSessionToken(sessionId)) {
             if (!gatewayPassword) return { synced: 0, error: 'No gateway password' };
@@ -519,6 +526,7 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         const adminEmail = (req.body?.admin_email || '').trim();
         const adminPassword = req.body?.admin_password || '';
         const sessionIdRaw = req.body?.session_id;
+        const gatewayUrlRaw = req.body?.gateway_url;
         
         // Normalize Session ID (Force 62 format)
         let sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : '';
@@ -530,6 +538,8 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         }
         
         const normalizedSessionId = sessionId === '' ? null : sessionId;
+        const gatewayUrl = typeof gatewayUrlRaw === 'string' ? gatewayUrlRaw.trim() : '';
+        const normalizedGatewayUrl = gatewayUrl === '' ? null : gatewayUrl;
 
         if (!companyName) {
             return res.status(400).json({ success: false, error: 'Company name is required' });
@@ -539,6 +549,9 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         }
         if (adminPassword.length < 6) {
             return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+        }
+        if (normalizedGatewayUrl && !/^https?:\/\//i.test(normalizedGatewayUrl)) {
+            return res.status(400).json({ success: false, error: 'Gateway URL harus diawali http:// atau https://' });
         }
 
         const existing = await db.findUserByEmail(adminEmail);
@@ -550,10 +563,10 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         try {
             await client.query('BEGIN');
             const tenantResult = await client.query(
-                `INSERT INTO tenants (company_name, status, session_id)
-                 VALUES ($1, 'active', $2)
-                 RETURNING id, company_name, status, created_at, session_id`,
-                [companyName, normalizedSessionId]
+                `INSERT INTO tenants (company_name, status, session_id, gateway_url)
+                 VALUES ($1, 'active', $2, $3)
+                 RETURNING id, company_name, status, created_at, session_id, gateway_url`,
+                [companyName, normalizedSessionId, normalizedGatewayUrl]
             );
             const tenant = tenantResult.rows[0];
 
@@ -566,6 +579,10 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
             );
 
             await client.query('COMMIT');
+
+            if (normalizedSessionId && normalizedGatewayUrl) {
+                waGateway.setSessionGatewayUrl(normalizedSessionId, normalizedGatewayUrl);
+            }
 
             // Notify n8n webhook for new tenant admin
             const currentUser = req.session.user;
@@ -643,18 +660,51 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
     try {
         const { id } = req.params;
         const rawSessionId = req.body?.session_id;
-        
-        let sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
-        if (sessionId) {
-            sessionId = sessionId.replace(/\D/g, '');
-            if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
+        const rawGatewayUrl = req.body?.gateway_url;
+
+        const hasSessionId = typeof rawSessionId !== 'undefined';
+        const hasGatewayUrl = typeof rawGatewayUrl !== 'undefined';
+
+        if (!hasSessionId && !hasGatewayUrl) {
+            return res.status(400).json({ success: false, error: 'Session ID atau Gateway URL diperlukan' });
+        }
+
+        const existingTenant = await db.getTenantById(id);
+        if (!existingTenant) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
         }
         
-        const normalized = sessionId === '' ? null : sessionId;
+        let normalizedSessionId = existingTenant.session_id;
+        if (hasSessionId) {
+            let sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+            if (sessionId) {
+                sessionId = sessionId.replace(/\D/g, '');
+                if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
+            }
+            normalizedSessionId = sessionId === '' ? null : sessionId;
+        }
 
-        const tenant = await db.setTenantSessionId(id, normalized);
-        if (!tenant) {
-            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        let normalizedGatewayUrl = existingTenant.gateway_url;
+        if (hasGatewayUrl) {
+            const gatewayUrl = typeof rawGatewayUrl === 'string' ? rawGatewayUrl.trim() : '';
+            normalizedGatewayUrl = gatewayUrl === '' ? null : gatewayUrl;
+            if (normalizedGatewayUrl && !/^https?:\/\//i.test(normalizedGatewayUrl)) {
+                return res.status(400).json({ success: false, error: 'Gateway URL harus diawali http:// atau https://' });
+            }
+        }
+
+        const tenant = await db.updateTenantSessionGateway(id, normalizedSessionId, normalizedGatewayUrl);
+
+        if (existingTenant.session_id && existingTenant.session_id !== normalizedSessionId) {
+            waGateway.removeSessionToken(existingTenant.session_id);
+            waGateway.setSessionGatewayUrl(existingTenant.session_id, null);
+        }
+
+        if (normalizedSessionId) {
+            if (hasGatewayUrl && existingTenant.gateway_url !== normalizedGatewayUrl) {
+                waGateway.removeSessionToken(normalizedSessionId);
+            }
+            waGateway.setSessionGatewayUrl(normalizedSessionId, normalizedGatewayUrl);
         }
 
         res.json({ success: true, tenant });
@@ -674,9 +724,17 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
 router.delete('/tenants/:id', requireRole('super_admin'), async (req, res) => {
     try {
         const { id } = req.params;
+        const existingTenant = await db.getTenantById(id);
+        if (!existingTenant) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
         const deleted = await db.deleteTenant(id);
         if (!deleted) {
             return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
+        if (existingTenant.session_id) {
+            waGateway.removeSessionToken(existingTenant.session_id);
+            waGateway.setSessionGatewayUrl(existingTenant.session_id, null);
         }
         res.json({ success: true, message: 'Tenant deleted successfully' });
     } catch (error) {
