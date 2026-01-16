@@ -7,14 +7,14 @@ import api from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 
 interface Stats {
-  tickets?: {
-    open_tickets?: number;
-    pending_tickets?: number;
-    escalated_tickets?: number;
-    closed_tickets?: number;
-    total_tickets?: number;
-    today_tickets?: number;
-    avg_response_minutes?: number;
+  chats?: {
+    total_chats?: number;
+    total_unread?: number;
+    open_chats?: number;
+    pending_chats?: number;
+    escalated_chats?: number;
+    closed_chats?: number;
+    today_chats?: number;
   };
   users?: {
     admin_count?: number;
@@ -46,37 +46,22 @@ const AdminReports = () => {
 
   const kpiCards = [
     {
-      label: 'Avg Response Time',
-      value: stats?.tickets?.avg_response_minutes
-        ? `${Math.round(stats.tickets.avg_response_minutes)} min`
-        : 'N/A',
-      icon: Clock,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-      trend: '+12%',
-      trendUp: false
-    },
-    {
-      label: 'Total Tickets',
-      value: stats?.tickets?.total_tickets?.toString() || '0',
       icon: MessageSquare,
       color: 'text-purple-600',
       bg: 'bg-purple-50',
-      trend: `${stats?.tickets?.today_tickets || 0} today`,
+      label: 'Total Chats',
+      value: stats?.chats?.total_chats?.toString() || '0',
+      trend: `${stats?.chats?.today_chats || 0} today`,
       trendUp: true
     },
     {
-      label: 'Resolution Rate',
-      value: stats?.tickets?.total_tickets
-        ? `${Math.round(
-            ((stats.tickets.closed_tickets || 0) / stats.tickets.total_tickets) * 100
-          )}%`
-        : '0%',
-      icon: CheckCircle2,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
-      trend: '+5%',
-      trendUp: true
+      label: 'Unread Chats',
+      value: stats?.chats?.total_unread?.toString() || '0',
+      icon: Clock,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      trend: `${stats?.chats?.open_chats || 0} open`,
+      trendUp: false
     },
     {
       label: 'Active Agents',
@@ -84,44 +69,57 @@ const AdminReports = () => {
       icon: Users,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
-      trend: 'All active',
+      trend: `${stats?.users?.admin_count || 0} admins`,
+      trendUp: true
+    },
+    {
+      label: 'Resolution Rate',
+      value: stats?.chats?.total_chats
+        ? `${Math.round(
+            ((stats.chats.closed_chats || 0) / stats.chats.total_chats) * 100
+          )}%`
+        : '0%',
+      icon: CheckCircle2,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-50',
+      trend: `${stats?.chats?.closed_chats || 0} closed`,
       trendUp: true
     },
   ];
 
-  const ticketBreakdown = [
+  const chatBreakdown = [
     {
-      label: 'Open Tickets',
-      count: stats?.tickets?.open_tickets || 0,
-      percentage: stats?.tickets?.total_tickets
-        ? Math.round(((stats?.tickets?.open_tickets || 0) / stats.tickets.total_tickets) * 100)
+      label: 'Open Chats',
+      count: stats?.chats?.open_chats || 0,
+      percentage: stats?.chats?.total_chats
+        ? Math.round(((stats?.chats?.open_chats || 0) / stats.chats.total_chats) * 100)
         : 0,
       color: 'bg-emerald-500',
       icon: AlertCircle
     },
     {
-      label: 'Pending Tickets',
-      count: stats?.tickets?.pending_tickets || 0,
-      percentage: stats?.tickets?.total_tickets
-        ? Math.round(((stats?.tickets?.pending_tickets || 0) / stats.tickets.total_tickets) * 100)
+      label: 'Pending Chats',
+      count: stats?.chats?.pending_chats || 0,
+      percentage: stats?.chats?.total_chats
+        ? Math.round(((stats?.chats?.pending_chats || 0) / stats.chats.total_chats) * 100)
         : 0,
       color: 'bg-amber-500',
       icon: Clock
     },
     {
-      label: 'Closed Tickets',
-      count: stats?.tickets?.closed_tickets || 0,
-      percentage: stats?.tickets?.total_tickets
-        ? Math.round(((stats?.tickets?.closed_tickets || 0) / stats.tickets.total_tickets) * 100)
+      label: 'Closed Chats',
+      count: stats?.chats?.closed_chats || 0,
+      percentage: stats?.chats?.total_chats
+        ? Math.round(((stats?.chats?.closed_chats || 0) / stats.chats.total_chats) * 100)
         : 0,
       color: 'bg-gray-500',
       icon: CheckCircle2
     },
     {
       label: 'Escalated',
-      count: stats?.tickets?.escalated_tickets || 0,
-      percentage: stats?.tickets?.total_tickets
-        ? Math.round(((stats?.tickets?.escalated_tickets || 0) / stats.tickets.total_tickets) * 100)
+      count: stats?.chats?.escalated_chats || 0,
+      percentage: stats?.chats?.total_chats
+        ? Math.round(((stats?.chats?.escalated_chats || 0) / stats.chats.total_chats) * 100)
         : 0,
       color: 'bg-rose-500',
       icon: TrendingUp
@@ -184,14 +182,14 @@ const AdminReports = () => {
         ))}
       </div>
 
-      {/* Ticket Breakdown */}
+      {/* Chat Breakdown */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Ticket Breakdown</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Chat Breakdown</h2>
           <BarChart3 className="text-gray-400" size={24} />
         </div>
         <div className="space-y-4">
-          {ticketBreakdown.map((item, i) => (
+          {chatBreakdown.map((item, i) => (
             <div key={i}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -225,7 +223,7 @@ const AdminReports = () => {
         <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-8 text-white">
           <Calendar className="mb-4 opacity-80" size={32} />
           <h3 className="text-2xl font-bold mb-2">
-            {stats?.tickets?.today_tickets || 0} Tickets
+            {stats?.chats?.today_chats || 0} Chats
           </h3>
           <p className="text-blue-100">Created today</p>
           <div className="mt-6 pt-6 border-t border-blue-500/30">

@@ -51,9 +51,19 @@ const ChatHistory = () => {
   const fetchHistory = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get('/admin/tickets?status=closed&limit=200');
-      if (res.data.success) {
-        setHistory(res.data.tickets || []);
+      const res = await api.get('/chats', { params: { status: 'closed', limit: 200 } });
+      if (res.data.status === 'success') {
+        const items = (res.data.data || []).map((chat: any) => ({
+          id: chat.id,
+          customer_name: chat.display_name || chat.push_name || 'Customer',
+          customer_contact: chat.phone_number,
+          status: chat.status || 'open',
+          last_message: chat.last_message_preview,
+          agent_name: chat.agent_name,
+          created_at: chat.created_at,
+          updated_at: chat.last_message_time || chat.updated_at || chat.created_at
+        }));
+        setHistory(items);
       }
     } catch (error) {
       console.error('Failed to fetch history:', error);
@@ -87,11 +97,15 @@ const ChatHistory = () => {
     setIsTranscriptLoading(true);
     setSelectedChat({ ...chat, transcript: [] });
     try {
-      const res = await api.get(`/admin/tickets/${chat.id}/messages`);
-      if (res.data.success) {
-        const transcript = (res.data.messages || []).map((msg: any) => ({
-          sender: msg.sender_type === 'customer' ? 'customer' : msg.sender_type === 'ai' ? 'ai' : 'agent',
-          text: msg.message_text || '',
+      const res = await api.get(`/chats/${chat.id}/messages`);
+      if (res.data.status === 'success') {
+        const transcript = (res.data.data || []).map((msg: any) => ({
+          sender: msg.sender_type === 'customer'
+            ? 'customer'
+            : msg.sender_type === 'system'
+              ? 'ai'
+              : 'agent',
+          text: msg.body || '',
           time: formatDateTime(msg.created_at)
         }));
         setSelectedChat({ ...chat, transcript });
