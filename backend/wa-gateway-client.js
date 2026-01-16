@@ -691,9 +691,10 @@ async function reactToMessage(jid, to, messageId, emoji) {
 /**
  * Check gateway health
  */
-async function checkHealth() {
+async function checkHealth(gatewayUrl = null) {
     try {
-        const response = await gatewayClient.get('/');
+        const client = getGatewayClient(gatewayUrl || DEFAULT_GATEWAY_URL);
+        const response = await client.get('/');
         return unwrap(response);
     } catch (error) {
         return { status: 'error', message: error.message };
@@ -710,6 +711,7 @@ module.exports = {
     setSessionGatewayUrl,
     getSessionGatewayUrl,
     resetSessionGatewayUrls,
+    normalizeGatewayUrl,
 
     // Error handling callback
     setSessionErrorCallback,

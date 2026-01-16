@@ -23,6 +23,18 @@ interface Tenant {
   created_at: string;
 }
 
+interface GatewayHealth {
+  url: string;
+  is_default: boolean;
+  tenant_count: number;
+  session_count: number;
+  health: {
+    status: string | boolean;
+    message?: string | null;
+    checked_at?: string;
+  };
+}
+
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
 
@@ -32,6 +44,7 @@ const SuperAdminDashboard = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [notifierSessionId, setNotifierSessionId] = useState<string | null>(null);
+  const [gatewayHealth, setGatewayHealth] = useState<GatewayHealth[]>([]);
   
   const ws = useRef<WebSocket | null>(null);
 
@@ -52,6 +65,16 @@ const SuperAdminDashboard = () => {
         }
         if (notifierRes.data.success) {
             setNotifierSessionId(notifierRes.data.notifier_session_id || null);
+        }
+
+        try {
+            const gatewayRes = await api.get('/admin/gateways/health');
+            if (gatewayRes.data.success) {
+                setGatewayHealth(gatewayRes.data.gateways || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch gateway health:', error);
+            setGatewayHealth([]);
         }
 
         // Try to fetch sessions (may fail if no WhatsApp API token)
@@ -114,6 +137,15 @@ const SuperAdminDashboard = () => {
     ? sessions.length
     : (stats?.whatsapp_sessions?.total || 0);
   const connectedCount = sessions.filter(s => s.status === 'CONNECTED').length;
+
+  const formatGatewayLabel = (url: string) => {
+    try {
+      const parsed = new URL(url);
+      return `${parsed.host}${parsed.pathname}`;
+    } catch {
+      return url;
+    }
+  };
 
   const globalStats = [
     {
@@ -352,6 +384,44 @@ const SuperAdminDashboard = () => {
                             <span>Redis Cache</span>
                         </div>
                         <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">Active</span>
+                    </div>
+                </div>
+                <div className="pt-4 mt-4 border-t border-gray-100 dark:border-slate-700">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                            WA Gateway Fleet
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                            {gatewayHealth.length} Gateways
+                        </span>
+                    </div>
+                    <div className="space-y-3">
+                        {gatewayHealth.length > 0 ? gatewayHealth.map((gateway) => {
+                            const status = gateway.health?.status;
+                            const isHealthy = status === true || status === 'ok' || status === 'success';
+                            return (
+                                <div key={gateway.url} className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-300 min-w-0">
+                                        <Server size={16} />
+                                        <div className="min-w-0">
+                                            <div className="truncate" title={gateway.url}>
+                                                {gateway.is_default ? 'Default Gateway' : formatGatewayLabel(gateway.url)}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                                                {gateway.tenant_count} tenants · {gateway.session_count} sessions
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span className={`text-[10px] font-bold ${isHealthy ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                        {isHealthy ? 'Active' : 'Down'}
+                                    </span>
+                                </div>
+                            );
+                        }) : (
+                            <div className="text-xs text-gray-400 dark:text-gray-500">
+                                Belum ada gateway terdaftar.
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

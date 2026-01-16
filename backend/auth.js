@@ -11,6 +11,7 @@ const { formatPhoneNumber } = require('./phone-utils');
 const { normalizeJid, getJidUser } = require('./utils/jid');
 const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
+const { getGatewayHealthSummary } = require('./utils/gateway-health');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 
 // Sync contacts helper - can be called from login or cron
@@ -714,6 +715,21 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         }
         console.error('Error updating tenant session:', error);
         res.status(500).json({ success: false, error: 'Failed to update tenant session' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/gateways/health
+ * Aggregate gateway health by tenant mapping
+ */
+router.get('/gateways/health', requireRole('super_admin'), async (req, res) => {
+    try {
+        const tenants = await db.getAllTenants();
+        const gateways = await getGatewayHealthSummary(tenants);
+        res.json({ success: true, gateways });
+    } catch (error) {
+        console.error('Error fetching gateway health:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch gateway health' });
     }
 });
 
