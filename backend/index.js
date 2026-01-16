@@ -183,6 +183,33 @@ async function hydrateSessionsFromRedis() {
     }
 }
 
+async function hydrateGatewayMappingsFromTenants() {
+    try {
+        const tenants = await db.getAllTenants();
+        waGateway.resetSessionGatewayUrls();
+        tenants.forEach((tenant) => {
+            if (tenant?.session_id && tenant?.gateway_url) {
+                waGateway.setSessionGatewayUrl(tenant.session_id, tenant.gateway_url);
+            }
+        });
+    } catch (err) {
+        logger.warn(`[Gateway] Failed to hydrate gateway mappings: ${err.message}`);
+    }
+}
+
+async function syncGatewayMappingForSession(sessionId) {
+    try {
+        const tenant = await db.getTenantBySessionId(sessionId);
+        if (tenant?.gateway_url) {
+            waGateway.setSessionGatewayUrl(sessionId, tenant.gateway_url);
+            return;
+        }
+        waGateway.setSessionGatewayUrl(sessionId, null);
+    } catch (err) {
+        logger.warn(`[Gateway] Failed to sync gateway mapping for ${sessionId}: ${err.message}`);
+    }
+}
+
 // Register session error callback to auto-disconnect on Gateway errors
 waGateway.setSessionErrorCallback((sessionId, error) => {
     console.warn(`[Auto-Disconnect] Session ${sessionId} error detected: ${error?.message || 'Unknown error'}`);
@@ -653,6 +680,8 @@ async function createSession(sessionId) {
         // Acquire lock
         await acquireSessionLock(sessionId);
 
+        await syncGatewayMappingForSession(sessionId);
+
         // Authenticate with Go gateway
         const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
         const authResponse = await waGateway.authenticate(sessionId, gatewayPassword);
@@ -718,6 +747,7 @@ async function deleteSession(sessionId) {
         sessions.delete(sessionId);
         sessionTokens.delete(sessionId);
         waGateway.removeSessionToken(sessionId);
+        waGateway.setSessionGatewayUrl(sessionId, null);
         saveTokens();
 
         await releaseSessionLock(sessionId);
@@ -953,11 +983,10 @@ app.use('/api/v1', initializeApi(
 const PORT = process.env.PORT || 3000;
 if (!isTest) {
     server.listen(PORT, async () => {
-        await loadTokens();
-
         try {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
+            await db.ensureTenantGatewayColumn();
             await db.ensureUserSessionColumn();
             await db.ensureUserInvitesTable();
             await db.ensureSystemSettingsTable();
@@ -973,6 +1002,9 @@ if (!isTest) {
         } catch (err) {
             console.error('Super admin check failed:', err.message);
         }
+
+        await hydrateGatewayMappingsFromTenants();
+        await loadTokens();
 
         // Check Go gateway health
         try {

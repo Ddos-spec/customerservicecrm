@@ -10,6 +10,7 @@ CREATE TABLE "public"."tenants" (
   "company_name" TEXT NOT NULL,
   "status" VARCHAR(20) NULL DEFAULT 'active',
   "session_id" TEXT NULL,
+  "gateway_url" TEXT NULL,
   "max_active_members" INTEGER NULL DEFAULT 100,
   "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now(),
   CONSTRAINT "tenants_pkey" PRIMARY KEY ("id"),

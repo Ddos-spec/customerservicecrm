@@ -12,6 +12,12 @@ for super admin, owner (tenant), and staff.
 - Redis: express-session store and WA cache/locks.
 - WebSocket: pushes session updates to UI in real time.
 
+## Phase tracker
+- Phase 1 (Session reliability): done.
+- Phase 2 (Multi-gateway routing + tenant assignment): done.
+- Phase 3 (Scale hardening + observability): pending.
+- Phase 4 (Launch readiness): pending.
+
 ## Roles and capabilities
 Super admin:
 - Manage tenants (create, activate, set tenant session_id).
@@ -42,6 +48,7 @@ WA session (tenant):
 - Stored in tenants.session_id.
 - All users inside the same tenant share the same WA session_id.
 - Gateway token cached in memory and persisted in backend/storage/session_tokens.enc.
+- tenants.gateway_url (optional) overrides default WA_GATEWAY_URL for routing.
 
 WA session (super admin notifier):
 - Optional users.user_session_id for alerting/automation only.
@@ -62,7 +69,7 @@ WA session setup (QR) for tenant:
 
 Session status:
 - Source of truth is gateway webhook + refresh ping.
-- Backend holds status in memory (sessions map).
+- Backend holds status in memory (sessions map) and persists to Redis.
 - UI receives status via WebSocket.
 
 Contacts sync:
@@ -82,7 +89,7 @@ Webhook and automation:
 - Notifier session id can be used by automation to send alerts.
 
 ## Data tables (high level)
-- tenants: id, company_name, status, session_id, max_active_members.
+- tenants: id, company_name, status, session_id, gateway_url, max_active_members.
 - users: id, role, tenant_id, session_id fields.
 - contacts: tenant_id, jid, full_name, phone_number.
 - chats: tenant_id, contact_id, assigned_to, updated_at.
@@ -91,11 +98,10 @@ Webhook and automation:
 
 ## Notes and limits
 - Ticketing is removed; chats are the primary unit.
-- Single gateway is supported; multi-gateway routing is not implemented yet.
-- Session status is not persisted across backend restart (relies on refresh/webhook).
+- Multi-gateway routing uses tenants.gateway_url; empty uses default gateway.
+- Session status is persisted in Redis and rehydrated on startup.
 
 ## Future (if needed)
-- Add tenants.gateway_url or gateway_id.
-- Route all WA calls based on mapping.
-- Add super admin UI to assign gateways.
-- Add health checks and background workers for heavy sync.
+- Per-gateway health checks and dashboards.
+- Gateway capacity planning (per-gateway limits).
+- Background workers for heavy sync.

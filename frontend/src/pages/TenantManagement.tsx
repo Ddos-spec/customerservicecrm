@@ -11,6 +11,7 @@ interface Tenant {
   user_count: string;
   created_at: string;
   session_id?: string | null;
+  gateway_url?: string | null;
 }
 
 interface TenantWebhook {
@@ -48,6 +49,7 @@ const TenantManagement = () => {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [sessionTenant, setSessionTenant] = useState<Tenant | null>(null);
   const [sessionIdInput, setSessionIdInput] = useState('');
+  const [gatewayUrlInput, setGatewayUrlInput] = useState('');
   const [isSessionSaving, setIsSessionSaving] = useState(false);
 
   // Admin Management State
@@ -70,7 +72,8 @@ const TenantManagement = () => {
     admin_email: '',
     admin_password: '',
     admin_phone_number: '',
-    session_id: ''
+    session_id: '',
+    gateway_url: ''
   });
   const [showAdminPassword, setShowAdminPassword] = useState(false);
 
@@ -163,6 +166,10 @@ const TenantManagement = () => {
       toast.error('Session WA harus diisi');
       return;
     }
+    if (formData.gateway_url.trim() && !/^https?:\/\//i.test(formData.gateway_url.trim())) {
+      toast.error('Gateway URL harus diawali http:// atau https://');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -172,7 +179,8 @@ const TenantManagement = () => {
         admin_email: formData.admin_email,
         admin_password: formData.admin_password,
         admin_phone_number: formData.admin_phone_number,
-        session_id: formData.session_id
+        session_id: formData.session_id,
+        gateway_url: formData.gateway_url.trim()
       });
       if (res.data.success) {
         setTenants([res.data.tenant, ...tenants]);
@@ -184,7 +192,8 @@ const TenantManagement = () => {
           admin_email: '',
           admin_password: '',
           admin_phone_number: '',
-          session_id: ''
+          session_id: '',
+          gateway_url: ''
         });
       }
     } catch (error: any) {
@@ -278,6 +287,7 @@ const TenantManagement = () => {
     setActiveDropdown(null);
     setSessionTenant(tenant);
     setSessionIdInput(tenant.session_id || '');
+    setGatewayUrlInput(tenant.gateway_url || '');
     setIsSessionModalOpen(true);
   };
 
@@ -285,22 +295,29 @@ const TenantManagement = () => {
     setIsSessionModalOpen(false);
     setSessionTenant(null);
     setSessionIdInput('');
+    setGatewayUrlInput('');
   };
 
   const handleSaveSessionId = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionTenant) return;
 
+    if (gatewayUrlInput.trim() && !/^https?:\/\//i.test(gatewayUrlInput.trim())) {
+      toast.error('Gateway URL harus diawali http:// atau https://');
+      return;
+    }
+
     setIsSessionSaving(true);
     try {
       const res = await api.patch(`/admin/tenants/${sessionTenant.id}/session`, {
-        session_id: sessionIdInput.trim()
+        session_id: sessionIdInput.trim(),
+        gateway_url: gatewayUrlInput.trim()
       });
       if (res.data.success) {
         setTenants((prev) => prev.map((t) => (
-          t.id === sessionTenant.id ? { ...t, session_id: res.data.tenant.session_id } : t
+          t.id === sessionTenant.id ? { ...t, session_id: res.data.tenant.session_id, gateway_url: res.data.tenant.gateway_url } : t
         )));
-        setSessionTenant((prev) => prev ? { ...prev, session_id: res.data.tenant.session_id } : prev);
+        setSessionTenant((prev) => prev ? { ...prev, session_id: res.data.tenant.session_id, gateway_url: res.data.tenant.gateway_url } : prev);
         toast.success('Session WA tersimpan');
         setIsSessionModalOpen(false);
       }
@@ -446,7 +463,10 @@ const TenantManagement = () => {
                         </div>
                       </td>
                       <td className="px-8 py-6 text-xs font-mono text-gray-600 dark:text-gray-300">
-                        {tenant.session_id || '-'}
+                        <div>{tenant.session_id || '-'}</div>
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 font-sans mt-1">
+                          Gateway: {tenant.gateway_url || '-'}
+                        </div>
                       </td>
                       <td className="px-8 py-6 text-sm font-black text-gray-700 dark:text-gray-200">{tenant.user_count} Users</td>
                       <td className="px-8 py-6 text-sm text-gray-500 dark:text-gray-400 font-medium">
@@ -513,6 +533,7 @@ const TenantManagement = () => {
                      </div>
                      <div className="text-sm text-gray-500 dark:text-gray-400 mb-2">{tenant.user_count} Users</div>
                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Session WA: {tenant.session_id || '-'}</div>
+                     <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2 break-all">Gateway: {tenant.gateway_url || '-'}</div>
                      {activeDropdown === tenant.id && (
                         <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-2 mb-4 animate-in fade-in zoom-in-95">
                            <button onClick={() => openWebhookModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
@@ -635,6 +656,18 @@ const TenantManagement = () => {
                     onChange={(e) => setFormData({...formData, session_id: e.target.value})}
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Gateway URL (Opsional)</label>
+                  <input
+                    placeholder="https://host/api/v1/whatsapp"
+                    value={formData.gateway_url}
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    onChange={(e) => setFormData({...formData, gateway_url: e.target.value})}
+                  />
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
+                    Kosongkan untuk pakai gateway default.
+                  </p>
+                </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
                   Owner dibuat otomatis. Login menggunakan email sebagai username.
                 </p>
@@ -738,6 +771,18 @@ const TenantManagement = () => {
                   onChange={(e) => setSessionIdInput(e.target.value)}
                   className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Gateway URL (Opsional)</label>
+                <input
+                  placeholder="https://host/api/v1/whatsapp"
+                  value={gatewayUrlInput}
+                  onChange={(e) => setGatewayUrlInput(e.target.value)}
+                  className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
+                  Kosongkan untuk pakai gateway default.
+                </p>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 Kosongkan untuk melepas session dari tenant ini.
