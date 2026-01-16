@@ -64,6 +64,8 @@ const formatMessageTime = (value?: string) => {
   return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 };
 
+const CHAT_PAGE_SIZE = 100;
+
 const AgentWorkspace = () => {
   const { user } = useAuthStore();
   const [messageText, setMessageText] = useState('');
@@ -75,9 +77,12 @@ const AgentWorkspace = () => {
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [totalContacts, setTotalContacts] = useState<number | null>(null);
   
   // Loading States
   const [isLoadingChats, setIsLoadingChats] = useState(true);
+  const [isLoadingMoreChats, setIsLoadingMoreChats] = useState(false);
+  const [hasMoreChats, setHasMoreChats] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
@@ -86,6 +91,7 @@ const AgentWorkspace = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const chatOffsetRef = useRef(0);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -100,19 +106,44 @@ const AgentWorkspace = () => {
   }, [messages, isFetchingMore]);
 
   // --- 1. Fetch Chat List (Inbox) ---
-  const fetchChats = useCallback(async () => {
-    setIsLoadingChats(true);
+  const fetchChats = useCallback(async ({ reset = false }: { reset?: boolean } = {}) => {
+    if (reset) {
+      setIsLoadingChats(true);
+      setHasMoreChats(true);
+      chatOffsetRef.current = 0;
+      setTotalContacts(null);
+    } else {
+      setIsLoadingMoreChats(true);
+    }
+
     try {
       // V2 Endpoint: GET /chats
-      const res = await api.get('/chats?limit=100');
+      const offset = chatOffsetRef.current;
+      const includeCount = reset ? '&include_count=true' : '';
+      const res = await api.get(`/chats?limit=${CHAT_PAGE_SIZE}&offset=${offset}${includeCount}`);
       if (res.data.status === 'success') {
-        setChats(res.data.data);
+        const newChats = res.data.data || [];
+        setChats((prev) => (reset ? newChats : [...prev, ...newChats]));
+        chatOffsetRef.current = offset + newChats.length;
+
+        if (newChats.length < CHAT_PAGE_SIZE) {
+          setHasMoreChats(false);
+        }
+
+        if (reset) {
+          const count = Number.parseInt(res.data.total_contacts, 10);
+          setTotalContacts(Number.isFinite(count) ? count : null);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch chats:', error);
       toast.error('Gagal memuat daftar chat');
     } finally {
-      setIsLoadingChats(false);
+      if (reset) {
+        setIsLoadingChats(false);
+      } else {
+        setIsLoadingMoreChats(false);
+      }
     }
   }, []);
 
@@ -253,7 +284,7 @@ const AgentWorkspace = () => {
              } else {
                 // New Chat? Fetch list again to be safe/simple, or append if we had full chat object
                 // For V2 prototype, let's just re-fetch to get correct Contact/Chat data structure
-                void fetchChats();
+                void fetchChats({ reset: true });
                 return prev;
              }
            });
@@ -270,8 +301,18 @@ const AgentWorkspace = () => {
 
   // Initial Fetch
   useEffect(() => {
-    void fetchChats();
+    void fetchChats({ reset: true });
   }, [fetchChats]);
+
+  const handleChatListScroll = () => {
+    const container = chatListRef.current;
+    if (!container || isLoadingChats || isLoadingMoreChats || !hasMoreChats) return;
+
+    const threshold = 120;
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - threshold) {
+      void fetchChats();
+    }
+  };
 
   // Handle Chat Selection
   const handleSelectChat = (chat: Chat) => {
@@ -366,6 +407,14 @@ const AgentWorkspace = () => {
       <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-gray-100 dark:border-slate-800 flex flex-col shrink-0 bg-white dark:bg-slate-900 max-h-[40vh] lg:max-h-none lg:h-full">
         {/* Search Header */}
         <div className="p-4 border-b border-gray-50 dark:border-slate-800">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+              Total Kontak
+            </span>
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+              {typeof totalContacts === 'number' ? totalContacts.toLocaleString('id-ID') : '-'}
+            </span>
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
@@ -379,7 +428,11 @@ const AgentWorkspace = () => {
         </div>
 
         {/* Chat List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-800" ref={chatListRef}>
+        <div
+          className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-800"
+          ref={chatListRef}
+          onScroll={handleChatListScroll}
+        >
           {isLoadingChats ? (
             <div className="p-10 flex flex-col items-center text-gray-400 dark:text-gray-500">
               <Loader2 className="animate-spin mb-2" size={24} />
@@ -423,6 +476,17 @@ const AgentWorkspace = () => {
           ) : (
             <div className="p-10 text-center text-gray-400 dark:text-gray-500 text-sm">
               Belum ada percakapan.
+            </div>
+          )}
+          {!isLoadingChats && isLoadingMoreChats && (
+            <div className="p-4 flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs gap-2">
+              <Loader2 className="animate-spin" size={16} />
+              <span>Memuat kontak lainnya...</span>
+            </div>
+          )}
+          {!isLoadingChats && !isLoadingMoreChats && !hasMoreChats && chats.length > 0 && (
+            <div className="p-4 text-center text-gray-400 dark:text-gray-500 text-xs">
+              Semua kontak sudah dimuat.
             </div>
           )}
         </div>

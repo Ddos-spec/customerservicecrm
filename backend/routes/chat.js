@@ -43,8 +43,17 @@ function buildChatRouter(deps) {
                     const offset = parseInt(req.query.offset) || 0;
                     const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
                     const normalizedStatus = status && status !== 'all' ? status : null;
-                    const chats = await db.getChatsByTenant(req.query.tenant_id, limit, offset, normalizedStatus);
-                    return res.json({ status: 'success', data: chats });
+                    const includeCount = String(req.query.include_count || '').toLowerCase();
+                    const shouldIncludeCount = includeCount === 'true' || includeCount === '1';
+
+                    const [chats, totalContacts] = await Promise.all([
+                        db.getChatsByTenant(req.query.tenant_id, limit, offset, normalizedStatus),
+                        shouldIncludeCount ? db.getContactCountByTenant(req.query.tenant_id) : Promise.resolve(null)
+                    ]);
+
+                    const payload = { status: 'success', data: chats };
+                    if (shouldIncludeCount) payload.total_contacts = totalContacts;
+                    return res.json(payload);
                 } catch (error) {
                     return res.status(500).json({ status: 'error', message: error.message });
                 }
@@ -60,8 +69,17 @@ function buildChatRouter(deps) {
             const offset = parseInt(req.query.offset) || 0;
             const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
             const normalizedStatus = status && status !== 'all' ? status : null;
-            const chats = await db.getChatsByTenant(user.tenant_id, limit, offset, normalizedStatus);
-            res.json({ status: 'success', data: chats });
+            const includeCount = String(req.query.include_count || '').toLowerCase();
+            const shouldIncludeCount = includeCount === 'true' || includeCount === '1';
+
+            const [chats, totalContacts] = await Promise.all([
+                db.getChatsByTenant(user.tenant_id, limit, offset, normalizedStatus),
+                shouldIncludeCount ? db.getContactCountByTenant(user.tenant_id) : Promise.resolve(null)
+            ]);
+
+            const payload = { status: 'success', data: chats };
+            if (shouldIncludeCount) payload.total_contacts = totalContacts;
+            res.json(payload);
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });
         }

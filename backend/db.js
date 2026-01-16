@@ -91,6 +91,19 @@ async function getContactsByTenant(tenantId) {
     return result.rows;
 }
 
+async function getContactCountByTenant(tenantId) {
+    const result = await query(`
+        SELECT COUNT(*) as total
+        FROM contacts
+        WHERE tenant_id = $1
+          AND jid NOT LIKE '%@broadcast'
+          AND jid NOT LIKE '%@lid'
+          AND jid NOT LIKE '%@newsletter'
+    `, [tenantId]);
+    const total = Number.parseInt(result.rows[0]?.total, 10);
+    return Number.isFinite(total) ? total : 0;
+}
+
 async function getContactByJid(tenantId, jid) {
     const result = await query('SELECT * FROM contacts WHERE tenant_id = $1 AND jid = $2', [tenantId, jid]);
     return result.rows[0] || null;
@@ -403,7 +416,7 @@ module.exports = {
     getInviteByToken: async (t) => (await query('SELECT i.*, t.company_name as tenant_name FROM user_invites i JOIN tenants t ON i.tenant_id = t.id WHERE i.token = $1', [t])).rows[0],
     acceptInvite: async (t) => await query("UPDATE user_invites SET status = 'accepted' WHERE token = $1", [t]),
     // Contacts
-    syncContacts, getContactsByTenant, getContactByJid,
+    syncContacts, getContactsByTenant, getContactCountByTenant, getContactByJid,
     // Chats & Messages
     getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead,
     // System
