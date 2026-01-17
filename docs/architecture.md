@@ -18,6 +18,7 @@ for super admin, owner (tenant), and staff.
 - Phase 3 (Scale hardening + observability): done.
 - Phase 4 (Launch readiness): done.
 - Phase 5 (SaaS Migration - Single Session & Impersonate): **DONE**.
+- Phase 6 (Hybrid Provider - Meta Cloud API): **PLANNED**.
 
 ## Roles and capabilities
 Super admin:
@@ -86,6 +87,22 @@ Tenant API Integration:
 - chats: tenant_id, contact_id, assigned_to, updated_at.
 - messages: chat_id, sender, content, timestamps.
 - whatsmeow_*: raw WhatsApp data from gateway.
+
+## Hybrid Provider Roadmap (Meta Cloud API)
+Plan to support Official WhatsApp Business API alongside Whatsmeow (Unofficial).
+
+1.  **Phase 1 (Database Schema):**
+    - Add columns to `tenants`: `wa_provider` (enum: 'whatsmeow', 'meta'), `meta_phone_id`, `meta_waba_id`, `meta_token`.
+2.  **Phase 2 (Adapter Layer):**
+    - Abstract message sending logic into `backend/services/whatsapp`.
+    - Create `WhatsmeowDriver` (legacy) and `MetaCloudDriver`.
+3.  **Phase 3 (Incoming Webhook):**
+    - New endpoint `POST /api/v1/webhook/meta`.
+    - Transform Meta JSON payload -> Standard DB format -> Save to DB.
+4.  **Phase 4 (UI Config):**
+    - Frontend menu to input Meta Credentials.
+5.  **Phase 5 (24H Window Logic):**
+    - Implement Template Message handling for expired sessions.
 
 ## Notes and limits
 - Ticketing is removed; chats are the primary unit.

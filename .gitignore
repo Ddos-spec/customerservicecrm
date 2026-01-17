@@ -47,3 +47,6 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 AGENTS.md
+
+.gemini/
+gha-creds-*.json

@@ -100,6 +100,10 @@ CREATE TABLE "public"."tenants" (
   "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
   "gateway_url" TEXT NULL,
   "api_key" TEXT NULL,
+  "wa_provider" VARCHAR(20) DEFAULT 'whatsmeow',
+  "meta_phone_id" TEXT,
+  "meta_waba_id" TEXT,
+  "meta_token" TEXT,
   CONSTRAINT "tenants_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "tenants_session_id_key" UNIQUE ("session_id"),
   CONSTRAINT "tenants_api_key_key" UNIQUE ("api_key")
@@ -312,6 +316,10 @@ ON "public"."users" (
   "tenant_id" ASC,
   "role" ASC,
   "status" ASC
+);
+CREATE INDEX "idx_tenants_meta_phone_id" 
+ON "public"."tenants" (
+  "meta_phone_id" ASC
 );
 ALTER TABLE "public"."users" ADD CONSTRAINT "users_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."contacts" ADD CONSTRAINT "contacts_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
