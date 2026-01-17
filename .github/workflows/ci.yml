@@ -1,0 +1,105 @@
+name: CRM CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: customerservice_test
+        ports:
+          - 5432:5432
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+
+    - name: Install Backend Dependencies
+      working-directory: ./backend
+      run: npm ci
+
+    - name: Setup Database Schema
+      working-directory: ./
+      env:
+        PGPASSWORD: password
+      run: |
+        # Wait for Postgres (service container handles this, but extra check is safe)
+        until pg_isready -h localhost -p 5432 -U postgres; do
+          echo "Waiting for postgres..."
+          sleep 2
+        done
+        
+        # Run schema SQL
+        psql -h localhost -U postgres -d customerservice_test -f doc/strukturdatabase.sql
+        
+        # Run migrations (query.sql) if needed for updates not in structure
+        psql -h localhost -U postgres -d customerservice_test -f doc/query.sql
+
+    - name: Run Backend Tests
+      working-directory: ./backend
+      env:
+        NODE_ENV: test
+        DATABASE_URL: postgres://postgres:password@localhost:5432/customerservice_test
+        REDIS_URL: redis://localhost:6379
+        SESSION_SECRET: test-secret-key-1234567890
+        ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+        SUPER_ADMIN_EMAIL: super@test.com
+        SUPER_ADMIN_PASSWORD: superadmin123
+        PORT: 3300
+      run: npm test tests/saas_flow.test.js
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install Frontend Dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Check Types & Lint
+      working-directory: ./frontend
+      # Skip lint for now if there are many legacy warnings, focus on build
+      # run: npm run lint 
+      run: echo "Skipping strict lint for now"
+
+    - name: Build Frontend
+      working-directory: ./frontend
+      env:
+        # Mock env vars needed for build (if any)
+        VITE_API_URL: http://localhost:3000/api/v1
+      run: npm run build

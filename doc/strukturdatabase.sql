@@ -461,6 +461,9 @@ DECLARE
   v_our_phone TEXT;
   v_phone TEXT;
   v_full_name TEXT;
+  v_their_jid TEXT;
+  v_lid TEXT;
+  v_pn TEXT;
 BEGIN
   v_our_phone := split_part(NEW.our_jid, '@', 1);
 
@@ -470,7 +473,17 @@ BEGIN
   LIMIT 1;
 
   IF v_tenant_id IS NOT NULL THEN
-    v_phone := split_part(NEW.their_jid, '@', 1);
+    v_their_jid := NEW.their_jid;
+
+    IF v_their_jid LIKE '%@lid' OR v_their_jid LIKE '%@lid.whatsapp.net' THEN
+      v_lid := split_part(v_their_jid, '@', 1);
+      SELECT pn INTO v_pn FROM public.whatsmeow_lid_map WHERE lid = v_lid LIMIT 1;
+      IF v_pn IS NOT NULL AND v_pn <> '' THEN
+        v_their_jid := v_pn || '@s.whatsapp.net';
+      END IF;
+    END IF;
+
+    v_phone := split_part(v_their_jid, '@', 1);
     v_full_name := COALESCE(NEW.full_name, NEW.first_name, NEW.push_name);
 
     IF v_full_name IS NULL OR v_full_name = '' THEN
@@ -478,7 +491,7 @@ BEGIN
     END IF;
 
     INSERT INTO public.contacts (tenant_id, jid, phone_number, full_name, updated_at)
-    VALUES (v_tenant_id, NEW.their_jid, v_phone, v_full_name, now())
+    VALUES (v_tenant_id, v_their_jid, v_phone, v_full_name, now())
     ON CONFLICT (tenant_id, jid)
     DO UPDATE SET
       phone_number = EXCLUDED.phone_number,

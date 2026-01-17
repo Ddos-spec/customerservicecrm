@@ -59,9 +59,20 @@ async function syncContacts(tenantId, contacts) {
     try {
         await client.query('BEGIN');
         for (const c of contacts) {
-            const jid = c.jid || c.JID;
-            if (!jid) continue;
-            const phone = c.phone || jid.split('@')[0];
+            const rawJid = c.jid || c.JID;
+            if (!rawJid) continue;
+
+            let normalizedJid = rawJid;
+            if (rawJid.endsWith('@lid') || rawJid.endsWith('@lid.whatsapp.net')) {
+                const lid = rawJid.split('@')[0];
+                const lidRes = await client.query('SELECT pn FROM whatsmeow_lid_map WHERE lid = $1', [lid]);
+                const pn = lidRes.rows[0]?.pn;
+                if (pn) {
+                    normalizedJid = `${pn}@s.whatsapp.net`;
+                }
+            }
+
+            const phone = c.phone || normalizedJid.split('@')[0];
 
             // Priority for full_name: fullName > firstName > pushName > phone
             const fullName = c.fullName || c.firstName || c.pushName || c.displayName || phone;
@@ -74,7 +85,7 @@ async function syncContacts(tenantId, contacts) {
                     full_name = COALESCE(EXCLUDED.full_name, contacts.full_name),
                     is_business = EXCLUDED.is_business,
                     updated_at = now()
-            `, [tenantId, jid, phone, fullName, c.isBusiness || false]);
+            `, [tenantId, normalizedJid, phone, fullName, c.isBusiness || false]);
         }
         await client.query('COMMIT');
         console.log(`[DB] Synced ${contacts.length} contacts for tenant ${tenantId}`);
@@ -97,7 +108,6 @@ async function getContactCountByTenant(tenantId) {
         FROM contacts
         WHERE tenant_id = $1
           AND jid NOT LIKE '%@broadcast'
-          AND jid NOT LIKE '%@lid'
           AND jid NOT LIKE '%@newsletter'
     `, [tenantId]);
     const total = Number.parseInt(result.rows[0]?.total, 10);
@@ -107,6 +117,14 @@ async function getContactCountByTenant(tenantId) {
 async function getContactByJid(tenantId, jid) {
     const result = await query('SELECT * FROM contacts WHERE tenant_id = $1 AND jid = $2', [tenantId, jid]);
     return result.rows[0] || null;
+}
+
+async function getPnByLid(lid) {
+    if (!lid) return null;
+    const result = await query('SELECT pn FROM whatsmeow_lid_map WHERE lid = $1', [lid]);
+    const pn = result.rows[0]?.pn;
+    if (!pn) return null;
+    return String(pn).trim() || null;
 }
 
 // =============================================
@@ -229,7 +247,6 @@ async function getChatsByTenant(tenantId, limit = 50, offset = 0, status = null)
         LEFT JOIN users u ON c.assigned_to = u.id
         WHERE con.tenant_id = $1
           AND con.jid NOT LIKE '%@broadcast'
-          AND con.jid NOT LIKE '%@lid'
           AND con.jid NOT LIKE '%@newsletter'
           ${statusFilter}
         ORDER BY
@@ -381,6 +398,9 @@ module.exports = {
               v_our_phone TEXT;
               v_phone TEXT;
               v_full_name TEXT;
+              v_their_jid TEXT;
+              v_lid TEXT;
+              v_pn TEXT;
             BEGIN
               -- Extract phone number from our_jid (e.g., 6289xxx@s.whatsapp.net → 6289xxx)
               v_our_phone := split_part(NEW.our_jid, '@', 1);
@@ -391,7 +411,17 @@ module.exports = {
               LIMIT 1;
 
               IF v_tenant_id IS NOT NULL THEN
-                v_phone := split_part(NEW.their_jid, '@', 1);
+                v_their_jid := NEW.their_jid;
+
+                IF v_their_jid LIKE '%@lid' OR v_their_jid LIKE '%@lid.whatsapp.net' THEN
+                  v_lid := split_part(v_their_jid, '@', 1);
+                  SELECT pn INTO v_pn FROM whatsmeow_lid_map WHERE lid = v_lid LIMIT 1;
+                  IF v_pn IS NOT NULL AND v_pn <> '' THEN
+                    v_their_jid := v_pn || '@s.whatsapp.net';
+                  END IF;
+                END IF;
+
+                v_phone := split_part(v_their_jid, '@', 1);
                 -- Priority: FullName > FirstName > PushName > Phone
                 v_full_name := COALESCE(NEW.full_name, NEW.first_name, NEW.push_name);
 
@@ -400,7 +430,7 @@ module.exports = {
                 END IF;
 
                 INSERT INTO contacts (tenant_id, jid, phone_number, full_name, updated_at)
-                VALUES (v_tenant_id, NEW.their_jid, v_phone, v_full_name, now())
+                VALUES (v_tenant_id, v_their_jid, v_phone, v_full_name, now())
                 ON CONFLICT (tenant_id, jid)
                 DO UPDATE SET
                   phone_number = EXCLUDED.phone_number,
@@ -431,7 +461,7 @@ module.exports = {
     getInviteByToken: async (t) => (await query('SELECT i.*, t.company_name as tenant_name FROM user_invites i JOIN tenants t ON i.tenant_id = t.id WHERE i.token = $1', [t])).rows[0],
     acceptInvite: async (t) => await query("UPDATE user_invites SET status = 'accepted' WHERE token = $1", [t]),
     // Contacts
-    syncContacts, getContactsByTenant, getContactCountByTenant, getContactByJid,
+    syncContacts, getContactsByTenant, getContactCountByTenant, getContactByJid, getPnByLid,
     // Chats & Messages
     getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead,
     // System

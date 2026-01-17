@@ -17,25 +17,25 @@ for super admin, owner (tenant), and staff.
 - Phase 2 (Multi-gateway routing + tenant assignment): done.
 - Phase 3 (Scale hardening + observability): done.
 - Phase 4 (Launch readiness): done.
+- Phase 5 (SaaS Migration - Single Session & Impersonate): **DONE**.
 
 ## Roles and capabilities
 Super admin:
 - Manage tenants (create, activate, set tenant session_id).
 - Manage users across tenants.
-- Set notifier session id (optional WA number used for alerts).
+- **Impersonate Tenant**: Login as any Tenant Owner for debugging.
+- **Manage API Keys**: Generate/View Tenant API Keys.
 - View global session status.
 
 Owner (tenant):
 - Manage staff in their tenant.
 - Use workspace to monitor chats and send messages.
 - View tenant contact count and chats.
+- Access Tenant API Key for external integration.
 
 Staff:
 - Use workspace to reply to chats and send messages.
 - No tenant management permissions.
-
-End user (WhatsApp contact):
-- External contact who chats via WhatsApp.
 
 ## IDs and sessions
 UI login session:
@@ -45,20 +45,21 @@ UI login session:
 
 WA session (tenant):
 - Identifier is session_id (phone number normalized to +62).
-- Stored in tenants.session_id.
-- All users inside the same tenant share the same WA session_id.
+- Stored in `tenants.session_id`.
+- **Single Session Architecture**: All users (Owner & Staff) inside the same tenant share the same WA session_id.
+- `users.user_session_id` and `users.tenant_session_id` columns are REMOVED.
 - Gateway token cached in memory and persisted in backend/storage/session_tokens.enc.
-- tenants.gateway_url (optional) overrides default WA_GATEWAY_URL for routing.
 
-WA session (super admin notifier):
-- Optional users.user_session_id for alerting/automation only.
-- Not used to reconnect tenant numbers.
+Notifier Session:
+- System setting `notifier_session_id`.
+- Used to send Internal Alerts (Gateway Disconnect, Over Capacity) to Super Admins via WhatsApp.
 
 ## Main flows
 Login (UI):
 1) Frontend POST /api/v1/admin/login.
-2) Backend verifies user and sets req.session.user.
-3) Cookie is issued to browser.
+2) Backend verifies user.
+3) **Auto-Assign Session**: Backend sets `req.session.user.session_id` from `tenants.session_id`.
+4) Cookie is issued to browser.
 
 WA session setup (QR) for tenant:
 1) Super admin assigns tenant session_id (tenant's WA number).
@@ -67,30 +68,20 @@ WA session setup (QR) for tenant:
 4) Gateway sends webhook "connected".
 5) Backend updates status and broadcasts to UI.
 
-Session status:
-- Source of truth is gateway webhook + refresh ping.
-- Backend holds status in memory (sessions map) and persists to Redis.
-- UI receives status via WebSocket.
+Internal Alerting (No Webhook):
+- Events: Session Disconnected, Over Capacity.
+- Action: Backend finds `notifier_session_id` (or active tenant session).
+- Target: Sends WhatsApp message to all Users with role `super_admin` who have `phone_number`.
 
-Contacts sync:
-- On connect or login, backend triggers syncContactsForTenant.
-- Gateway returns contacts/groups and updates whatsmeow tables.
-- Trigger sync_whatsmeow_to_crm_contact populates contacts table.
-
-Chat and messages:
-- contacts -> chats (1 chat per tenant + contact).
-- messages belong to chats.
-- Workspace loads chats and messages from backend.
-- Sending message -> backend -> gateway -> WhatsApp.
-
-Webhook and automation:
-- Gateway posts events to /api/v1/webhook.
-- n8n integration uses backend/n8n-api.js with tenant session_id.
-- Notifier session id can be used by automation to send alerts.
+Tenant API Integration:
+- Endpoint: `POST /api/v1/messages/external`
+- Auth: Header `X-Tenant-Key`.
+- Flow: Backend resolves Tenant by Key -> Gets Session ID -> Sends Message.
 
 ## Data tables (high level)
-- tenants: id, company_name, status, session_id, gateway_url, max_active_members.
-- users: id, role, tenant_id, session_id fields.
+- tenants: id, company_name, status, session_id, gateway_url, **api_key**.
+- users: id, role, tenant_id, phone_number (no session columns).
+- user_invites: ..., **last_error**.
 - contacts: tenant_id, jid, full_name, phone_number.
 - chats: tenant_id, contact_id, assigned_to, updated_at.
 - messages: chat_id, sender, content, timestamps.
@@ -98,16 +89,6 @@ Webhook and automation:
 
 ## Notes and limits
 - Ticketing is removed; chats are the primary unit.
-- Multi-gateway routing uses tenants.gateway_url; empty uses default gateway.
-- Setting tenant session_id will auto-assign a gateway when none is provided and enforce `GATEWAY_MAX_SESSIONS`.
-- Session status is persisted in Redis and rehydrated on startup.
-- Contact sync runs via a per-session Redis queue with backoff.
-- Super admin can query gateway fleet health via `/api/v1/admin/gateways/health`.
-- Infra health (Postgres/Redis/gateway) is available at `/api/v1/health/infra`.
-- Alerting for gateway down/over-capacity/disconnect uses the notifier session and optional alert webhook.
+- Setting tenant session_id will auto-assign a gateway when none is provided.
+- Alerting for gateway down/over-capacity uses internal WhatsApp sender (not external webhook).
 - Operations checklist is in `docs/operations.md`.
-
-## Future (if needed)
-- Per-gateway health checks and dashboards.
-- Gateway capacity planning (per-gateway limits).
-- Background workers for heavy sync.

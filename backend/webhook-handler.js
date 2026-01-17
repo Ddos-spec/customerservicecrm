@@ -65,6 +65,25 @@ function broadcast(data) {
     });
 }
 
+function isLidJid(jid) {
+    if (!jid) return false;
+    const value = String(jid).toLowerCase();
+    return value.endsWith('@lid') || value.endsWith('@lid.whatsapp.net');
+}
+
+async function resolveCanonicalJid(rawJid, options = {}) {
+    const normalized = normalizeJid(rawJid, options);
+    if (!normalized || !isLidJid(normalized)) return normalized;
+
+    const lid = getJidUser(normalized);
+    if (!lid) return normalized;
+
+    const pn = await db.getPnByLid(lid);
+    if (!pn) return normalized;
+
+    return `${pn}@s.whatsapp.net`;
+}
+
 /**
  * Main webhook endpoint
  * Receives events from Go WhatsApp Gateway
@@ -142,7 +161,7 @@ async function handleMessage(sessionId, data) {
         // For private: message.to = recipient, message.from = sender
         const isGroup = message.isGroup || message.to?.endsWith('@g.us');
         const rawTargetJid = message.to || message.from;
-        const targetJid = normalizeJid(rawTargetJid, { isGroup });
+        const targetJid = await resolveCanonicalJid(rawTargetJid, { isGroup });
 
         // Ensure we have a valid JID
         if (!targetJid) return;
@@ -172,7 +191,7 @@ async function handleMessage(sessionId, data) {
         }
 
         const senderType = message.isFromMe ? 'agent' : 'customer';
-        const senderJid = normalizeJid(message.from, { isGroup: false });
+        const senderJid = await resolveCanonicalJid(message.from, { isGroup: false });
         let senderName = message.pushName;
         if (!senderName && senderJid) {
             const contact = await db.getContactByJid(tenant.id, senderJid);
