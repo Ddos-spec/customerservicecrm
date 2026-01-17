@@ -134,7 +134,7 @@ function buildChatRouter(deps) {
 
     router.get('/profile-picture/:jid', async (req, res) => {
         // Fallback to session user's tenant session if available
-        const sessionId = req.sessionId || req.query.sessionId || req.session?.user?.tenant_session_id;
+        const sessionId = req.sessionId || req.query.sessionId || req.session?.user?.session_id;
         const { jid } = req.params;
         const { type } = req.query;
 

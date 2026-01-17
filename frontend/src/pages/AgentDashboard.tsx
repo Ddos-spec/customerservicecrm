@@ -45,7 +45,7 @@ const AgentDashboard = () => {
     }
   };
   const roleLabel = getRoleLabel(user?.role);
-  const sessionId = user?.tenant_session_id || '';
+  const sessionId = user?.session_id || '';
 
   // Data States
   const [stats, setStats] = useState<any>(null);

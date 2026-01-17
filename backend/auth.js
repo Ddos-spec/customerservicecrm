@@ -494,11 +494,9 @@ router.post('/login', loginLimiter, async (req, res) => {
             });
         }
 
-        // Determine session_id based on role
-        // Super admin uses user.session_id, tenant users use tenants.session_id
-        const effectiveSessionId = user.role === 'super_admin'
-            ? user.user_session_id
-            : user.tenant_session_id;
+        // Determine session_id
+        // For agents, it is the tenant's session_id (aliased as tenant_session_id in query)
+        const effectiveSessionId = user.tenant_session_id || null;
 
         // Create session
         req.session.user = {
@@ -508,9 +506,7 @@ router.post('/login', loginLimiter, async (req, res) => {
             email: user.email,
             role: user.role,
             tenant_name: user.tenant_name,
-            session_id: effectiveSessionId || null,
-            user_session_id: user.user_session_id || null,
-            tenant_session_id: user.tenant_session_id || null
+            session_id: effectiveSessionId
         };
 
         // Save session explicitly
@@ -532,16 +528,14 @@ router.post('/login', loginLimiter, async (req, res) => {
                     role: user.role,
                     tenant_id: user.tenant_id,
                     tenant_name: user.tenant_name,
-                    session_id: effectiveSessionId || null,
-                    user_session_id: user.user_session_id || null,
-                    tenant_session_id: user.tenant_session_id || null
+                    session_id: effectiveSessionId
                 }
             });
 
             // Auto-sync contacts in background (non-blocking)
-            if (user.tenant_id && user.tenant_session_id) {
+            if (user.tenant_id && effectiveSessionId) {
                 setImmediate(() => {
-                    syncContactsForTenant(user.tenant_id, user.tenant_session_id)
+                    syncContactsForTenant(user.tenant_id, effectiveSessionId)
                         .then(result => {
                             if (result.synced > 0) {
                                 console.log(`[Login] Auto-synced ${result.synced} contacts for ${user.email}`);
@@ -895,46 +889,6 @@ router.delete('/tenants/:id', requireRole('super_admin'), async (req, res) => {
     } catch (error) {
         console.error('Error deleting tenant:', error);
         res.status(500).json({ success: false, error: 'Failed to delete tenant' });
-    }
-});
-
-/**
- * PATCH /api/v1/admin/users/:id/session
- * Set session_id for user (for super admin only)
- */
-router.patch('/users/:id/session', requireAuth, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const rawSessionId = req.body?.session_id;
-        const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
-        const normalized = sessionId === '' ? null : sessionId;
-
-        const currentUser = req.session.user;
-
-        // Only allow users to set their own session_id
-        // OR super admin can set anyone's session_id
-        if (currentUser.role !== 'super_admin' && currentUser.id !== id) {
-            return res.status(403).json({ success: false, error: 'Forbidden - Can only set your own session' });
-        }
-
-        const user = await db.setUserSessionId(id, normalized);
-        if (!user) {
-            return res.status(404).json({ success: false, error: 'User not found' });
-        }
-
-        // Update current session if setting own session_id
-        if (currentUser.id === id) {
-            req.session.user.session_id = normalized;
-            req.session.user.user_session_id = normalized;
-        }
-
-        res.json({ success: true, user: { id: user.id, session_id: user.session_id } });
-    } catch (error) {
-        if (error.code === '23505') {
-            return res.status(409).json({ success: false, error: 'Session ID already assigned to another user' });
-        }
-        console.error('Error updating user session:', error);
-        res.status(500).json({ success: false, error: 'Failed to update user session' });
     }
 });
 

@@ -127,9 +127,6 @@ CREATE TABLE "public"."users" (
   "status" VARCHAR(20) NULL DEFAULT 'active'::character varying ,
   "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
   "phone_number" TEXT NULL,
-  "session_id" TEXT NULL,
-  "user_session_id" TEXT NULL,
-  "tenant_session_id" TEXT NULL,
   CONSTRAINT "users_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "users_email_key" UNIQUE ("email")
 );
@@ -312,10 +309,6 @@ ON "public"."users" (
   "tenant_id" ASC,
   "role" ASC,
   "status" ASC
-);
-CREATE UNIQUE INDEX "users_session_id_idx" 
-ON "public"."users" (
-  "session_id" ASC
 );
 ALTER TABLE "public"."users" ADD CONSTRAINT "users_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."contacts" ADD CONSTRAINT "contacts_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;

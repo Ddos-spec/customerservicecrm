@@ -27,7 +27,7 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
 
         // Determine tenant_id: from user (admin_agent) or from body/first tenant (super_admin)
         let tenantId = user.tenant_id;
-        let sessionId = user.tenant_session_id;
+        let sessionId = user.session_id;
 
         if (!tenantId && user.role === 'super_admin') {
             // Super admin - get tenant from body or use first available

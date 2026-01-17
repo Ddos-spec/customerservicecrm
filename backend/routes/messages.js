@@ -64,7 +64,7 @@ function buildMessagesRouter(deps) {
             const destination = isGroup ? rawPhone : toWhatsAppFormat(formatPhoneNumber(rawPhone));
 
             // 1. Get or Create Chat Room
-            let sessionId = user.tenant_session_id || null;
+            let sessionId = user.session_id || null;
             if (user.tenant_id && !sessionId) {
                 const tenant = await db.getTenantById(user.tenant_id);
                 sessionId = tenant?.session_id;
