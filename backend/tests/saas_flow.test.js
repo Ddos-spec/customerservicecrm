@@ -1,5 +1,5 @@
 const request = require('supertest');
-const { app, server } = require('../index'); 
+const { app, server, redisClient, redisSessionClient } = require('../index'); 
 const db = require('../db');
 const bcrypt = require('bcryptjs');
 
@@ -20,7 +20,7 @@ const getCookie = (res) => {
 
 beforeAll(async () => {
     // Wait for DB connection
-    let retries = 5;
+    let retries = 10;
     while (retries > 0) {
         try {
             await db.query('SELECT 1');
@@ -31,6 +31,14 @@ beforeAll(async () => {
             await new Promise(r => setTimeout(r, 1000));
         }
     }
+
+    // Wait for Redis connection
+    if (!redisClient.isOpen) {
+        await redisClient.connect();
+    }
+    if (!redisSessionClient.isOpen) {
+        await redisSessionClient.connect();
+    }
     
     // Aggressive Cleanup
     await db.query('TRUNCATE TABLE user_invites CASCADE');
@@ -39,6 +47,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+    // Close everything cleanly
+    if (redisClient.isOpen) await redisClient.quit();
+    if (redisSessionClient.isOpen) await redisSessionClient.quit();
     if (server) server.close();
     await db.pool.end();
 });
@@ -54,12 +65,19 @@ describe('SaaS Workflow E2E', () => {
             ON CONFLICT (email) DO UPDATE SET password_hash = $1
         `, [hash]);
 
+        // Delay sedikit untuk memastikan session store siap
+        await new Promise(r => setTimeout(r, 500));
+
         const res = await request(app)
             .post('/api/v1/admin/login')
             .send({
                 email: 'super@test.com',
                 password: 'superadmin123'
             });
+
+        if (res.statusCode !== 200) {
+            console.error('Super Admin Login Failed:', JSON.stringify(res.body, null, 2));
+        }
 
         expect(res.statusCode).toEqual(200);
         expect(res.body.success).toBe(true);
@@ -80,7 +98,7 @@ describe('SaaS Workflow E2E', () => {
                 admin_password: 'password123',
                 admin_phone_number: '628123456789',
                 session_id: '628123456789',
-                gateway_url: 'http://localhost:3000' // Valid URL format required
+                gateway_url: 'http://localhost:3000'
             });
 
         if (res.statusCode !== 201) {
@@ -112,9 +130,6 @@ describe('SaaS Workflow E2E', () => {
 
         expect(res.statusCode).toEqual(200);
         expect(res.body.user.role).toBe('admin_agent');
-        
-        // Normalize session_id comparison (DB might return null if empty, but we sent value)
-        // Ensure what we got is what we sent
         expect(res.body.user.session_id).toBe('628123456789');
     });
 
@@ -138,7 +153,7 @@ describe('SaaS Workflow E2E', () => {
 
     // 5. Cleanup
     it('should delete the test tenant', async () => {
-        if (!tenantId) return; // Skip if tenant wasn't created
+        if (!tenantId) return;
 
         // Login again to get fresh session (clean slate)
         const loginRes = await request(app)
