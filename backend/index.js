@@ -1276,7 +1276,6 @@ if (!isTest) {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
             await db.ensureTenantGatewayColumn();
-            await db.ensureUserSessionColumn();
             await db.ensureUserInvitesTable();
             await db.ensureSystemSettingsTable();
             await db.ensureUserPhoneColumn();

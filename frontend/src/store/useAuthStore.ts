@@ -12,7 +12,7 @@ export interface User {
   email: string;
   tenant_id?: number | null;
   tenant_name?: string;
-  tenant_session_id?: string | null;
+  session_id?: string | null; // Tenant's WhatsApp Session ID
   isDemo?: boolean;
 }
 
@@ -55,7 +55,7 @@ export const useAuthStore = create<AuthState>()(
               email: response.data.user.email,
               tenant_id: response.data.user.tenant_id,
               tenant_name: response.data.user.tenant_name,
-              tenant_session_id: response.data.user.tenant_session_id,
+              session_id: response.data.user.session_id,
               isDemo: false
             };
 

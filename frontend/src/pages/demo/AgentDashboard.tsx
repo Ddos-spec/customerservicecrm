@@ -68,7 +68,7 @@ const AgentDashboard = () => {
     }
   };
   const roleLabel = getRoleLabel(user?.role);
-  const sessionId = user?.tenant_session_id || '';
+  const sessionId = user?.session_id || '';
 
   const [stats, setStats] = useState<any>(null);
   const [recentChatData, setRecentChatData] = useState<any[]>([]);

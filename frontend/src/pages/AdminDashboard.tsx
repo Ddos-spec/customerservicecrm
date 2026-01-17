@@ -44,7 +44,7 @@ const AdminDashboard = () => {
   const [recentChats, setRecentChats] = useState<any[]>([]);
 
   // WhatsApp Connection State
-  const sessionId = user?.tenant_session_id || '';
+  const sessionId = user?.session_id || '';
   const [waStatus, setWaStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [connectedNumber, setConnectedNumber] = useState<string>('');
   const [qrUrl, setQrUrl] = useState('');
