@@ -110,11 +110,13 @@ function buildMessagesRouter(deps) {
 
         const user = req.session?.user;
         if (!user) {
-            console.warn('[Messages] 401 - No user in session. Cookie header:', req.headers.cookie?.substring(0, 50) || 'NONE');
-            return res.status(401).json({ status: 'error', message: 'Authentication required' });
+            const hasCookie = Boolean(req.headers?.cookie);
+            console.warn(`[Messages] 401 session missing (cookie=${hasCookie ? 'present' : 'missing'})`);
+            return res.status(401).json({ status: 'error', code: 'SESSION_MISSING', message: 'Authentication required' });
         }
         if (!['admin_agent', 'agent'].includes(user.role)) {
-            return res.status(403).json({ status: 'error', message: 'Access denied' });
+            console.warn(`[Messages] 403 role denied (${user.role || 'unknown'})`);
+            return res.status(403).json({ status: 'error', code: 'ROLE_DENIED', message: 'Access denied' });
         }
 
         const rawPhone = (req.body?.phone || req.body?.to || '').toString().trim();
@@ -138,7 +140,10 @@ function buildMessagesRouter(deps) {
                 sessionId = tenant?.session_id;
             }
 
-            if (!sessionId) return res.status(400).json({ status: 'error', message: 'Session WA belum diatur' });
+        if (!sessionId) {
+            console.warn('[Messages] 400 tenant session missing');
+            return res.status(400).json({ status: 'error', code: 'SESSION_NOT_SET', message: 'Session WA belum diatur' });
+        }
 
             let chat = null;
             if (chatId) {
@@ -161,7 +166,8 @@ function buildMessagesRouter(deps) {
 
             const session = sessions.get(sessionId);
             if (!session || !session.sock || session.status !== 'CONNECTED') {
-                return res.status(409).json({ status: 'error', message: 'WhatsApp Offline' });
+                console.warn(`[Messages] 409 WA offline (status=${session?.status || 'unknown'})`);
+                return res.status(409).json({ status: 'error', code: 'WA_OFFLINE', message: 'WhatsApp Offline' });
             }
 
             // Send to WhatsApp
