@@ -1438,4 +1438,4 @@ process.on('unhandledRejection', (reason, promise) => {
     logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-module.exports = { app, server };
+module.exports = { app, server, redisClient, redisSessionClient };
