@@ -1,168 +1,65 @@
-# CLAUDE.md
+# 🧠 CLAUDE AGENT MEMORY & PROTOCOLS (GOD MODE)
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file serves as the **primary context and instruction set** for Claude when working on the Customer Service CRM project.
 
-## Project Overview
+## 🚀 Project Overview: SaaS CRM Omnichannel (WhatsApp)
+*   **Type:** B2B SaaS Platform (Multi-Tenant).
+*   **Stack:** 
+    *   **Frontend:** React (Vite, TypeScript, Tailwind).
+    *   **Backend:** Node.js (Express).
+    *   **Database:** PostgreSQL.
+    *   **Gateway:** Go (Whatsmeow) - Unofficial API.
+*   **Current State:** Ready for Early Access (Closed Beta).
 
-Multi-tenant WhatsApp CRM SaaS with real-time chat, role-based access control (RBAC), and WhatsApp gateway integration via Go WhatsApp Gateway (whatsmeow).
+## 🏛️ Architecture & Source of Truth
+**CRITICAL:** Before writing any code, ALWAYS check **`docs/architecture.md`**.
+*   That file contains the Roadmap, Data Structure, and Logic Flow.
+*   **Do not hallucinate** features. Implement exactly what is in the roadmap (currently Phase 5 DONE, Phase 6 Planned).
 
-## Architecture
+## ⚡ Core Rules (Non-Negotiable)
 
-```
-customerservicecrm/
-├── frontend/          # React 19 + TypeScript + Vite + Tailwind CSS 4
-├── backend/           # Node.js + Express 5 + Redis (API & Auth)
-├── wa-gateway/                # Go + whatsmeow (WhatsApp Protocol)
-└── docs/              # Documentation
-```
+1.  **PowerShell Environment (Windows):**
+    *   ❌ NEVER use `&&` chaining (e.g., `cd backend && npm start`).
+    *   ✅ EXECUTE commands sequentially or use `;` (e.g., `cd backend; npm start`).
+    *   ✅ Handle path separators correctly (`\` vs `/`).
 
-**System Flow:**
-```
-[Frontend] → [Node.js Backend :3000] → [Go Gateway :3001] → [WhatsApp]
-                       ↑                      ↓
-                [WebSocket]          [Webhook POST]
-                       ↑                      ↓
-              [Real-time updates] ← [Incoming messages]
-```
+2.  **Linting & Quality First:**
+    *   ❌ NEVER commit code with linting errors.
+    *   ✅ RUN `npm run lint` (in backend/frontend) before finishing a task.
+    *   ✅ Use Single Quotes `'` for JS/TS strings (unless SQL query requires otherwise).
 
-**Frontend-Backend Communication:**
-- Frontend calls backend API via Axios (`/api/v1/*`)
-- WebSocket for real-time session updates
-- Session-based auth with Redis store
+3.  **Database Migrations:**
+    *   ❌ NEVER modify the database schema via ad-hoc queries blindly.
+    *   ✅ WRITE migration scripts in `doc/query.sql`.
+    *   ✅ UPDATE `doc/strukturdatabase.sql` to reflect the final state.
 
-**Backend-Gateway Communication:**
-- Node.js calls Go gateway via HTTP (`/api/v1/whatsapp/*`)
-- Go gateway sends webhooks to Node.js (`/api/v1/webhook/incoming`)
-- JWT authentication between services
+4.  **Self-Correction Protocol:**
+    *   If a tool fails, **ANALYZE the error**. Do not blindly retry.
+    *   If a test fails, fix the *test logic* or the *code logic*, don't just skip it.
 
-**Role Hierarchy:**
-- `super_admin` → System-wide access, tenant management
-- `admin_agent` → Tenant admin, can manage agents
-- `agent` → Limited to chat workspace and history
+## 🔐 Key Architectural Decisions (Current) 
 
-**Key Patterns:**
-- ProtectedRoute component enforces RBAC
-- Zustand store (`useAuthStore`) for auth state
-- Demo mode bypasses API with mock data
-- Session tokens stored encrypted on disk
+1.  **Single Session Architecture:**
+    *   1 Tenant = 1 WhatsApp Session.
+    *   Users (Agents) do NOT have their own sessions. They inherit `tenants.session_id`.
+    *   Column `users.session_id` is REMOVED.
 
-## Commands
+2.  **Impersonation:**
+    *   Super Admin can login as any Tenant Owner.
+    *   Frontend shows a "Banner" when impersonating.
 
-### Root Level
-```bash
-npm run doctor        # Lint + type check
-npm run doctor:fix    # Auto-fix lint/format issues
-docker-compose up     # Start all services
-```
+3.  **Internal Alerting:**
+    *   No external webhooks for system alerts.
+    *   Backend sends WhatsApp messages to Super Admin's number using `notifier_session_id`.
 
-### Frontend (`cd frontend`)
-```bash
-npm run dev           # Vite dev server (port 5173)
-npm run build         # Production build (tsc + vite)
-npm run lint          # ESLint check
-```
+4.  **Hybrid Provider (Future):**
+    *   We are preparing to support Meta Cloud API (Official) alongside Whatsmeow.
+    *   Follow `docs/architecture.md` Phase 6 for implementation details.
 
-### Backend (`cd backend`)
-```bash
-npm run dev           # Nodemon with auto-reload
-npm run start         # Production with GC (node --expose-gc)
-npm test              # Jest tests
-```
+## 🛠️ Common Commands
+*   **Backend Test:** `cd backend; npm test` (Requires DB `customerservice_test`)
+*   **Frontend Build:** `cd frontend; npm run build`
+*   **Doctor:** `npm run doctor` (System health check)
 
-### Go Gateway (`cd wa-gateway`)
-```bash
-make run              # Development mode
-make build            # Build binary
-docker build .        # Build container
-```
-
-## Environment Setup
-
-**Backend `.env` (required):**
-```
-SESSION_SECRET=<random_string>
-ENCRYPTION_KEY=<64_char_hex>
-REDIS_URL=redis://localhost:6379
-WA_GATEWAY_URL=http://localhost:3001/api/v1/whatsapp
-WA_GATEWAY_PASSWORD=<gateway_auth_password>
-```
-
-**Go Gateway `.env` (required):**
-```
-SERVER_PORT=3001
-REDIS_URL=redis://localhost:6379
-WEBHOOK_URL=http://localhost:3000/api/v1/webhook/incoming
-WHATSAPP_DATASTORE_TYPE=postgres
-WHATSAPP_DATASTORE_URI=postgres://user:pass@localhost:5432/whatsapp
-AUTH_BASIC_PASSWORD=<same_as_WA_GATEWAY_PASSWORD>
-AUTH_JWT_SECRET=<jwt_secret>
-```
-
-**Frontend:** Set `VITE_API_URL` for production API endpoint.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `frontend/src/App.tsx` | Router config, content protection |
-| `frontend/src/store/useAuthStore.ts` | Auth state (Zustand) |
-| `frontend/src/components/ProtectedRoute.tsx` | Role-based route guard |
-| `backend/index.js` | Express server, session management |
-| `backend/api_v1.js` | All API endpoints |
-| `backend/wa-gateway-client.js` | HTTP client for Go gateway |
-| `backend/wa-socket-compat.js` | Baileys-compatible wrapper |
-| `backend/webhook-handler.js` | Incoming message handler |
-| `wa-gateway/pkg/whatsapp/whatsapp.go` | WhatsApp client (whatsmeow) |
-| `wa-gateway/pkg/webhook/webhook.go` | Outgoing webhook system |
-| `wa-gateway/pkg/events/handler.go` | Message event handler |
-
-## Deployment
-
-**Docker Compose (recommended):**
-```bash
-docker-compose up -d redis postgres wa-gateway backend
-```
-
-**Manual:**
-- **Frontend:** Vercel (auto-deploy from main)
-- **Backend:** VPS with Node.js 18+, Redis
-- **Go Gateway:** VPS with Go 1.21+, PostgreSQL
-
-## Demo Mode
-
-Login page has demo credentials that bypass real API:
-- Admin Agent: `admin@tokomaju.com`
-- User Agents: `siti@tokomaju.com`, `budi@tokomaju.com`, `dewi@tokomaju.com`
-- Super Admin: `admin@localhost` (subtle link)
-
-Demo uses role `agent` for user agents, `admin_agent` for admin.
-
-## Agent Slot Limits
-
-Both demo and production enforce **4 agent slots** per tenant (1 admin + 3 user agents).
-
-## Gateway API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/login` | POST | Login with QR code |
-| `/login/pair` | POST | Login with pairing code |
-| `/logout` | POST | Logout session |
-| `/send/text` | POST | Send text message |
-| `/send/image` | POST | Send image |
-| `/send/document` | POST | Send document |
-| `/send/audio` | POST | Send audio |
-| `/send/video` | POST | Send video |
-| `/send/location` | POST | Send location |
-| `/send/contact` | POST | Send contact |
-| `/group` | GET | Get joined groups |
-| `/registered` | GET | Check if number is on WhatsApp |
-
-## Webhook Events
-
-Go gateway sends these events to Node.js:
-- `message` - Incoming message
-- `receipt` - Read/delivered receipt
-- `typing` - Typing indicator
-- `presence` - Online/offline status
-- `connection` - Session connected/disconnected
+---
+*Updated by Gemini Agent to synchronize intelligence across all AI partners.*
