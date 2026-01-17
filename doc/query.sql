@@ -1,14 +1,14 @@
 -- ==========================================
--- MIGRATION V2: CLEANUP SESSION COLUMNS
+-- MIGRATION V3: TENANT API KEY & IMPERSONATE
 -- ==========================================
--- Menghapus kolom session pribadi di tabel users
--- Karena sekarang 1 Tenant = 1 Session WA (Single Session Architecture)
 
-ALTER TABLE "public"."users" DROP COLUMN IF EXISTS "user_session_id";
-ALTER TABLE "public"."users" DROP COLUMN IF EXISTS "tenant_session_id";
-ALTER TABLE "public"."users" DROP COLUMN IF EXISTS "session_id";
-DROP INDEX IF EXISTS "users_session_id_idx";
+-- 1. Tambah API Key untuk Tenant (Auto generate untuk tenant baru)
+ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "api_key" TEXT UNIQUE;
 
--- Pastikan kolom session_id di tenants ada dan unique
-ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "session_id" TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS "tenants_session_id_key" ON "public"."tenants" ("session_id");
+-- Generate API Key untuk tenant lama yang belum punya
+UPDATE "public"."tenants" 
+SET "api_key" = 'sk_' || encode(gen_random_bytes(24), 'hex') 
+WHERE "api_key" IS NULL;
+
+-- 2. Tambah Log Error sederhana untuk Invite
+ALTER TABLE "public"."user_invites" ADD COLUMN IF NOT EXISTS "last_error" TEXT;

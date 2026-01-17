@@ -346,6 +346,19 @@ module.exports = {
     createTenantWebhook: async (tid, url) => (await query('INSERT INTO tenant_webhooks (tenant_id, url) VALUES ($1, $2) RETURNING *', [tid, url])).rows[0],
     getTenantWebhooks: async (tid) => (await query('SELECT * FROM tenant_webhooks WHERE tenant_id = $1', [tid])).rows,
     deleteTenantWebhook: async (tid, wid) => (await query('DELETE FROM tenant_webhooks WHERE tenant_id = $1 AND id = $2 RETURNING id', [tid, wid])).rows[0],
+    
+    // Tenant API Key
+    getTenantByApiKey: async (key) => (await query('SELECT * FROM tenants WHERE api_key = $1', [key])).rows[0],
+    regenerateTenantApiKey: async (id) => {
+        const newKey = 'sk_' + require('crypto').randomBytes(24).toString('hex');
+        return (await query('UPDATE tenants SET api_key = $1 WHERE id = $2 RETURNING *', [newKey, id])).rows[0];
+    },
+    ensureTenantApiKeyColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS api_key TEXT UNIQUE'),
+
+    // Invites
+    updateInviteError: async (id, error) => (await query('UPDATE user_invites SET last_error = $1 WHERE id = $2 RETURNING *', [error, id])).rows[0],
+    getInviteById: async (id) => (await query('SELECT i.*, t.company_name as tenant_name FROM user_invites i LEFT JOIN tenants t ON i.tenant_id = t.id WHERE i.id = $1', [id])).rows[0],
+
     updateTenantStatus: async (id, status) => (await query('UPDATE tenants SET status = $1 WHERE id = $2 RETURNING *', [status, id])).rows[0],
     setTenantSessionId: async (id, sid) => (await query('UPDATE tenants SET session_id = $1 WHERE id = $2 RETURNING *', [sid, id])).rows[0],
     setTenantGatewayUrl: async (id, url) => (await query('UPDATE tenants SET gateway_url = $1 WHERE id = $2 RETURNING *', [url, id])).rows[0],
@@ -356,6 +369,7 @@ module.exports = {
     ensureTenantSessionColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_id TEXT UNIQUE'),
     ensureTenantGatewayColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS gateway_url TEXT'),
     ensureUserInvitesTable: async () => query('CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT \'pending\', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())'),
+    ensureInviteErrorColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS last_error TEXT'),
     ensureSystemSettingsTable: async () => query('CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     ensureUserPhoneColumn: async () => query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT'),
     ensureInvitePhoneColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS phone_number TEXT'),

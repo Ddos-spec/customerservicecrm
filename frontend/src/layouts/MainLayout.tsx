@@ -8,9 +8,10 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useThemeStore } from '../store/useThemeStore';
+import { UserCircle } from 'lucide-react';
 
 const MainLayout = () => {
-  const { user, logout } = useAuthStore();
+  const { user, logout, stopImpersonate } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -106,6 +107,21 @@ const MainLayout = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-900 flex flex-col transition-colors duration-300">
+      {/* Impersonation Banner */}
+      {user?.isImpersonating && (
+        <div className="bg-amber-500 text-white px-4 py-2 flex justify-between items-center shadow-md relative z-50">
+          <div className="flex items-center gap-2 text-sm font-bold">
+            <span className="bg-white/20 p-1 rounded"><UserCircle size={16} /></span>
+            <span>Anda sedang login sebagai: {user.name} ({user.tenant_name})</span>
+          </div>
+          <button 
+            onClick={() => stopImpersonate()}
+            className="bg-white text-amber-600 px-3 py-1 rounded text-xs font-bold uppercase hover:bg-amber-50 transition-colors shadow-sm"
+          >
+            Kembali ke Super Admin
+          </button>
+        </div>
+      )}
 
       {/* ================= DESKTOP NAVBAR ================= */}
       <header className="hidden lg:flex bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-100 dark:border-slate-800 h-20 sticky top-0 z-40 transition-colors duration-300">

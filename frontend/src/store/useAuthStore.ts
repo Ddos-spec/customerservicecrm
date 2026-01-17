@@ -14,6 +14,12 @@ export interface User {
   tenant_name?: string;
   session_id?: string | null; // Tenant's WhatsApp Session ID
   isDemo?: boolean;
+  isImpersonating?: boolean;
+  originalUser?: {
+    id: string | number;
+    name: string;
+    role: string;
+  };
 }
 
 interface AuthState {
@@ -24,6 +30,7 @@ interface AuthState {
   // Real Backend Login
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  stopImpersonate: () => Promise<void>;
 
   // Check session on app load
   checkSession: () => Promise<void>;
@@ -56,7 +63,9 @@ export const useAuthStore = create<AuthState>()(
               tenant_id: response.data.user.tenant_id,
               tenant_name: response.data.user.tenant_name,
               session_id: response.data.user.session_id,
-              isDemo: false
+              isDemo: false,
+              isImpersonating: response.data.user.isImpersonating,
+              originalUser: response.data.user.originalUser
             };
 
             set({ user: userData, isAuthenticated: true, isLoading: false });
@@ -72,6 +81,21 @@ export const useAuthStore = create<AuthState>()(
           toast.error(message);
           set({ isLoading: false });
           return false;
+        }
+      },
+
+      stopImpersonate: async () => {
+        try {
+          const res = await api.post('/admin/stop-impersonate');
+          if (res.data.success) {
+            set({ user: res.data.user });
+            toast.success('Kembali ke Super Admin');
+            // Force reload to clear any cached tenant data
+            window.location.href = '/admin/dashboard'; 
+          }
+        } catch (error) {
+          console.error('Failed to stop impersonate:', error);
+          toast.error('Gagal kembali ke akun asli');
         }
       },
 

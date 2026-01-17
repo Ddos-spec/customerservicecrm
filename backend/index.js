@@ -1276,7 +1276,9 @@ if (!isTest) {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
             await db.ensureTenantGatewayColumn();
+            await db.ensureTenantApiKeyColumn();
             await db.ensureUserInvitesTable();
+            await db.ensureInviteErrorColumn();
             await db.ensureSystemSettingsTable();
             await db.ensureUserPhoneColumn();
             await db.ensureInvitePhoneColumn();
