@@ -2,7 +2,9 @@
 
 ## Scope
 This document describes the current system architecture and role flows
-for super admin, owner (tenant), and staff.
+for super admin, owner (tenant), and staff. It serves as the **Single Source of Truth** for development.
+
+**Instruction for AI Agents:** When asked to implement a phase, read the specific details in the "Hybrid Provider Roadmap" section below and execute exactly as described.
 
 ## Components
 - Frontend (React/Vite/TS/Tailwind): UI for login, workspace, and owner panels.
@@ -18,7 +20,12 @@ for super admin, owner (tenant), and staff.
 - Phase 3 (Scale hardening + observability): done.
 - Phase 4 (Launch readiness): done.
 - Phase 5 (SaaS Migration - Single Session & Impersonate): **DONE**.
-- Phase 6 (Hybrid Provider - Meta Cloud API): **PLANNED**.
+- **Phase 6 (Hybrid Provider - Meta Cloud API):**
+  - Step 1: Database Schema (DONE)
+  - Step 2: Adapter Layer (PENDING)
+  - Step 3: Incoming Webhook (PENDING)
+  - Step 4: UI Configuration (PENDING)
+  - Step 5: 24H Window Logic (PENDING)
 
 ## Roles and capabilities
 Super admin:
@@ -80,7 +87,7 @@ Tenant API Integration:
 - Flow: Backend resolves Tenant by Key -> Gets Session ID -> Sends Message.
 
 ## Data tables (high level)
-- tenants: id, company_name, status, session_id, gateway_url, **api_key**.
+- tenants: id, company_name, status, session_id, gateway_url, **api_key**, **wa_provider**, **meta_phone_id**, **meta_waba_id**, **meta_token**.
 - users: id, role, tenant_id, phone_number (no session columns).
 - user_invites: ..., **last_error**.
 - contacts: tenant_id, jid, full_name, phone_number.
@@ -88,21 +95,86 @@ Tenant API Integration:
 - messages: chat_id, sender, content, timestamps.
 - whatsmeow_*: raw WhatsApp data from gateway.
 
-## Hybrid Provider Roadmap (Meta Cloud API)
-Plan to support Official WhatsApp Business API alongside Whatsmeow (Unofficial).
+---
 
-1.  **Phase 1 (Database Schema):**
-    - Add columns to `tenants`: `wa_provider` (enum: 'whatsmeow', 'meta'), `meta_phone_id`, `meta_waba_id`, `meta_token`.
-2.  **Phase 2 (Adapter Layer):**
-    - Abstract message sending logic into `backend/services/whatsapp`.
-    - Create `WhatsmeowDriver` (legacy) and `MetaCloudDriver`.
-3.  **Phase 3 (Incoming Webhook):**
-    - New endpoint `POST /api/v1/webhook/meta`.
-    - Transform Meta JSON payload -> Standard DB format -> Save to DB.
-4.  **Phase 4 (UI Config):**
-    - Frontend menu to input Meta Credentials.
-5.  **Phase 5 (24H Window Logic):**
-    - Implement Template Message handling for expired sessions.
+## Hybrid Provider Roadmap (Actionable Blueprint)
+
+Objective: Support Official WhatsApp Business API alongside Whatsmeow (Unofficial) using Adapter Pattern.
+
+### Phase 1: Database Schema (DONE)
+- Added columns to `tenants`: `wa_provider`, `meta_phone_id`, `meta_waba_id`, `meta_token`.
+
+### Phase 2: Adapter Layer Implementation (NEXT)
+**Goal:** Decouple `backend/wa-gateway-client.js` from business logic.
+
+1.  **Create Interface:**
+    - File: `backend/services/whatsapp/provider.js`
+    - Class `WhatsAppProvider` with methods:
+        - `sendMessage(to, content, options)`
+        - `getProfilePicture(jid)`
+        - `checkNumber(phone)`
+
+2.  **Create Drivers:**
+    - File: `backend/services/whatsapp/drivers/whatsmeow.js`
+        - Move logic from `wa-gateway-client.js` here.
+        - Implements `WhatsAppProvider`.
+    - File: `backend/services/whatsapp/drivers/meta.js`
+        - Implements `WhatsAppProvider` using Axios to Graph API.
+        - Endpoint: `https://graph.facebook.com/v18.0/{phone_id}/messages`
+
+3.  **Factory Pattern:**
+    - File: `backend/services/whatsapp/factory.js`
+    - Function: `getProvider(tenant)`
+    - Logic:
+      ```js
+      if (tenant.wa_provider === 'meta') return new MetaDriver(tenant);
+      return new WhatsmeowDriver(tenant.session_id);
+      ```
+
+4.  **Refactor Routes:**
+    - Update `backend/routes/messages.js` and `chat.js` to use `getProvider(tenant)` instead of direct `waGateway` calls.
+
+### Phase 3: Incoming Webhook (Meta)
+**Goal:** Handle incoming messages from Meta Cloud API.
+
+1.  **New Endpoint:**
+    - File: `backend/routes/webhook-meta.js`
+    - POST `/api/v1/webhook/meta`
+    - GET `/api/v1/webhook/meta` (for Verification Challenge)
+
+2.  **Transformer Logic:**
+    - Convert Meta Payload -> Standard Message Object.
+    - Meta Format: `entry[0].changes[0].value.messages[0]`
+    - Standard Format: `{ from: '6281..', body: 'Hello', type: 'text', timestamp: ... }`
+
+3.  **Storage Logic:**
+    - Reuse existing `db.logMessage` function.
+    - Ensure `contacts` are created/updated based on Meta payload.
+
+### Phase 4: UI Configuration
+**Goal:** Allow users to switch providers in Dashboard.
+
+1.  **Tenant Settings Page:**
+    - Add "Connection Type" Dropdown: [Unofficial (QR)] vs [Official (Meta API)].
+    - If Official selected, show Form:
+        - Phone Number ID
+        - WABA ID
+        - Permanent Token
+    - Save to DB.
+
+### Phase 5: 24H Window Logic
+**Goal:** Enforce Meta's messaging window policy.
+
+1.  **Backend Check:**
+    - Before sending message, check last customer message timestamp.
+    - If > 24 hours AND provider is Meta -> Throw Error "Window Closed".
+
+2.  **Frontend UI:**
+    - If Window Closed -> Disable Text Input.
+    - Show "Send Template" button.
+    - (Future) Template Manager UI.
+
+---
 
 ## Notes and limits
 - Ticketing is removed; chats are the primary unit.
