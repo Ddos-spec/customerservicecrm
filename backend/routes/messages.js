@@ -34,6 +34,74 @@ function buildMessagesRouter(deps) {
     } = deps;
     const unsupportedTypes = new Set(['button', 'list', 'template', 'contacts']);
 
+    /**
+     * POST /api/v1/messages/external
+     * Public endpoint to send message using Tenant API Key
+     * Header: X-Tenant-Key: sk_...
+     */
+    router.post('/external', async (req, res) => {
+        const apiKeyHeader = req.headers['x-tenant-key'];
+        const apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
+        const sanitizedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+        if (!sanitizedKey) {
+            return res.status(401).json({ status: 'error', message: 'Missing X-Tenant-Key header' });
+        }
+
+        try {
+            const tenant = await db.getTenantByApiKey(sanitizedKey);
+            if (!tenant) return res.status(401).json({ status: 'error', message: 'Invalid API Key' });
+            if (tenant.status !== 'active') return res.status(403).json({ status: 'error', message: 'Tenant is not active' });
+
+            const sessionId = tenant.session_id;
+            if (!sessionId) return res.status(503).json({ status: 'error', message: 'Tenant has no active WhatsApp session' });
+            const session = sessions.get(sessionId);
+            if (!session || session.status !== 'CONNECTED') {
+                return res.status(409).json({ status: 'error', message: 'WhatsApp is not connected' });
+            }
+
+            const rawPhone = (req.body.phone || req.body.to || '').toString().trim();
+            const messageText = (req.body.message || req.body.text || '').toString().trim();
+
+            if (!rawPhone || !messageText) {
+                return res.status(400).json({ status: 'error', message: 'phone and message are required' });
+            }
+
+            // Reuse internal logic
+            const destination = toWhatsAppFormat(formatPhoneNumber(rawPhone));
+            
+            // Send via Gateway
+            const result = await scheduleMessageSend(sessionId, async () => {
+                const activeSession = sessions.get(sessionId);
+                if (!activeSession?.sock) throw new Error('WhatsApp disconnected');
+                return await activeSession.sock.sendMessage(destination, { text: messageText });
+            });
+
+            // Log to DB
+            // Find system user or leave sender_id null
+            const chat = await db.getOrCreateChat(tenant.id, destination, rawPhone, false);
+            const savedMsg = await db.logMessage({
+                chatId: chat.id,
+                senderType: 'system',
+                senderId: null, 
+                senderName: 'API System',
+                messageType: 'text',
+                body: messageText,
+                waMessageId: result?.key?.id,
+                isFromMe: true
+            });
+
+            res.json({ 
+                status: 'success', 
+                messageId: result?.key?.id,
+                data: savedMsg
+            });
+
+        } catch (error) {
+            console.error('[External Message API]', error);
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
     router.post('/internal/messages', sendMessageLimiter, async (req, res) => {
         // Debug: Log session info
         console.log('[Messages] Session ID:', req.sessionID);

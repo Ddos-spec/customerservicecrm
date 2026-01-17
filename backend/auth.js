@@ -357,8 +357,9 @@ function getFrontendBase() {
 async function notifyInviteWebhook(invitePayload) {
     const webhookUrl = process.env.N8N_INVITE_WEBHOOK_URL;
     if (!webhookUrl) {
-        console.warn('N8N_INVITE_WEBHOOK_URL not set; skip invite webhook');
-        return;
+        const reason = 'N8N_INVITE_WEBHOOK_URL not set';
+        console.warn(`${reason}; skip invite webhook`);
+        return { success: false, error: reason, skipped: true };
     }
     try {
         const { invitee_email, invitee_name, invitee_role, invite_link, login_link, initial_password, tenant_name } = invitePayload;
@@ -446,8 +447,11 @@ async function notifyInviteWebhook(invitePayload) {
         console.log('Posting invite webhook to', webhookUrl, 'to:', invitee_email);
         const resp = await axios.post(webhookUrl, emailPayload, { timeout: 5000 });
         console.log('Invite webhook sent, status', resp.status);
+        return { success: true };
     } catch (err) {
-        console.error('Failed to notify invite webhook:', err.message);
+        const message = err?.message || 'Failed to notify invite webhook';
+        console.error('Failed to notify invite webhook:', message);
+        return { success: false, error: message };
     }
 }
 
@@ -676,13 +680,14 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         }
 
         const client = await db.getClient();
+        const apiKey = 'sk_' + crypto.randomBytes(24).toString('hex');
         try {
             await client.query('BEGIN');
             const tenantResult = await client.query(
-                `INSERT INTO tenants (company_name, status, session_id, gateway_url)
-                 VALUES ($1, 'active', $2, $3)
-                 RETURNING id, company_name, status, created_at, session_id, gateway_url`,
-                [companyName, normalizedSessionId, assignedGatewayUrl]
+                `INSERT INTO tenants (company_name, status, session_id, gateway_url, api_key)
+                 VALUES ($1, 'active', $2, $3, $4)
+                 RETURNING id, company_name, status, created_at, session_id, gateway_url, api_key`,
+                [companyName, normalizedSessionId, assignedGatewayUrl, apiKey]
             );
             const tenant = tenantResult.rows[0];
 
@@ -1041,6 +1046,164 @@ router.post('/sessions/:sessionId/webhook-test', requireRole('super_admin'), asy
     }
 });
 
+// ===== SUPER ADMIN FEATURES (API Key & Impersonation) =====
+
+/**
+ * POST /api/v1/admin/tenants/:id/regenerate-key
+ * Regenerate API Key for a tenant
+ */
+router.post('/tenants/:id/regenerate-key', requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const tenant = await db.regenerateTenantApiKey(id);
+        if (!tenant) return res.status(404).json({ success: false, error: 'Tenant not found' });
+        res.json({ success: true, api_key: tenant.api_key });
+    } catch (error) {
+        console.error('Error regenerating key:', error);
+        res.status(500).json({ success: false, error: 'Failed to regenerate key' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/impersonate/:tenantId
+ * Super admin logs in as the Admin Agent of a specific tenant
+ */
+router.post('/impersonate/:tenantId', requireRole('super_admin'), async (req, res) => {
+    try {
+        const { tenantId } = req.params;
+        const tenant = await db.getTenantById(tenantId);
+        if (!tenant) return res.status(404).json({ success: false, error: 'Tenant not found' });
+
+        // Find the admin agent for this tenant
+        const targetUser = await db.getTenantAdmin(tenantId);
+        if (!targetUser) return res.status(404).json({ success: false, error: 'Tenant has no admin agent' });
+
+        // Save original session
+        const originalUser = req.session.user;
+
+        // Switch session to target user
+        req.session.user = {
+            id: targetUser.id,
+            tenant_id: targetUser.tenant_id,
+            name: targetUser.name,
+            email: targetUser.email,
+            role: targetUser.role,
+            tenant_name: tenant.company_name,
+            session_id: tenant.session_id,
+            // Flag for UI to show "Stop Impersonating"
+            isImpersonating: true,
+            originalUser: {
+                id: originalUser.id,
+                name: originalUser.name,
+                role: originalUser.role
+            }
+        };
+
+        res.json({ success: true, user: req.session.user });
+    } catch (error) {
+        console.error('Impersonate error:', error);
+        res.status(500).json({ success: false, error: 'Failed to impersonate' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/stop-impersonate
+ * Revert session to Super Admin
+ */
+router.post('/stop-impersonate', async (req, res) => {
+    try {
+        if (!req.session.user?.isImpersonating || !req.session.user?.originalUser) {
+            return res.status(400).json({ success: false, error: 'Not currently impersonating' });
+        }
+
+        const original = req.session.user.originalUser;
+        // Restore super admin session
+        // Note: We need to fetch fresh data to be safe, but minimal restore is fine for now
+        const user = await db.findUserById(original.id);
+        if (!user) {
+            return res.status(404).json({ success: false, error: 'Original user not found' });
+        }
+
+        let tenantName = null;
+        let sessionId = null;
+        if (user.tenant_id) {
+            const tenant = await db.getTenantById(user.tenant_id);
+            tenantName = tenant?.company_name || null;
+            sessionId = tenant?.session_id || null;
+        }
+
+        req.session.user = {
+            id: user.id,
+            tenant_id: user.tenant_id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            tenant_name: tenantName,
+            session_id: sessionId
+        };
+
+        res.json({ success: true, user: req.session.user });
+    } catch (error) {
+        console.error('Stop impersonate error:', error);
+        res.status(500).json({ success: false, error: 'Failed to restore session' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/invites/:id/resend
+ * Resend invitation email (via n8n)
+ */
+router.post('/invites/:id/resend', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const invite = await db.getInviteById(id);
+        
+        if (!invite) return res.status(404).json({ success: false, error: 'Invite not found' });
+        
+        // Permission check
+        const currentUser = req.session.user;
+        if (currentUser.role !== 'super_admin' && invite.tenant_id !== currentUser.tenant_id) {
+            return res.status(403).json({ success: false, error: 'Forbidden' });
+        }
+
+        const baseUrl = getFrontendBase();
+        const inviteLink = `${baseUrl}/invite/${invite.token}`;
+        const loginLink = `${baseUrl}/login`;
+
+        // Retry sending webhook
+        const notifyResult = await notifyInviteWebhook({
+            invite_link: inviteLink,
+            login_link: loginLink,
+            invitee_email: invite.email,
+            invitee_name: invite.name,
+            invitee_role: invite.role,
+            tenant_id: invite.tenant_id,
+            tenant_name: invite.tenant_name,
+            created_by_email: currentUser.email,
+            created_by_name: currentUser.name,
+            created_by_role: currentUser.role,
+            expires_at: invite.expires_at,
+            username: invite.email,
+            initial_password: null
+        });
+
+        if (!notifyResult?.success) {
+            await db.updateInviteError(id, notifyResult?.error || 'Invite webhook failed');
+            return res.status(502).json({ success: false, error: notifyResult?.error || 'Failed to resend invite' });
+        }
+
+        // Clear last error if any
+        await db.updateInviteError(id, null);
+
+        res.json({ success: true, message: 'Invite resent successfully' });
+    } catch (error) {
+        console.error('Resend invite error:', error);
+        // Log error to DB
+        await db.updateInviteError(req.params.id, error.message);
+        res.status(500).json({ success: false, error: 'Failed to resend invite' });
+    }
+});
+
 // ===== USER MANAGEMENT =====
 
 /**
@@ -1201,14 +1364,15 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
         const inviteLink = `${baseUrl}/invite/${token}`;
         const loginLink = `${baseUrl}/login`;
 
-        await notifyInviteWebhook({
+        const tenant = await db.getTenantById(targetTenantId);
+        const notifyResult = await notifyInviteWebhook({
             invite_link: inviteLink,
             login_link: loginLink,
             invitee_email: email,
             invitee_name: name,
             invitee_role: 'agent',
             tenant_id: targetTenantId,
-            tenant_name: null,
+            tenant_name: tenant?.company_name || null,
             created_by_email: currentUser?.email || null,
             created_by_name: currentUser?.name || null,
             created_by_role: currentUser?.role || null,
@@ -1217,10 +1381,44 @@ router.post('/invites', requireRole('super_admin', 'admin_agent'), async (req, r
             initial_password: null
         });
 
+        if (!notifyResult?.success) {
+            await db.updateInviteError(invite.id, notifyResult?.error || 'Invite webhook failed');
+        }
+
         res.status(201).json({ success: true, invite });
     } catch (error) {
         console.error('Error creating invite:', error);
         res.status(500).json({ success: false, error: 'Failed to create invite' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/invites
+ * List pending invites for tenant
+ */
+router.get('/invites', requireAuth, async (req, res) => {
+    try {
+        const { tenant_id } = req.query;
+        const user = req.session.user;
+        
+        const targetTenantId = user.role === 'super_admin'
+            ? (tenant_id ? tenant_id.toString().trim() : null)
+            : user.tenant_id;
+
+        if (!targetTenantId && user.role !== 'super_admin') {
+            return res.status(400).json({ success: false, error: 'Tenant ID required' });
+        }
+
+        // We need a db method for this
+        const invites = await db.query(
+            'SELECT * FROM user_invites WHERE tenant_id = $1 AND status = \'pending\' ORDER BY created_at DESC',
+            [targetTenantId]
+        );
+        
+        res.json({ success: true, invites: invites.rows });
+    } catch (error) {
+        console.error('Error fetching invites:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch invites' });
     }
 });
 

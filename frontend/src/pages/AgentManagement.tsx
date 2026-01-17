@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { UserPlus, Mail, Shield, Trash2, Edit2, X, Loader2, Copy, ExternalLink } from 'lucide-react';
+import { UserPlus, Mail, Shield, Trash2, Edit2, X, Loader2, Copy, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
 import api from '../lib/api';
@@ -12,8 +12,19 @@ interface AgentUser {
   role: string;
 }
 
+interface UserInvite {
+  id: string;
+  name: string;
+  email: string;
+  token: string;
+  status: string;
+  expires_at: string;
+  last_error?: string | null;
+}
+
 const AgentManagement = () => {
   const [agents, setAgents] = useState<AgentUser[]>([]);
+  const [invites, setInvites] = useState<UserInvite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6; // Grid 3 kolom x 2 baris
@@ -34,18 +45,46 @@ const AgentManagement = () => {
   const fetchAgents = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get('/admin/users');
-      if (res.data.success) {
-        setAgents(res.data.users || []);
-        const parsedLimit = Number(res.data.seat_limit);
+      const [usersRes, invitesRes] = await Promise.all([
+        api.get('/admin/users'),
+        api.get('/admin/invites')
+      ]);
+
+      if (usersRes.data.success) {
+        setAgents(usersRes.data.users || []);
+        const parsedLimit = Number(usersRes.data.seat_limit);
         setSeatLimit(Number.isFinite(parsedLimit) ? parsedLimit : null);
-        setPendingInvites(Number(res.data.pending_invites || 0));
+        setPendingInvites(Number(usersRes.data.pending_invites || 0));
+      }
+      
+      if (invitesRes.data.success) {
+        setInvites(invitesRes.data.invites || []);
       }
     } catch (error) {
       console.error('Failed to fetch agents:', error);
       toast.error('Gagal memuat data staff');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResendInvite = async (invite: UserInvite) => {
+    if (!confirm(`Kirim ulang undangan ke ${invite.email}?`)) return;
+    try {
+      const res = await api.post(`/admin/invites/${invite.id}/resend`);
+      if (res.data.success) {
+        toast.success('Undangan dikirim ulang');
+        setInvites((prev) => prev.map((item) => (
+          item.id === invite.id ? { ...item, last_error: null } : item
+        )));
+      }
+    } catch (error: any) {
+      console.error('Failed to resend invite:', error);
+      const message = error.response?.data?.error || 'Gagal mengirim ulang';
+      toast.error(message);
+      setInvites((prev) => prev.map((item) => (
+        item.id === invite.id ? { ...item, last_error: message } : item
+      )));
     }
   };
 
@@ -158,7 +197,56 @@ const AgentManagement = () => {
             <Loader2 className="animate-spin text-blue-600" size={32} />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <>
+            {/* PENDING INVITES */}
+            {invites.length > 0 && (
+              <div className="mb-10">
+                <h3 className="text-sm font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 px-2">Undangan Pending</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {invites.map((invite) => (
+                    <div key={invite.id} className="bg-white/50 dark:bg-slate-800/50 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-[2rem] p-6 relative group">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xl font-black">
+                          {invite.name.charAt(0)}
+                        </div>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleResendInvite(invite)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"
+                            title="Kirim Ulang"
+                          >
+                            <RefreshCw size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <h3 className="font-bold text-gray-900 dark:text-white truncate">{invite.name}</h3>
+                      <p className="text-xs text-amber-600 dark:text-amber-400 font-bold uppercase tracking-widest mt-1 mb-4">Menunggu Konfirmasi</p>
+                      
+                      <div className="text-xs text-gray-500 dark:text-gray-400 truncate mb-2 flex items-center gap-2">
+                        <Mail size={12} /> {invite.email}
+                      </div>
+
+                      {invite.last_error && (
+                        <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-800/50">
+                          <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-1">
+                            <AlertTriangle size={12} />
+                            <span className="text-[10px] font-bold uppercase">Gagal Terkirim</span>
+                          </div>
+                          <p className="text-[10px] text-red-500 dark:text-red-300 line-clamp-2 leading-relaxed">
+                            {invite.last_error}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ACTIVE AGENTS */}
+            <h3 className="text-sm font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 px-2">Staff Aktif</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {currentData.map((agent) => {
               const statusLabel = agent.status === 'active' ? 'Aktif' : 'Nonaktif';
               const roleLabel = agent.role === 'admin_agent' ? 'Owner (Pemilik)' : 'Support Staff';
@@ -200,6 +288,7 @@ const AgentManagement = () => {
               );
             })}
           </div>
+          </>
         )}
       </div>
 

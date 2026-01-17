@@ -99,8 +99,10 @@ CREATE TABLE "public"."tenants" (
   "max_active_members" INTEGER NULL DEFAULT 100 ,
   "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
   "gateway_url" TEXT NULL,
+  "api_key" TEXT NULL,
   CONSTRAINT "tenants_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "tenants_session_id_key" UNIQUE ("session_id")
+  CONSTRAINT "tenants_session_id_key" UNIQUE ("session_id"),
+  CONSTRAINT "tenants_api_key_key" UNIQUE ("api_key")
 );
 CREATE TABLE "public"."user_invites" ( 
   "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
@@ -114,6 +116,7 @@ CREATE TABLE "public"."user_invites" (
   "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
   "expires_at" TIMESTAMP WITH TIME ZONE NULL,
   "phone_number" TEXT NULL,
+  "last_error" TEXT NULL,
   CONSTRAINT "user_invites_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "user_invites_token_key" UNIQUE ("token")
 );

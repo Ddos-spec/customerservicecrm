@@ -3,6 +3,7 @@ import { Plus, Search, MoreVertical, Building2, X, Loader2, RefreshCw, Trash2, C
 import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
 import api from '../lib/api';
+import { useAuthStore } from '../store/useAuthStore';
 
 interface Tenant {
   id: number;
@@ -12,6 +13,7 @@ interface Tenant {
   created_at: string;
   session_id?: string | null;
   gateway_url?: string | null;
+  api_key?: string | null;
 }
 
 interface TenantWebhook {
@@ -72,6 +74,9 @@ const TenantManagement = () => {
   const [isSessionTokenLoading, setIsSessionTokenLoading] = useState(false);
   const [isSessionTokenRegenerating, setIsSessionTokenRegenerating] = useState(false);
   const [showSessionToken, setShowSessionToken] = useState(false);
+  const [tenantApiKey, setTenantApiKey] = useState<string | null>(null);
+  const [showTenantApiKey, setShowTenantApiKey] = useState(false);
+  const [isTenantApiKeyRegenerating, setIsTenantApiKeyRegenerating] = useState(false);
   const [sessionWebhookUrl, setSessionWebhookUrl] = useState('');
   const [isSessionWebhookLoading, setIsSessionWebhookLoading] = useState(false);
   const [isSessionWebhookSaving, setIsSessionWebhookSaving] = useState(false);
@@ -372,6 +377,36 @@ const TenantManagement = () => {
     toast.success('Token disalin');
   };
 
+  const handleCopyTenantApiKey = async () => {
+    if (!tenantApiKey) return;
+    await navigator.clipboard.writeText(tenantApiKey);
+    toast.success('API key disalin');
+  };
+
+  const handleRegenerateTenantApiKey = async () => {
+    if (!sessionTenant) return;
+    if (!confirm(`Regenerate API key untuk ${sessionTenant.company_name}?`)) return;
+
+    setIsTenantApiKeyRegenerating(true);
+    try {
+      const res = await api.post(`/admin/tenants/${sessionTenant.id}/regenerate-key`);
+      if (res.data?.success) {
+        setTenantApiKey(res.data.api_key || null);
+        setShowTenantApiKey(true);
+        setTenants((prev) => prev.map((t) => (
+          t.id === sessionTenant.id ? { ...t, api_key: res.data.api_key } : t
+        )));
+        setSessionTenant((prev) => prev ? { ...prev, api_key: res.data.api_key } : prev);
+        toast.success('API key diperbarui');
+      }
+    } catch (error: any) {
+      console.error('Failed to regenerate API key:', error);
+      toast.error(error.response?.data?.error || 'Gagal regenerate API key');
+    } finally {
+      setIsTenantApiKeyRegenerating(false);
+    }
+  };
+
   const getSessionAuthConfig = () => {
     if (!sessionToken) {
       toast.error('Token belum ada. Load/Generate dulu.');
@@ -587,6 +622,8 @@ const TenantManagement = () => {
     setSessionToken(null);
     setSessionTokenSessionId('');
     setShowSessionToken(false);
+    setTenantApiKey(tenant.api_key || null);
+    setShowTenantApiKey(false);
     setSessionWebhookUrl('');
     setIsSessionModalOpen(true);
     if (tenant.session_id) {
@@ -602,6 +639,8 @@ const TenantManagement = () => {
     setSessionToken(null);
     setSessionTokenSessionId('');
     setShowSessionToken(false);
+    setTenantApiKey(null);
+    setShowTenantApiKey(false);
     setSessionWebhookUrl('');
   };
 
@@ -715,6 +754,27 @@ const TenantManagement = () => {
     }
   };
 
+  const handleImpersonate = async (tenant: Tenant) => {
+    setActiveDropdown(null);
+    if (!confirm(`Masuk sebagai Admin "${tenant.company_name}"?`)) return;
+
+    try {
+        const res = await api.post(`/admin/impersonate/${tenant.id}`);
+        if (res.data.success) {
+            // Update auth store manually since we are bypassing login form
+            useAuthStore.setState({ 
+                user: res.data.user,
+                isAuthenticated: true
+            });
+            toast.success(`Berhasil masuk ke ${tenant.company_name}`);
+            window.location.href = '/admin/dashboard';
+        }
+    } catch (error: any) {
+        console.error('Impersonate failed:', error);
+        toast.error(error.response?.data?.error || 'Gagal masuk ke tenant');
+    }
+  };
+
   const rawQuery = rawSearch.trim().toLowerCase();
   const matchRaw = (item: any, nameGetter: (value: any) => string) => {
     if (!rawQuery) return true;
@@ -819,6 +879,9 @@ const TenantManagement = () => {
                             <button onClick={() => openAdminModal(tenant)} className="w-full px-5 py-3 text-xs text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-bold uppercase tracking-wider block">
                               Kelola Owner
                             </button>
+                            <button onClick={() => handleImpersonate(tenant)} className="w-full px-5 py-3 text-xs text-amber-600 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 font-bold uppercase tracking-wider block">
+                              Masuk Dashboard
+                            </button>
                             <button onClick={() => openSessionModal(tenant)} className="w-full px-5 py-3 text-xs text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-bold uppercase tracking-wider block">
                               Atur Session WA
                             </button>
@@ -872,6 +935,9 @@ const TenantManagement = () => {
                            </button>
                            <button onClick={() => openAdminModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-purple-600 dark:text-purple-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Kelola Owner
+                           </button>
+                           <button onClick={() => handleImpersonate(tenant)} className="w-full p-3 text-center text-xs font-bold text-amber-600 dark:text-amber-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
+                             Masuk Dashboard
                            </button>
                            <button onClick={() => openSessionModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Atur Session WA
@@ -1117,6 +1183,55 @@ const TenantManagement = () => {
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
                   Kosongkan untuk pakai gateway default.
                 </p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Tenant API Key</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Dipakai untuk integrasi n8n/AI per tenant.</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isTenantApiKeyRegenerating}
+                    onClick={handleRegenerateTenantApiKey}
+                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:bg-amber-400 transition-colors"
+                  >
+                    {isTenantApiKeyRegenerating ? 'Generating...' : 'Regenerate'}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={tenantApiKey ? (showTenantApiKey ? tenantApiKey : '********') : '-'}
+                    className="flex-1 p-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-slate-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowTenantApiKey((prev) => !prev)}
+                    disabled={!tenantApiKey}
+                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-amber-400 transition-colors disabled:opacity-60"
+                  >
+                    {showTenantApiKey ? 'Hide' : 'Show'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyTenantApiKey}
+                    disabled={!tenantApiKey}
+                    className="p-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
+                    title="Copy API key"
+                  >
+                    <Copy size={14} />
+                  </button>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">Contoh cURL (kirim pesan via tenant key):</p>
+                  <pre className="bg-slate-900 text-slate-300 p-4 rounded-xl overflow-x-auto font-mono text-[11px] leading-relaxed border border-slate-800">
+{`curl -X POST "${apiUrl}/messages/external" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Tenant-Key: ${tenantApiKey || 'TENANT_API_KEY'}" \\
+  -d '{ "phone": "628123456789", "message": "Halo!" }'`}
+                  </pre>
+                </div>
               </div>
               <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
