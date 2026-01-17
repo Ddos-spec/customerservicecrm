@@ -32,7 +32,7 @@ const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
 const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 const { getGatewayHealthSummary } = require('./utils/gateway-health');
-const { sendAlertWebhook } = require('./utils/alert-webhook');
+const { sendAlertWebhook, initAlertSystem } = require('./utils/alert-webhook');
 
 const SESSION_STATUS_TTL_SEC = parseInt(process.env.SESSION_STATUS_TTL_SEC || `${7 * 24 * 60 * 60}`, 10);
 const CONTACT_SYNC_INTERVAL_MINUTES = parseInt(process.env.CONTACT_SYNC_INTERVAL_MINUTES || '360', 10);
@@ -138,9 +138,13 @@ if (!isTest) {
     })();
 }
 
-// Session state (synced from Go gateway via webhooks)
+// --- Session Management ---
 const sessions = new Map();
+// Store JWT tokens: sessionId -> token
 const sessionTokens = new Map();
+
+// Initialize Alert System with internal dependencies
+initAlertSystem(db, scheduleMessageSend, sessions);
 
 // --- Session Status Persistence (Redis) ---
 async function persistSessionStatus(sessionId, status) {
