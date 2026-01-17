@@ -390,15 +390,18 @@ const AdminDashboard = () => {
             </h4>
             <div className="grid grid-cols-1 gap-3">
               <button 
-                onClick={() => navigate('/admin/settings')}
+                onClick={() => navigate('/admin/chat')}
                 className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-slate-700/50 text-left hover:bg-gray-100 dark:hover:bg-slate-700 transition-all group"
               >
-                <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">Pengaturan Chat</p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Webhook & Auto Reply</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">Workspace Chat</p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Monitoring & balas pesan</p>
               </button>
-              <button className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-slate-700/50 text-left hover:bg-gray-100 dark:hover:bg-slate-700 transition-all group">
+              <button
+                onClick={() => navigate('/admin/reports')}
+                className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-slate-700/50 text-left hover:bg-gray-100 dark:hover:bg-slate-700 transition-all group"
+              >
                 <p className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">Export Laporan</p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">PDF & Excel bulanan</p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Buka halaman laporan</p>
               </button>
             </div>
           </div>
