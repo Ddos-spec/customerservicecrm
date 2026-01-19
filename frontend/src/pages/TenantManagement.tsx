@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, MoreVertical, Building2, X, Loader2, RefreshCw, Trash2, Copy } from 'lucide-react';
+import { Plus, Search, MoreVertical, Building2, X, Loader2, RefreshCw, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
 import api from '../lib/api';
@@ -20,12 +20,6 @@ interface Tenant {
   meta_token?: string | null;
 }
 
-interface TenantWebhook {
-  id: number;
-  url: string;
-  created_at: string;
-}
-
 interface AdminUser {
   id: number;
   name: string;
@@ -40,34 +34,13 @@ const TenantManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 7;
   const apiUrl = import.meta.env.VITE_API_URL || window.location.origin + '/api/v1';
-  const RAW_PREVIEW_LIMIT = 200;
-
-  const getRawJid = (item: any) => item?.JID || item?.jid || item?.their_jid || '';
-  const getRawContactName = (item: any) =>
-    item?.FullName ||
-    item?.full_name ||
-    item?.FirstName ||
-    item?.first_name ||
-    item?.PushName ||
-    item?.push_name ||
-    item?.BusinessName ||
-    item?.business_name ||
-    getRawJid(item);
-  const getRawGroupName = (item: any) =>
-    item?.Subject || item?.subject || item?.Name || item?.name || getRawJid(item);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
-  const [webhookTenant, setWebhookTenant] = useState<Tenant | null>(null);
-  const [webhooks, setWebhooks] = useState<TenantWebhook[]>([]);
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [isWebhookLoading, setIsWebhookLoading] = useState(false);
-  const [isWebhookSubmitting, setIsWebhookSubmitting] = useState(false);
-  const [deletingWebhookId, setDeletingWebhookId] = useState<number | null>(null);
+  // Session & Integration State
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [sessionTenant, setSessionTenant] = useState<Tenant | null>(null);
   const [waProvider, setWaProvider] = useState<'whatsmeow' | 'meta'>('whatsmeow');
@@ -77,6 +50,8 @@ const TenantManagement = () => {
   const [metaWabaId, setMetaWabaId] = useState('');
   const [metaToken, setMetaToken] = useState('');
   const [isSessionSaving, setIsSessionSaving] = useState(false);
+  
+  // Advanced Tools State
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [sessionTokenSessionId, setSessionTokenSessionId] = useState('');
   const [isSessionTokenLoading, setIsSessionTokenLoading] = useState(false);
@@ -92,14 +67,6 @@ const TenantManagement = () => {
   const [isSessionWebhookTesting, setIsSessionWebhookTesting] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isFixingContacts, setIsFixingContacts] = useState(false);
-
-  const [isRawModalOpen, setIsRawModalOpen] = useState(false);
-  const [rawTenant, setRawTenant] = useState<Tenant | null>(null);
-  const [rawContacts, setRawContacts] = useState<any[]>([]);
-  const [rawGroups, setRawGroups] = useState<any[]>([]);
-  const [rawSearch, setRawSearch] = useState('');
-  const [isRawLoadingContacts, setIsRawLoadingContacts] = useState(false);
-  const [isRawLoadingGroups, setIsRawLoadingGroups] = useState(false);
 
   // Admin Management State
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
@@ -126,7 +93,6 @@ const TenantManagement = () => {
   });
   const [showAdminPassword, setShowAdminPassword] = useState(false);
 
-  // Fetch tenants from API
   const fetchTenants = async () => {
     setIsLoading(true);
     try {
@@ -146,7 +112,6 @@ const TenantManagement = () => {
     fetchTenants();
   }, []);
 
-  // Filter & Pagination Logic
   const filteredTenants = tenants.filter(t =>
     t.company_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -250,85 +215,6 @@ const TenantManagement = () => {
       toast.error(error.response?.data?.error || 'Gagal membuat tenant');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const fetchWebhooks = async (tenantId: number) => {
-    setIsWebhookLoading(true);
-    try {
-      const res = await api.get(`/admin/tenants/${tenantId}/webhooks`);
-      if (res.data.success) {
-        setWebhooks(res.data.webhooks || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch webhooks:', error);
-      toast.error('Gagal memuat webhook');
-    } finally {
-      setIsWebhookLoading(false);
-    }
-  };
-
-  const openWebhookModal = (tenant: Tenant) => {
-    setActiveDropdown(null);
-    setWebhookTenant(tenant);
-    setIsWebhookModalOpen(true);
-    setWebhooks([]);
-    setWebhookUrl('');
-    setDeletingWebhookId(null);
-    void fetchWebhooks(tenant.id);
-  };
-
-  const closeWebhookModal = () => {
-    setIsWebhookModalOpen(false);
-    setWebhookTenant(null);
-    setWebhooks([]);
-    setWebhookUrl('');
-    setDeletingWebhookId(null);
-  };
-
-  const handleAddWebhook = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!webhookTenant) return;
-    const url = webhookUrl.trim();
-    if (!url) {
-      toast.error('URL webhook harus diisi');
-      return;
-    }
-    if (!/^https?:\/\//i.test(url)) {
-      toast.error('URL harus diawali http:// atau https://');
-      return;
-    }
-
-    setIsWebhookSubmitting(true);
-    try {
-      const res = await api.post(`/admin/tenants/${webhookTenant.id}/webhooks`, { url });
-      if (res.data.success) {
-        setWebhooks((prev) => [res.data.webhook, ...prev]);
-        setWebhookUrl('');
-        toast.success('Webhook berhasil ditambahkan');
-      }
-    } catch (error: any) {
-      console.error('Failed to create webhook:', error);
-      toast.error(error.response?.data?.error || 'Gagal menambahkan webhook');
-    } finally {
-      setIsWebhookSubmitting(false);
-    }
-  };
-
-  const handleDeleteWebhook = async (webhook: TenantWebhook) => {
-    if (!webhookTenant) return;
-    if (!confirm('Hapus webhook ini?')) return;
-
-    setDeletingWebhookId(webhook.id);
-    try {
-      await api.delete(`/admin/tenants/${webhookTenant.id}/webhooks/${webhook.id}`);
-      setWebhooks((prev) => prev.filter((item) => item.id !== webhook.id));
-      toast.success('Webhook berhasil dihapus');
-    } catch (error) {
-      console.error('Failed to delete webhook:', error);
-      toast.error('Gagal menghapus webhook');
-    } finally {
-      setDeletingWebhookId(null);
     }
   };
 
@@ -561,67 +447,6 @@ const TenantManagement = () => {
     }
   };
 
-  const openRawModal = (tenant: Tenant) => {
-    setActiveDropdown(null);
-    setRawTenant(tenant);
-    setIsRawModalOpen(true);
-    setRawContacts([]);
-    setRawGroups([]);
-    setRawSearch('');
-  };
-
-  const closeRawModal = () => {
-    setIsRawModalOpen(false);
-    setRawTenant(null);
-    setRawContacts([]);
-    setRawGroups([]);
-    setRawSearch('');
-  };
-
-  const loadRawContacts = async () => {
-    if (!rawTenant?.session_id) {
-      toast.error('Session ID belum diatur');
-      return;
-    }
-    setIsRawLoadingContacts(true);
-    try {
-      const res = await api.get('/admin/wa/contacts', {
-        params: { session_id: rawTenant.session_id }
-      });
-      if (res.data?.success) {
-        setRawContacts(res.data.contacts || []);
-        toast.success('Kontak raw dimuat');
-      }
-    } catch (error: any) {
-      console.error('Failed to fetch raw contacts:', error);
-      toast.error(error.response?.data?.error || 'Gagal memuat kontak raw');
-    } finally {
-      setIsRawLoadingContacts(false);
-    }
-  };
-
-  const loadRawGroups = async () => {
-    if (!rawTenant?.session_id) {
-      toast.error('Session ID belum diatur');
-      return;
-    }
-    setIsRawLoadingGroups(true);
-    try {
-      const res = await api.get('/admin/wa/groups', {
-        params: { session_id: rawTenant.session_id }
-      });
-      if (res.data?.success) {
-        setRawGroups(res.data.groups || []);
-        toast.success('Grup raw dimuat');
-      }
-    } catch (error: any) {
-      console.error('Failed to fetch raw groups:', error);
-      toast.error(error.response?.data?.error || 'Gagal memuat grup raw');
-    } finally {
-      setIsRawLoadingGroups(false);
-    }
-  };
-
   const openSessionModal = (tenant: Tenant) => {
     setActiveDropdown(null);
     setSessionTenant(tenant);
@@ -807,7 +632,7 @@ const TenantManagement = () => {
         const res = await api.post(`/admin/impersonate/${tenant.id}`);
         if (res.data.success) {
             // Update auth store manually since we are bypassing login form
-            useAuthStore.setState({ 
+            useAuthStore.setState({
                 user: res.data.user,
                 isAuthenticated: true
             });
@@ -819,18 +644,6 @@ const TenantManagement = () => {
         toast.error(error.response?.data?.error || 'Gagal masuk ke tenant');
     }
   };
-
-  const rawQuery = rawSearch.trim().toLowerCase();
-  const matchRaw = (item: any, nameGetter: (value: any) => string) => {
-    if (!rawQuery) return true;
-    const jid = getRawJid(item).toLowerCase();
-    const name = (nameGetter(item) || '').toLowerCase();
-    return jid.includes(rawQuery) || name.includes(rawQuery);
-  };
-  const filteredContacts = rawContacts.filter((item) => matchRaw(item, getRawContactName));
-  const filteredGroups = rawGroups.filter((item) => matchRaw(item, getRawGroupName));
-  const displayedContacts = filteredContacts.slice(0, RAW_PREVIEW_LIMIT);
-  const displayedGroups = filteredGroups.slice(0, RAW_PREVIEW_LIMIT);
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -906,7 +719,7 @@ const TenantManagement = () => {
                         {new Date(tenant.created_at).toLocaleDateString('id-ID')}
                       </td>
                       <td className="px-8 py-6">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${ 
                           tenant.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
                         }`}>
                           {tenant.status === 'active' ? 'Aktif' : 'Ditangguhkan'}
@@ -918,9 +731,6 @@ const TenantManagement = () => {
                         </button>
                         {activeDropdown === tenant.id && (
                           <div className="absolute right-12 top-16 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-700 z-50 overflow-hidden text-left ring-1 ring-black/5">
-                            <button onClick={() => openWebhookModal(tenant)} className="w-full px-5 py-3 text-xs text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-bold uppercase tracking-wider block">
-                              Kelola Webhook
-                            </button>
                             <button onClick={() => openAdminModal(tenant)} className="w-full px-5 py-3 text-xs text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-bold uppercase tracking-wider block">
                               Kelola Owner
                             </button>
@@ -928,10 +738,7 @@ const TenantManagement = () => {
                               Masuk Dashboard
                             </button>
                             <button onClick={() => openSessionModal(tenant)} className="w-full px-5 py-3 text-xs text-emerald-600 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 font-bold uppercase tracking-wider block">
-                              Atur Session WA
-                            </button>
-                            <button onClick={() => openRawModal(tenant)} className="w-full px-5 py-3 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/30 font-bold uppercase tracking-wider block">
-                              Raw Kontak/Grup
+                              Atur Session WA & Integrasi
                             </button>
                             <button onClick={() => handleStatusToggle(tenant)} className="w-full px-5 py-3 text-xs text-orange-600 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 font-bold uppercase tracking-wider block">
                               {tenant.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
@@ -963,7 +770,7 @@ const TenantManagement = () => {
                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center"><Building2 size={24} /></div>
                            <div>
                               <h4 className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{tenant.company_name}</h4>
-                              <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${
+                              <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${ 
                                 tenant.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
                               }`}>{tenant.status === 'active' ? 'Aktif' : 'Ditangguhkan'}</span>
                            </div>
@@ -975,9 +782,6 @@ const TenantManagement = () => {
                      <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2 break-all">Gateway: {tenant.gateway_url || '-'}</div>
                      {activeDropdown === tenant.id && (
                         <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-2 mb-4 animate-in fade-in zoom-in-95">
-                           <button onClick={() => openWebhookModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
-                             Kelola Webhook
-                           </button>
                            <button onClick={() => openAdminModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-purple-600 dark:text-purple-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Kelola Owner
                            </button>
@@ -985,10 +789,7 @@ const TenantManagement = () => {
                              Masuk Dashboard
                            </button>
                            <button onClick={() => openSessionModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
-                             Atur Session WA
-                           </button>
-                           <button onClick={() => openRawModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
-                             Raw Kontak/Grup
+                             Atur Session WA & Integrasi
                            </button>
                            <button onClick={() => handleStatusToggle(tenant)} className="w-full p-3 text-center text-xs font-bold text-orange-600 dark:text-orange-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              {tenant.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
@@ -1129,72 +930,6 @@ const TenantManagement = () => {
         </div>
       )}
 
-      {/* MODAL: Tenant Webhooks */}
-      {isWebhookModalOpen && webhookTenant && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900 dark:text-white">Webhook Tenant</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{webhookTenant.company_name}</p>
-              </div>
-              <button onClick={closeWebhookModal}><X className="text-gray-400 dark:text-gray-500" /></button>
-            </div>
-
-            <form onSubmit={handleAddWebhook} className="space-y-3">
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tambah Webhook</label>
-              <div className="flex flex-col md:flex-row gap-3">
-                <input
-                  required
-                  placeholder="https://example.com/webhook"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  className="flex-1 p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                />
-                <button
-                  type="submit"
-                  disabled={isWebhookSubmitting}
-                  className="px-6 py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all"
-                >
-                  {isWebhookSubmitting && <Loader2 className="animate-spin" size={16} />}
-                  <span>{isWebhookSubmitting ? 'Menyimpan...' : 'Tambah'}</span>
-                </button>
-              </div>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500">Satu tenant bisa punya banyak webhook.</p>
-            </form>
-
-            <div className="mt-6">
-              <h3 className="text-sm font-black text-gray-900 dark:text-white mb-3">Daftar Webhook</h3>
-              {isWebhookLoading ? (
-                <div className="flex items-center justify-center py-10">
-                  <Loader2 className="animate-spin text-emerald-600" size={24} />
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
-                  {webhooks.length > 0 ? webhooks.map((webhook) => (
-                    <div key={webhook.id} className="flex items-center justify-between gap-4 p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
-                      <div className="text-xs font-mono text-gray-800 dark:text-gray-200 break-all">{webhook.url}</div>
-                      <button
-                        onClick={() => handleDeleteWebhook(webhook)}
-                        disabled={deletingWebhookId === webhook.id}
-                        className="text-gray-400 hover:text-rose-600 dark:text-gray-500 dark:hover:text-rose-400 transition-colors"
-                        title="Hapus webhook"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  )) : (
-                    <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">
-                      Belum ada webhook.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL: Tenant Session */}
       {isSessionModalOpen && sessionTenant && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -1215,7 +950,7 @@ const TenantManagement = () => {
                   <button
                     type="button"
                     onClick={() => setWaProvider('whatsmeow')}
-                    className={`p-3 rounded-xl border text-sm font-bold transition-all flex flex-col items-center gap-1 ${
+                    className={`p-3 rounded-xl border text-sm font-bold transition-all flex flex-col items-center gap-1 ${ 
                         waProvider === 'whatsmeow' 
                         ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400' 
                         : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700'
@@ -1227,7 +962,7 @@ const TenantManagement = () => {
                   <button
                     type="button"
                     onClick={() => setWaProvider('meta')}
-                    className={`p-3 rounded-xl border text-sm font-bold transition-all flex flex-col items-center gap-1 ${
+                    className={`p-3 rounded-xl border text-sm font-bold transition-all flex flex-col items-center gap-1 ${ 
                         waProvider === 'meta' 
                         ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-400' 
                         : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700'
@@ -1262,7 +997,7 @@ const TenantManagement = () => {
                   Kosongkan untuk pakai gateway default.
                 </p>
               </div>
-              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Tenant API Key</p>
@@ -1304,17 +1039,17 @@ const TenantManagement = () => {
                 <div>
                   <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">Contoh cURL (kirim pesan via tenant key):</p>
                   <pre className="bg-slate-900 text-slate-300 p-4 rounded-xl overflow-x-auto font-mono text-[11px] leading-relaxed border border-slate-800">
-{`curl -X POST "${apiUrl}/messages/external" \\
-  -H "Content-Type: application/json" \\
-  -H "X-Tenant-Key: ${tenantApiKey || 'TENANT_API_KEY'}" \\
+{`curl -X POST "${apiUrl}/messages/external" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-Key: ${tenantApiKey || 'TENANT_API_KEY'}" \
   -d '{ "phone": "628123456789", "message": "Halo!" }'`}
                   </pre>
                 </div>
               </div>
-              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4 space-y-3">
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">API Token</p>
+                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">API Token (Legacy)</p>
                     <p className="text-[11px] text-gray-400 dark:text-gray-500">Token ini dipakai buat header <span className="font-bold">apikey</span>.</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1360,21 +1095,12 @@ const TenantManagement = () => {
                     <Copy size={14} />
                   </button>
                 </div>
-                <div>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">Contoh cURL (langsung kirim pesan):</p>
-                  <pre className="bg-slate-900 text-slate-300 p-4 rounded-xl overflow-x-auto font-mono text-[11px] leading-relaxed border border-slate-800">
-{`curl -X POST "${apiUrl}/messages" \\
-  -H "Content-Type: application/json" \\
-  -H "apikey: ${sessionToken || 'SESSION_TOKEN'}" \\
-  -d '{ "sessionId": "${sessionIdInput.trim() || '628123456789'}", "to": "628123456789", "type": "text", "text": { "body": "Halo!" } }'`}
-                  </pre>
-                </div>
               </div>
               <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Session Webhook</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Dipicu saat ada pesan masuk. Pakai token session.</p>
+                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Webhook Integrasi</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Kirim pesan masuk ke n8n/Zapier.</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1502,112 +1228,9 @@ const TenantManagement = () => {
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2 transition-all"
               >
                 {isSessionSaving && <Loader2 className="animate-spin" size={16} />}
-                <span>{isSessionSaving ? 'Menyimpan...' : 'Simpan'}</span>
+                <span>{isSessionSaving ? 'Menyimpan...' : 'Simpan Konfigurasi'}</span>
               </button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Raw WA Data (Super Admin Only) */}
-      {isRawModalOpen && rawTenant && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-5xl rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900 dark:text-white">Raw Kontak & Grup</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {rawTenant.company_name} • Session: {rawTenant.session_id || '-'}
-                </p>
-              </div>
-              <button onClick={closeRawModal}><X className="text-gray-400 dark:text-gray-500" /></button>
-            </div>
-
-            <div className="flex flex-col lg:flex-row gap-3 mb-6">
-              <input
-                placeholder="Cari nama atau JID..."
-                value={rawSearch}
-                onChange={(e) => setRawSearch(e.target.value)}
-                className="flex-1 p-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={loadRawContacts}
-                  disabled={isRawLoadingContacts}
-                  className="px-4 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
-                >
-                  {isRawLoadingContacts ? 'Loading...' : 'Load Kontak'}
-                </button>
-                <button
-                  type="button"
-                  onClick={loadRawGroups}
-                  disabled={isRawLoadingGroups}
-                  className="px-4 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60 transition-colors"
-                >
-                  {isRawLoadingGroups ? 'Loading...' : 'Load Grup'}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-gray-700 dark:text-gray-200">Kontak</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                      {filteredContacts.length} total{filteredContacts.length > RAW_PREVIEW_LIMIT ? ` (showing ${RAW_PREVIEW_LIMIT})` : ''}
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                  {displayedContacts.length > 0 ? displayedContacts.map((item, idx) => {
-                    const jid = getRawJid(item) || '-';
-                    const name = getRawContactName(item) || '-';
-                    return (
-                      <div key={`${jid}-${idx}`} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800">
-                        <div className="text-xs font-black text-gray-900 dark:text-white">{name}</div>
-                        <div className="text-[11px] font-mono text-gray-500 dark:text-gray-400">{jid}</div>
-                      </div>
-                    );
-                  }) : (
-                    <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                      {rawContacts.length === 0 ? 'Belum ada data kontak.' : 'Tidak ada hasil.'}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-gray-700 dark:text-gray-200">Grup</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                      {filteredGroups.length} total{filteredGroups.length > RAW_PREVIEW_LIMIT ? ` (showing ${RAW_PREVIEW_LIMIT})` : ''}
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                  {displayedGroups.length > 0 ? displayedGroups.map((item, idx) => {
-                    const jid = getRawJid(item) || '-';
-                    const name = getRawGroupName(item) || '-';
-                    return (
-                      <div key={`${jid}-${idx}`} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">GRUP</span>
-                          <span className="text-xs font-black text-gray-900 dark:text-white">{name}</span>
-                        </div>
-                        <div className="text-[11px] font-mono text-gray-500 dark:text-gray-400">{jid}</div>
-                      </div>
-                    );
-                  }) : (
-                    <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                      {rawGroups.length === 0 ? 'Belum ada data grup.' : 'Tidak ada hasil.'}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}
