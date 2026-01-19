@@ -107,7 +107,7 @@ function buildMarketingRouter(deps) {
 
             const insertRes = await client.query(`
                 INSERT INTO contact_group_members (contact_id, group_id)
-                SELECT c.id, $1
+                SELECT c.id, $1::uuid
                 FROM contacts c
                 WHERE c.id = ANY($2::uuid[])
                   AND c.tenant_id = $3
@@ -160,7 +160,7 @@ function buildMarketingRouter(deps) {
 
             const queueRes = await client.query(`
                 INSERT INTO campaign_messages (campaign_id, contact_id, phone_number, status)
-                SELECT DISTINCT $1, c.id, c.phone_number, 'pending'
+                SELECT DISTINCT $1::uuid, c.id, c.phone_number, 'pending'
                 FROM contact_group_members cgm
                 JOIN contact_groups cg ON cg.id = cgm.group_id
                 JOIN contacts c ON c.id = cgm.contact_id
