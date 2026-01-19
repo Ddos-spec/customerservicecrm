@@ -7,16 +7,22 @@ function buildMarketingRouter(deps) {
     // REMOVED: router.use(validateToken); -- UI uses session auth, not API token.
 
     const requireOwner = (req, res) => {
+        console.log(`[Marketing] Auth Check ${req.method} ${req.originalUrl}`);
+        console.log(`[Marketing] SessionID: ${req.sessionID}`);
+        console.log('[Marketing] User:', req.session?.user ? `${req.session.user.email} (${req.session.user.role})` : 'NONE');
+
         const user = req.session?.user;
         if (!user) {
             res.status(401).json({ status: 'error', message: 'Authentication required' });
             return null;
         }
-        if (user.role !== 'admin_agent') {
+        if (user.role !== 'admin_agent' && user.role !== 'super_admin') { // Allow super_admin too (if needed for debug)
+            console.warn(`[Marketing] Access denied for role: ${user.role}`);
             res.status(403).json({ status: 'error', message: 'Access denied' });
             return null;
         }
         if (!user.tenant_id) {
+            console.warn(`[Marketing] No tenant_id for user: ${user.email}`);
             res.status(400).json({ status: 'error', message: 'Tenant tidak ditemukan' });
             return null;
         }
