@@ -69,7 +69,7 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
             const syncQuery = `
                 INSERT INTO public.contacts (tenant_id, jid, phone_number, full_name, updated_at)
                 SELECT 
-                    $1, 
+                    $1::uuid, 
                     wc.their_jid, 
                     split_part(wc.their_jid, '@', 1), 
                     COALESCE(wc.full_name, wc.first_name, wc.push_name, split_part(wc.their_jid, '@', 1)), 
@@ -131,7 +131,8 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
 
         } catch (error) {
             console.error('[Sync] Error:', error);
-            res.status(500).json({ status: 'error', message: error.message });
+            // Return detailed error to frontend for debugging
+            res.status(500).json({ status: 'error', message: error.message, sql_error: error.code });
         }
     });
 
