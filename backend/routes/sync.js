@@ -88,53 +88,51 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
             const syncedCount = contactsResult.rowCount;
             console.log(`[Sync] SQL Sync completed. Processed ${syncedCount} contacts.`);
 
-            // 2. Sync Groups via Gateway API (To get participant metadata correctly)
-            // Groups are usually fewer in number, so API fetch is safe
-            // Wrap in try-catch to ensure contact sync success is returned even if groups fail
-            let unifiedGroups = [];
-            let groupErrorMsg = null;
-            
-            try {
-                const groupsRes = await waGateway.getGroups(sessionId);
-                const groups = groupsRes.status === 'success' ? (groupsRes.data || []) : [];
-                
-                for (const g of groups) {
-                    const rawJid = g.JID || g.jid;
-                    if (!rawJid) continue;
-                    const jid = normalizeJid(rawJid, { isGroup: true });
-                    if (!jid) continue;
-                    const groupName = g.Subject || g.subject || g.Name || g.name || 'Unknown Group';
+            // 2. Trigger Background Group Sync (Fire and Forget)
+            // This prevents HTTP timeout for large group lists
+            (async () => {
+                try {
+                    const groupsRes = await waGateway.getGroups(sessionId);
+                    const groups = groupsRes.status === 'success' ? (groupsRes.data || []) : [];
                     
-                    unifiedGroups.push({
-                        jid: jid,
-                        fullName: groupName,
-                        displayName: groupName,
-                        phone: getJidUser(jid),
-                        isBusiness: false,
-                        isGroup: true
-                    });
-                }
-
-                if (unifiedGroups.length > 0) {
-                    await db.syncContacts(tenantId, unifiedGroups);
-                    
-                    // Auto-create Chat entries for groups
-                    for (const c of unifiedGroups) {
-                        await db.getOrCreateChat(tenantId, c.jid, c.displayName, true);
+                    const unifiedGroups = [];
+                    for (const g of groups) {
+                        const rawJid = g.JID || g.jid;
+                        if (!rawJid) continue;
+                        const jid = normalizeJid(rawJid, { isGroup: true });
+                        if (!jid) continue;
+                        const groupName = g.Subject || g.subject || g.Name || g.name || 'Unknown Group';
+                        
+                        unifiedGroups.push({
+                            jid: jid,
+                            fullName: groupName,
+                            displayName: groupName,
+                            phone: getJidUser(jid),
+                            isBusiness: false,
+                            isGroup: true
+                        });
                     }
+
+                    if (unifiedGroups.length > 0) {
+                        await db.syncContacts(tenantId, unifiedGroups);
+                        
+                        // Auto-create Chat entries for groups
+                        for (const c of unifiedGroups) {
+                            await db.getOrCreateChat(tenantId, c.jid, c.displayName, true);
+                        }
+                        console.log(`[Background Sync] Successfully synced ${unifiedGroups.length} groups for ${sessionId}`);
+                    }
+                } catch (err) {
+                    console.warn(`[Background Sync] Group sync failed for ${sessionId}:`, err.message);
                 }
-            } catch (err) {
-                console.warn(`[Sync] Group sync failed for ${sessionId}:`, err.message);
-                groupErrorMsg = err.message;
-            }
+            })();
 
             res.json({
                 status: 'success',
-                message: `Synced ${syncedCount} contacts (SQL).` + (groupErrorMsg ? ` Groups failed: ${groupErrorMsg}` : ` and ${unifiedGroups.length} groups.`),
+                message: `Sinkronisasi kontak (${syncedCount}) berhasil. Data grup sedang diperbarui di latar belakang.`,
                 details: {
                     contacts: syncedCount,
-                    groups: unifiedGroups.length,
-                    groupError: groupErrorMsg
+                    groups: 'processing_background'
                 }
             });
 
