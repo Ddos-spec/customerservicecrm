@@ -4,7 +4,7 @@ function buildMarketingRouter(deps) {
     const router = express.Router();
     const { db, validateToken } = deps;
 
-    router.use(validateToken);
+    // REMOVED: router.use(validateToken); -- UI uses session auth, not API token.
 
     const requireOwner = (req, res) => {
         const user = req.session?.user;
