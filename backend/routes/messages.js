@@ -12,6 +12,16 @@ const sendMessageLimiter = rateLimit({
     keyGenerator: (req) => req.session?.user?.id ? `msg_limit_${req.session.user.id}` : req.ip
 });
 
+const externalApiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 60, // 60 requests per minute per API Key
+    message: { status: 'error', message: 'Rate limit exceeded. Max 60 RPM.' },
+    keyGenerator: (req) => {
+        const header = req.headers['x-tenant-key'];
+        return Array.isArray(header) ? header[0] : (header || req.ip);
+    }
+});
+
 function buildMessagesRouter(deps) {
     const router = express.Router();
     const {
@@ -46,6 +56,9 @@ function buildMessagesRouter(deps) {
              destination = isGroup ? to : toWhatsAppFormat(formatPhoneNumber(to));
         } else {
              // Meta Cloud API: usually expects country code + phone without +
+             if (isGroup || to.includes('@g.us')) {
+                 throw new Error('Meta Provider does not support Group Messages');
+             }
              destination = formatPhoneNumber(to);
         }
 
@@ -97,8 +110,9 @@ function buildMessagesRouter(deps) {
     /**
      * POST /api/v1/messages/external
      * Public endpoint to send message using Tenant API Key
+     * Header: X-Tenant-Key: sk_...
      */
-    router.post('/external', async (req, res) => {
+    router.post('/external', externalApiLimiter, async (req, res) => {
         const apiKeyHeader = req.headers['x-tenant-key'];
         const apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
         const sanitizedKey = typeof apiKey === 'string' ? apiKey.trim() : '';

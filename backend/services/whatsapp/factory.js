@@ -25,6 +25,7 @@ class ProviderFactory {
                     throw new Error(`Tenant ${tenant.company_name} is missing Meta API credentials`);
                 }
                 return new MetaCloudDriver({
+                    tenantId: tenant.id, // Pass ID for rate limiting
                     phoneId: tenant.meta_phone_id,
                     token: tenant.meta_token,
                     version: 'v18.0' // Can be configurable later

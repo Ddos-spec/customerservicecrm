@@ -1,10 +1,47 @@
 const WhatsAppProvider = require('../provider');
 const axios = require('axios');
 
+// Simple Semaphore for Rate Limiting
+class Semaphore {
+    constructor(max) {
+        this.max = max;
+        this.counter = 0;
+        this.waiting = [];
+    }
+    
+    async acquire() {
+        if (this.counter < this.max) {
+            this.counter++;
+            return;
+        }
+        return new Promise(resolve => this.waiting.push(resolve));
+    }
+    
+    release() {
+        this.counter--;
+        if (this.waiting.length > 0) {
+            this.counter++;
+            const resolve = this.waiting.shift();
+            resolve();
+        }
+    }
+}
+
+// Limiter per Tenant (10 concurrent requests per tenant)
+const tenantLimiters = new Map();
+
+function getLimiter(tenantId) {
+    if (!tenantId) return new Semaphore(5); // Fallback safe limit
+    if (!tenantLimiters.has(tenantId)) {
+        tenantLimiters.set(tenantId, new Semaphore(10));
+    }
+    return tenantLimiters.get(tenantId);
+}
+
 class MetaCloudDriver extends WhatsAppProvider {
     constructor(config) {
         super(config);
-        // Config: { phoneId, token, version }
+        this.tenantId = config.tenantId;
         this.phoneId = config.phoneId;
         this.token = config.token;
         this.version = config.version || 'v18.0';
@@ -16,27 +53,53 @@ class MetaCloudDriver extends WhatsAppProvider {
     }
 
     async _request(method, endpoint, data = null) {
+        const limiter = getLimiter(this.tenantId);
+        await limiter.acquire();
+        
         try {
             const url = `${this.baseUrl}${endpoint}`;
-            const response = await axios({
-                method,
-                url,
-                data,
-                headers: {
-                    'Authorization': `Bearer ${this.token}`,
-                    'Content-Type': 'application/json'
+            
+            // Retry Logic (Manual Backoff)
+            let lastError;
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const response = await axios({
+                        method,
+                        url,
+                        data,
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: 10000 
+                    });
+                    return response.data;
+                } catch (error) {
+                    lastError = error;
+                    const status = error.response?.status;
+                    // Only retry on 5xx or Network Error
+                    if (status && status < 500 && status !== 429) {
+                        throw error;
+                    }
+                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
                 }
-            });
-            return response.data;
+            }
+            throw lastError;
+
         } catch (error) {
             const metaError = error.response?.data?.error || error.message;
             throw new Error(`Meta API Error: ${JSON.stringify(metaError)}`);
+        } finally {
+            limiter.release();
         }
     }
 
     async sendText(to, text) {
-        // Meta requires 'to' without '+' but with country code.
-        // Assuming 'to' is '6281...' (standardized in our app)
+        // Group check is moved to route, but double check here
+        if (to.includes('@g.us')) {
+             throw new Error('Meta Cloud API does not support Group Messaging.');
+        }
+
         const payload = {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
@@ -53,10 +116,6 @@ class MetaCloudDriver extends WhatsAppProvider {
     }
 
     async sendImage(to, image, caption) {
-        // For Meta, image must be a URL (link) or ID (uploaded media).
-        // Sending raw buffer is complex (requires upload session).
-        // For now, we assume 'image' is a public URL.
-        
         if (typeof image !== 'string' || !image.startsWith('http')) {
             throw new Error('MetaCloudDriver only supports Image URLs currently');
         }
@@ -80,14 +139,10 @@ class MetaCloudDriver extends WhatsAppProvider {
     }
 
     async checkNumber(phone) {
-        // Meta API for checking contacts is limited and costs money per conversation.
-        // Usually we skip this or assume valid if user opted in.
-        // There is no direct free 'checkRegistered' like Whatsmeow.
         return { exists: true, jid: phone }; 
     }
 
     async getProfilePicture(jid) {
-        // Not straightforward in Meta API (privacy).
         return null;
     }
 }

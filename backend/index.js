@@ -1003,7 +1003,13 @@ async function validateWhatsAppRecipient(sessionId, destination) {
 }
 
 // --- Middleware ---
-app.use(bodyParser.json());
+app.use(bodyParser.json({
+    limit: '10mb',
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },

@@ -879,9 +879,17 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
                 if (nextGatewayUrl) {
                     waGateway.setSessionGatewayUrl(nextSessionId, nextGatewayUrl);
                 } else {
-                    // If url became null, remove mapping
                     waGateway.setSessionGatewayUrl(nextSessionId, null);
                 }
+            }
+        } else if (effectiveProvider === 'meta' && existingTenant.wa_provider === 'whatsmeow') {
+            // Switching from Whatsmeow to Meta -> Kill Zombie Session
+            if (existingTenant.session_id) {
+                try {
+                    await waGateway.logout(existingTenant.session_id);
+                } catch (e) { /* Ignore logout error */ }
+                waGateway.removeSessionToken(existingTenant.session_id);
+                waGateway.setSessionGatewayUrl(existingTenant.session_id, null);
             }
         }
 

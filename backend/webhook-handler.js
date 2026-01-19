@@ -101,6 +101,13 @@ router.post('/incoming', async (req, res) => {
 
         console.log(`[Webhook] Received ${event} for session ${sessionId}`);
 
+        // Guard: Check if tenant has migrated to Meta
+        const tenantGuard = await db.getTenantBySessionId(sessionId);
+        if (tenantGuard && tenantGuard.wa_provider === 'meta') {
+            // console.debug(`[Webhook] Ignored Whatsmeow event for Meta tenant ${tenantGuard.id}`);
+            return res.status(200).json({ status: 'ignored', message: 'Tenant uses Meta provider' });
+        }
+
         // Process based on event type
         switch (event) {
             case 'message':

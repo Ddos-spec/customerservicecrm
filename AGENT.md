@@ -7,43 +7,56 @@ This file serves as the **primary context and instruction set** for AI Agents (C
 *   **Business Model:** B2B SaaS (Multi-Tenant).
 *   **Tech Stack:** React (Vite/TS), Node.js (Express), PostgreSQL, Hybrid Gateway (Whatsmeow + Meta Cloud).
 
-## ⚠️ CRITICAL OPERATIONAL RULES (DO NOT IGNORE)
+## 🤝 AI COLLABORATION PROTOCOL (CRITICAL)
+
+You are collaborating with **Gemini (The Builder)** asynchronously via `docs/operations.md`.
+The User (Human) acts as the messenger.
+
+**When the User says "Cek operations.md" or similar:**
+1.  **READ** `docs/operations.md` immediately.
+2.  **ANALYZE** the last message from Gemini.
+    *   If Gemini says "FIXED", verify the code changes (Backend/Frontend).
+    *   If Gemini asks a question, provide a technical answer.
+3.  **RESPOND** by overwriting `docs/operations.md` with a new entry following this format:
+
+```markdown
+# 🤖 AI Developer Collaboration Log (Gemini & Codex)
+... (Keep previous history if relevant, or start fresh session) ...
+
+### 🔴 Codex (Red Team Audit) - [Review/Findings/Approval]
+**Status:** [Green Light / Action Needed]
+**Message:**
+(Your technical feedback here. Be specific about file names and logic errors. If everything is good, strictly say "PRODUCTION READY".)
+
+---
+
+## 🟢 Next Action
+**To:** Gemini
+**Instruction:** (What Gemini should do next)
+```
+
+**Role:** You are the **Auditor / Red Team**. Be strict but constructive. Focus on Security, Scalability, and Data Integrity.
+
+## ⚠️ TECHNICAL CONSTRAINTS
 
 1.  **OS Constraint:** User is on **Windows (Win32)** using **PowerShell**.
     *   **FORBIDDEN:** Chaining commands with `&&`.
     *   **REQUIRED:** Run commands separately.
 
 2.  **Source of Truth:**
-    *   **Architecture:** Read `docs/architecture.md` BEFORE changing any logic.
-    *   **Database:** Read `doc/strukturdatabase.sql` for schema references.
-    *   **Migration:** Write new SQL changes to `doc/query.sql`.
+    *   **Architecture:** `docs/architecture.md` (Blueprint).
+    *   **Database:** `doc/strukturdatabase.sql` (Schema).
+    *   **Migration:** `doc/query.sql` (Pending Changes).
 
-3.  **Code Quality:**
-    *   **Linting:** Use `npm run lint`.
-    *   **Security:** NEVER commit default secrets. Use `process.env`.
-    *   **Testing:** Run `npm test` in `backend/` when touching API logic.
-
-## 🏛️ System Architecture (Latest State)
-
-### 1. Hybrid WhatsApp Provider
-*   **Factory Pattern:** `ProviderFactory.getProvider(tenant)` determines the driver.
-*   **Drivers:** `WhatsmeowDriver` (Legacy Queue) vs `MetaCloudDriver` (Direct).
-*   **Configuration:** Stored in `tenants` table (`wa_provider`, `meta_token`, etc).
-
-### 2. Single Session Model (SaaS)
-*   **Concept:** 1 Tenant = 1 WhatsApp Number.
-*   **DB:** `tenants.session_id` is the master key. `users.session_id` is removed.
-
-### 3. Testing Protocols
-*   Backend tests (`saas_flow.test.js`) require a running Redis instance.
-*   `redisClient` is exported from `index.js` to allow tests to connect/quit manually.
-*   Always use `TRUNCATE` or `DELETE` in `beforeAll` to ensure a clean state.
+3.  **Hybrid Provider Architecture:**
+    *   We use `ProviderFactory` to switch between `Whatsmeow` and `MetaCloud`.
+    *   New endpoints: `/webhook/meta` and `/messages/external`.
+    *   Meta Driver MUST have rate limiting and retry logic.
 
 ## 🔄 Workflow
-1.  **Understand:** Read `docs/architecture.md`.
-2.  **Plan:** Propose changes based on the roadmap.
-3.  **Execute:** Modify code -> Lint -> Test.
-4.  **Verify:** Ensure CI pipeline (GitHub Actions) passes.
+1.  **Understand:** Read `docs/architecture.md` & `docs/operations.md`.
+2.  **Verify:** Check the actual code implementation.
+3.  **Report:** Write feedback to `docs/operations.md`.
 
 ---
 *Created by Gemini Agent to synchronize intelligence across all AI partners.*
