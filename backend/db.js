@@ -379,6 +379,23 @@ module.exports = {
     updateTenantStatus: async (id, status) => (await query('UPDATE tenants SET status = $1 WHERE id = $2 RETURNING *', [status, id])).rows[0],
     setTenantSessionId: async (id, sid) => (await query('UPDATE tenants SET session_id = $1 WHERE id = $2 RETURNING *', [sid, id])).rows[0],
     setTenantGatewayUrl: async (id, url) => (await query('UPDATE tenants SET gateway_url = $1 WHERE id = $2 RETURNING *', [url, id])).rows[0],
+    updateTenantConfig: async (id, config) => {
+        const fields = [];
+        const values = [];
+        let idx = 1;
+
+        if (config.session_id !== undefined) { fields.push(`session_id = $${idx++}`); values.push(config.session_id); }
+        if (config.gateway_url !== undefined) { fields.push(`gateway_url = $${idx++}`); values.push(config.gateway_url); }
+        if (config.wa_provider !== undefined) { fields.push(`wa_provider = $${idx++}`); values.push(config.wa_provider); }
+        if (config.meta_phone_id !== undefined) { fields.push(`meta_phone_id = $${idx++}`); values.push(config.meta_phone_id); }
+        if (config.meta_waba_id !== undefined) { fields.push(`meta_waba_id = $${idx++}`); values.push(config.meta_waba_id); }
+        if (config.meta_token !== undefined) { fields.push(`meta_token = $${idx++}`); values.push(config.meta_token); }
+
+        if (fields.length === 0) return null;
+        values.push(id);
+        
+        return (await query(`UPDATE tenants SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`, values)).rows[0];
+    },
     updateTenantSessionGateway: async (id, sid, url) => (await query('UPDATE tenants SET session_id = $1, gateway_url = $2 WHERE id = $3 RETURNING *', [sid, url, id])).rows[0],
     deleteTenant: async (id) => (await query('DELETE FROM tenants WHERE id = $1 RETURNING id', [id])).rows[0],
     getTenantAdmin: async (tid) => (await query("SELECT * FROM users WHERE tenant_id = $1 AND role = 'admin_agent' LIMIT 1", [tid])).rows[0],

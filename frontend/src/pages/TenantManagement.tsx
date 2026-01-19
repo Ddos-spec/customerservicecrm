@@ -14,6 +14,10 @@ interface Tenant {
   session_id?: string | null;
   gateway_url?: string | null;
   api_key?: string | null;
+  wa_provider?: 'whatsmeow' | 'meta' | null;
+  meta_phone_id?: string | null;
+  meta_waba_id?: string | null;
+  meta_token?: string | null;
 }
 
 interface TenantWebhook {
@@ -66,8 +70,12 @@ const TenantManagement = () => {
   const [deletingWebhookId, setDeletingWebhookId] = useState<number | null>(null);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [sessionTenant, setSessionTenant] = useState<Tenant | null>(null);
+  const [waProvider, setWaProvider] = useState<'whatsmeow' | 'meta'>('whatsmeow');
   const [sessionIdInput, setSessionIdInput] = useState('');
   const [gatewayUrlInput, setGatewayUrlInput] = useState('');
+  const [metaPhoneId, setMetaPhoneId] = useState('');
+  const [metaWabaId, setMetaWabaId] = useState('');
+  const [metaToken, setMetaToken] = useState('');
   const [isSessionSaving, setIsSessionSaving] = useState(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [sessionTokenSessionId, setSessionTokenSessionId] = useState('');
@@ -617,8 +625,13 @@ const TenantManagement = () => {
   const openSessionModal = (tenant: Tenant) => {
     setActiveDropdown(null);
     setSessionTenant(tenant);
+    setWaProvider(tenant.wa_provider || 'whatsmeow');
     setSessionIdInput(tenant.session_id || '');
     setGatewayUrlInput(tenant.gateway_url || '');
+    setMetaPhoneId(tenant.meta_phone_id || '');
+    setMetaWabaId(tenant.meta_waba_id || '');
+    setMetaToken(tenant.meta_token || '');
+    
     setSessionToken(null);
     setSessionTokenSessionId('');
     setShowSessionToken(false);
@@ -626,7 +639,7 @@ const TenantManagement = () => {
     setShowTenantApiKey(false);
     setSessionWebhookUrl('');
     setIsSessionModalOpen(true);
-    if (tenant.session_id) {
+    if (tenant.session_id && (!tenant.wa_provider || tenant.wa_provider === 'whatsmeow')) {
       void fetchSessionToken(tenant.session_id, { silent: true });
     }
   };
@@ -634,8 +647,13 @@ const TenantManagement = () => {
   const closeSessionModal = () => {
     setIsSessionModalOpen(false);
     setSessionTenant(null);
+    setWaProvider('whatsmeow');
     setSessionIdInput('');
     setGatewayUrlInput('');
+    setMetaPhoneId('');
+    setMetaWabaId('');
+    setMetaToken('');
+    
     setSessionToken(null);
     setSessionTokenSessionId('');
     setShowSessionToken(false);
@@ -657,23 +675,50 @@ const TenantManagement = () => {
     e.preventDefault();
     if (!sessionTenant) return;
 
-    if (gatewayUrlInput.trim() && !/^https?:\/\//i.test(gatewayUrlInput.trim())) {
-      toast.error('Gateway URL harus diawali http:// atau https://');
-      return;
+    if (waProvider === 'whatsmeow') {
+        if (gatewayUrlInput.trim() && !/^https?:\/\//i.test(gatewayUrlInput.trim())) {
+            toast.error('Gateway URL harus diawali http:// atau https://');
+            return;
+        }
+    } else {
+        if (!metaPhoneId.trim() || !metaToken.trim()) {
+            toast.error('Phone ID dan Token wajib diisi untuk Meta API');
+            return;
+        }
     }
 
     setIsSessionSaving(true);
     try {
-      const res = await api.patch(`/admin/tenants/${sessionTenant.id}/session`, {
-        session_id: sessionIdInput.trim(),
-        gateway_url: gatewayUrlInput.trim()
-      });
+      const payload: any = {
+        wa_provider: waProvider
+      };
+
+      if (waProvider === 'whatsmeow') {
+          payload.session_id = sessionIdInput.trim();
+          payload.gateway_url = gatewayUrlInput.trim();
+      } else {
+          payload.meta_phone_id = metaPhoneId.trim();
+          payload.meta_waba_id = metaWabaId.trim();
+          payload.meta_token = metaToken.trim();
+      }
+
+      const res = await api.patch(`/admin/tenants/${sessionTenant.id}/session`, payload);
+      
       if (res.data.success) {
+        const updated = res.data.tenant;
         setTenants((prev) => prev.map((t) => (
-          t.id === sessionTenant.id ? { ...t, session_id: res.data.tenant.session_id, gateway_url: res.data.tenant.gateway_url } : t
+          t.id === sessionTenant.id ? { 
+              ...t, 
+              session_id: updated.session_id, 
+              gateway_url: updated.gateway_url,
+              wa_provider: updated.wa_provider,
+              meta_phone_id: updated.meta_phone_id,
+              meta_waba_id: updated.meta_waba_id,
+              meta_token: updated.meta_token,
+              api_key: updated.api_key
+          } : t
         )));
-        setSessionTenant((prev) => prev ? { ...prev, session_id: res.data.tenant.session_id, gateway_url: res.data.tenant.gateway_url } : prev);
-        toast.success('Session WA tersimpan');
+        toast.success('Konfigurasi WA tersimpan');
         setIsSessionModalOpen(false);
       }
     } catch (error: any) {
@@ -1163,8 +1208,41 @@ const TenantManagement = () => {
             </div>
 
             <form onSubmit={handleSaveSessionId} className="space-y-4">
+              
               <div>
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Session ID / Nomor WA</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Tipe Koneksi</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setWaProvider('whatsmeow')}
+                    className={`p-3 rounded-xl border text-sm font-bold transition-all flex flex-col items-center gap-1 ${
+                        waProvider === 'whatsmeow' 
+                        ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-500 text-emerald-700 dark:text-emerald-400' 
+                        : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>📱 Unofficial (QR)</span>
+                    <span className="text-[10px] font-normal opacity-70">Scan QR Code</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWaProvider('meta')}
+                    className={`p-3 rounded-xl border text-sm font-bold transition-all flex flex-col items-center gap-1 ${
+                        waProvider === 'meta' 
+                        ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-400' 
+                        : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>☁️ Official (Meta)</span>
+                    <span className="text-[10px] font-normal opacity-70">Cloud API</span>
+                  </button>
+                </div>
+              </div>
+
+              {waProvider === 'whatsmeow' ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Session ID / Nomor WA</label>
                 <input
                   placeholder="Contoh: 628123456789"
                   value={sessionIdInput}
@@ -1370,6 +1448,51 @@ const TenantManagement = () => {
                 </div>
                 <p className="text-[11px] text-gray-400 dark:text-gray-500">Fix contacts berlaku global (semua tenant).</p>
               </div>
+                </>
+              ) : (
+                <div className="space-y-4 pt-2">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Phone Number ID</label>
+                        <input
+                        required
+                        placeholder="Contoh: 100609346..."
+                        value={metaPhoneId}
+                        onChange={(e) => setMetaPhoneId(e.target.value)}
+                        className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">WABA ID</label>
+                        <input
+                        required
+                        placeholder="Contoh: 100609346..."
+                        value={metaWabaId}
+                        onChange={(e) => setMetaWabaId(e.target.value)}
+                        className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Permanent Access Token</label>
+                        <input
+                        required
+                        type="password"
+                        placeholder="EAAG..."
+                        value={metaToken}
+                        onChange={(e) => setMetaToken(e.target.value)}
+                        className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        />
+                    </div>
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
+                        <p className="text-xs text-blue-700 dark:text-blue-300 font-bold mb-1">ℹ️ Info Setup Meta</p>
+                        <p className="text-[11px] text-blue-600 dark:text-blue-400 leading-relaxed">
+                            Pastikan Anda sudah membuat App di Meta Developer. 
+                            Webhook URL Anda: <br/>
+                            <code className="font-mono bg-white/50 px-1 py-0.5 rounded text-blue-800 dark:text-blue-200 select-all">{apiUrl.replace('/api/v1', '')}/api/v1/webhook/meta</code>
+                        </p>
+                    </div>
+                </div>
+              )}
+
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 Kosongkan untuk melepas session dari tenant ini.
               </p>
