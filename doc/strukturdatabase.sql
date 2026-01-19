@@ -11,6 +11,32 @@ CREATE TABLE "public"."audit_logs" (
   "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now() ,
   CONSTRAINT "audit_logs_pkey" PRIMARY KEY ("id")
 );
+CREATE TABLE "public"."campaign_messages" ( 
+  "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
+  "campaign_id" UUID NOT NULL,
+  "contact_id" UUID NOT NULL,
+  "phone_number" TEXT NOT NULL,
+  "status" VARCHAR(20) NULL DEFAULT 'pending'::character varying ,
+  "error_message" TEXT NULL,
+  "sent_at" TIMESTAMP WITH TIME ZONE NULL,
+  "wa_message_id" TEXT NULL,
+  "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  CONSTRAINT "campaign_messages_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "public"."campaigns" ( 
+  "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
+  "tenant_id" UUID NOT NULL,
+  "name" TEXT NOT NULL,
+  "message_template" TEXT NOT NULL,
+  "status" VARCHAR(20) NULL DEFAULT 'draft'::character varying ,
+  "scheduled_at" TIMESTAMP WITH TIME ZONE NULL,
+  "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  "completed_at" TIMESTAMP WITH TIME ZONE NULL,
+  "total_targets" INTEGER NULL DEFAULT 0 ,
+  "success_count" INTEGER NULL DEFAULT 0 ,
+  "failed_count" INTEGER NULL DEFAULT 0 ,
+  CONSTRAINT "campaigns_pkey" PRIMARY KEY ("id")
+);
 CREATE TABLE "public"."chats" ( 
   "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
   "tenant_id" UUID NOT NULL,
@@ -26,6 +52,21 @@ CREATE TABLE "public"."chats" (
   "is_group" BOOLEAN NOT NULL DEFAULT false ,
   CONSTRAINT "chats_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "chats_tenant_id_contact_id_key" UNIQUE ("tenant_id", "contact_id")
+);
+CREATE TABLE "public"."contact_group_members" ( 
+  "contact_id" UUID NOT NULL,
+  "group_id" UUID NOT NULL,
+  "joined_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  CONSTRAINT "contact_group_members_pkey" PRIMARY KEY ("contact_id", "group_id")
+);
+CREATE TABLE "public"."contact_groups" ( 
+  "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
+  "tenant_id" UUID NOT NULL,
+  "name" TEXT NOT NULL,
+  "description" TEXT NULL,
+  "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  CONSTRAINT "contact_groups_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "contact_groups_tenant_id_name_key" UNIQUE ("tenant_id", "name")
 );
 CREATE TABLE "public"."contacts" ( 
   "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
@@ -100,10 +141,10 @@ CREATE TABLE "public"."tenants" (
   "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
   "gateway_url" TEXT NULL,
   "api_key" TEXT NULL,
-  "wa_provider" VARCHAR(20) DEFAULT 'whatsmeow',
-  "meta_phone_id" TEXT,
-  "meta_waba_id" TEXT,
-  "meta_token" TEXT,
+  "wa_provider" VARCHAR(20) NULL DEFAULT 'whatsmeow'::character varying ,
+  "meta_phone_id" TEXT NULL,
+  "meta_waba_id" TEXT NULL,
+  "meta_token" TEXT NULL,
   CONSTRAINT "tenants_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "tenants_session_id_key" UNIQUE ("session_id"),
   CONSTRAINT "tenants_api_key_key" UNIQUE ("api_key")
@@ -258,15 +299,20 @@ CREATE TABLE "public"."whatsmeow_version" (
   "version" INTEGER NULL,
   "compat" INTEGER NULL
 );
+CREATE INDEX "idx_audit_tenant_time" 
+ON "public"."audit_logs" (
+  "tenant_id" ASC,
+  "created_at" DESC
+);
 CREATE INDEX "idx_audit_actor_time" 
 ON "public"."audit_logs" (
   "actor_user_id" ASC,
   "created_at" DESC
 );
-CREATE INDEX "idx_audit_tenant_time" 
-ON "public"."audit_logs" (
-  "tenant_id" ASC,
-  "created_at" DESC
+CREATE INDEX "idx_campaign_queue" 
+ON "public"."campaign_messages" (
+  "campaign_id" ASC,
+  "status" ASC
 );
 CREATE INDEX "idx_chats_tenant_updated" 
 ON "public"."chats" (
@@ -282,14 +328,14 @@ CREATE INDEX "idx_attachments_message"
 ON "public"."message_attachments" (
   "message_id" ASC
 );
-CREATE INDEX "idx_messages_wa_id" 
-ON "public"."messages" (
-  "wa_message_id" ASC
-);
 CREATE INDEX "idx_messages_chat_time" 
 ON "public"."messages" (
   "chat_id" ASC,
   "created_at" ASC
+);
+CREATE INDEX "idx_messages_wa_id" 
+ON "public"."messages" (
+  "wa_message_id" ASC
 );
 CREATE INDEX "idx_outlet_channels_outlet_id" 
 ON "public"."outlet_channels" (
@@ -299,13 +345,17 @@ CREATE INDEX "tenant_webhooks_tenant_id_idx"
 ON "public"."tenant_webhooks" (
   "tenant_id" ASC
 );
-CREATE INDEX "user_invites_email_idx" 
-ON "public"."user_invites" (
-  "email" ASC
+CREATE INDEX "idx_tenants_meta_phone_id" 
+ON "public"."tenants" (
+  "meta_phone_id" ASC
 );
 CREATE INDEX "user_invites_status_idx" 
 ON "public"."user_invites" (
   "status" ASC
+);
+CREATE INDEX "user_invites_email_idx" 
+ON "public"."user_invites" (
+  "email" ASC
 );
 CREATE INDEX "user_invites_tenant_id_idx" 
 ON "public"."user_invites" (
@@ -317,24 +367,28 @@ ON "public"."users" (
   "role" ASC,
   "status" ASC
 );
-CREATE UNIQUE INDEX "tenants_meta_phone_id_key" 
-ON "public"."tenants" (
-  "meta_phone_id" ASC
-);
-CREATE UNIQUE INDEX "messages_wa_message_id_key" 
-ON "public"."messages" (
-  "wa_message_id" ASC
-);
-ALTER TABLE "public"."users" ADD CONSTRAINT "users_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-ALTER TABLE "public"."contacts" ADD CONSTRAINT "contacts_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
-ALTER TABLE "public"."chats" ADD CONSTRAINT "chats_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."campaign_messages" ADD CONSTRAINT "campaign_messages_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES "public"."campaigns" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."chats" ADD CONSTRAINT "chats_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."chats" ADD CONSTRAINT "chats_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."chats" ADD CONSTRAINT "chats_assigned_to_fkey" FOREIGN KEY ("assigned_to") REFERENCES "public"."users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE "public"."contact_group_members" ADD CONSTRAINT "contact_group_members_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."contact_groups" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."contacts" ADD CONSTRAINT "contacts_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."messages" ADD CONSTRAINT "messages_chat_id_fkey" FOREIGN KEY ("chat_id") REFERENCES "public"."chats" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."tenant_webhooks" ADD CONSTRAINT "tenant_webhooks_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."user_invites" ADD CONSTRAINT "user_invites_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."user_invites" ADD CONSTRAINT "user_invites_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE "public"."users" ADD CONSTRAINT "users_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."whatsmeow_app_state_mutation_macs" ADD CONSTRAINT "whatsmeow_app_state_mutation_macs_jid_name_fkey" FOREIGN KEY ("jid", "name") REFERENCES "public"."whatsmeow_app_state_version" ("jid", "name") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_app_state_sync_keys" ADD CONSTRAINT "whatsmeow_app_state_sync_keys_jid_fkey" FOREIGN KEY ("jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_app_state_version" ADD CONSTRAINT "whatsmeow_app_state_version_jid_fkey" FOREIGN KEY ("jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_chat_settings" ADD CONSTRAINT "whatsmeow_chat_settings_our_jid_fkey" FOREIGN KEY ("our_jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_contacts" ADD CONSTRAINT "whatsmeow_contacts_our_jid_fkey" FOREIGN KEY ("our_jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_event_buffer" ADD CONSTRAINT "whatsmeow_event_buffer_our_jid_fkey" FOREIGN KEY ("our_jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_identity_keys" ADD CONSTRAINT "whatsmeow_identity_keys_our_jid_fkey" FOREIGN KEY ("our_jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_message_secrets" ADD CONSTRAINT "whatsmeow_message_secrets_our_jid_fkey" FOREIGN KEY ("our_jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_pre_keys" ADD CONSTRAINT "whatsmeow_pre_keys_jid_fkey" FOREIGN KEY ("jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_sender_keys" ADD CONSTRAINT "whatsmeow_sender_keys_our_jid_fkey" FOREIGN KEY ("our_jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "public"."whatsmeow_sessions" ADD CONSTRAINT "whatsmeow_sessions_our_jid_fkey" FOREIGN KEY ("our_jid") REFERENCES "public"."whatsmeow_device" ("jid") ON DELETE CASCADE ON UPDATE CASCADE;
 CREATE FUNCTION "public"."app_set_context"(IN p_tenant UUID, IN p_user UUID) RETURNS VOID LANGUAGE PLPGSQL
 AS
 $$
@@ -468,56 +522,55 @@ CREATE FUNCTION "public"."sync_whatsmeow_to_crm_contact"() RETURNS TRIGGER LANGU
 AS
 $$
 
-DECLARE
-  v_tenant_id UUID;
-  v_our_phone TEXT;
-  v_phone TEXT;
-  v_full_name TEXT;
-  v_their_jid TEXT;
-  v_lid TEXT;
-  v_pn TEXT;
-BEGIN
-  v_our_phone := split_part(NEW.our_jid, '@', 1);
+            DECLARE
+              v_tenant_id UUID;
+              v_our_phone TEXT;
+              v_phone TEXT;
+              v_full_name TEXT;
+              v_their_jid TEXT;
+              v_lid TEXT;
+              v_pn TEXT;
+            BEGIN
+              -- Extract phone number from our_jid (e.g., 6289xxx@s.whatsapp.net → 6289xxx)
+              v_our_phone := split_part(NEW.our_jid, '@', 1);
 
-  SELECT id INTO v_tenant_id
-  FROM public.tenants
-  WHERE session_id = v_our_phone AND status = 'active'
-  LIMIT 1;
+              -- Match our_jid with tenant's session_id for proper tenant isolation
+              SELECT id INTO v_tenant_id FROM tenants
+              WHERE session_id = v_our_phone AND status = 'active'
+              LIMIT 1;
 
-  IF v_tenant_id IS NOT NULL THEN
-    v_their_jid := NEW.their_jid;
+              IF v_tenant_id IS NOT NULL THEN
+                v_their_jid := NEW.their_jid;
 
-    IF v_their_jid LIKE '%@lid' OR v_their_jid LIKE '%@lid.whatsapp.net' THEN
-      v_lid := split_part(v_their_jid, '@', 1);
-      SELECT pn INTO v_pn FROM public.whatsmeow_lid_map WHERE lid = v_lid LIMIT 1;
-      IF v_pn IS NOT NULL AND v_pn <> '' THEN
-        v_their_jid := v_pn || '@s.whatsapp.net';
-      END IF;
-    END IF;
+                IF v_their_jid LIKE '%@lid' OR v_their_jid LIKE '%@lid.whatsapp.net' THEN
+                  v_lid := split_part(v_their_jid, '@', 1);
+                  SELECT pn INTO v_pn FROM whatsmeow_lid_map WHERE lid = v_lid LIMIT 1;
+                  IF v_pn IS NOT NULL AND v_pn <> '' THEN
+                    v_their_jid := v_pn || '@s.whatsapp.net';
+                  END IF;
+                END IF;
 
-    v_phone := split_part(v_their_jid, '@', 1);
-    v_full_name := COALESCE(NEW.full_name, NEW.first_name, NEW.push_name);
+                v_phone := split_part(v_their_jid, '@', 1);
+                -- Priority: FullName > FirstName > PushName > Phone
+                v_full_name := COALESCE(NEW.full_name, NEW.first_name, NEW.push_name);
 
-    IF v_full_name IS NULL OR v_full_name = '' THEN
-        v_full_name := v_phone;
-    END IF;
+                IF v_full_name IS NULL OR v_full_name = '' THEN
+                    v_full_name := v_phone;
+                END IF;
 
-    INSERT INTO public.contacts (tenant_id, jid, phone_number, full_name, updated_at)
-    VALUES (v_tenant_id, v_their_jid, v_phone, v_full_name, now())
-    ON CONFLICT (tenant_id, jid)
-    DO UPDATE SET
-      phone_number = EXCLUDED.phone_number,
-      full_name = EXCLUDED.full_name,
-      updated_at = now();
-  END IF;
+                INSERT INTO contacts (tenant_id, jid, phone_number, full_name, updated_at)
+                VALUES (v_tenant_id, v_their_jid, v_phone, v_full_name, now())
+                ON CONFLICT (tenant_id, jid)
+                DO UPDATE SET
+                  phone_number = EXCLUDED.phone_number,
+                  full_name = EXCLUDED.full_name,
+                  updated_at = now();
+              END IF;
 
-  RETURN NEW;
-END;
-
+              RETURN NEW;
+            END;
+            
 $$;
-CREATE TRIGGER "trg_sync_wm_contacts"
-AFTER INSERT OR UPDATE ON "public"."whatsmeow_contacts"
-FOR EACH ROW EXECUTE FUNCTION "public"."sync_whatsmeow_to_crm_contact"();
 CREATE FUNCTION "public"."update_updated_at_column"() RETURNS TRIGGER LANGUAGE PLPGSQL
 AS
 $$

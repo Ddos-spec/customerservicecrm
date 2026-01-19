@@ -1,42 +1,64 @@
--- ==========================================
--- MIGRATION V2: CLEANUP SESSION COLUMNS
--- ==========================================
--- Menghapus kolom session pribadi di tabel users
--- Karena sekarang 1 Tenant = 1 Session WA (Single Session Architecture)
-
-ALTER TABLE "public"."users" DROP COLUMN IF EXISTS "user_session_id";
-ALTER TABLE "public"."users" DROP COLUMN IF EXISTS "tenant_session_id";
-ALTER TABLE "public"."users" DROP COLUMN IF EXISTS "session_id";
-DROP INDEX IF EXISTS "users_session_id_idx";
-
--- Pastikan kolom session_id di tenants ada dan unique
-ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "session_id" TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS "tenants_session_id_key" ON "public"."tenants" ("session_id");
 
 -- ==========================================
--- MIGRATION V3: TENANT API KEY & IMPERSONATE
+-- MIGRATION V5: SECURITY HARDENING
 -- ==========================================
 
--- 1. Tambah API Key untuk Tenant (Auto generate untuk tenant baru)
-ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "api_key" TEXT UNIQUE;
+-- 1. Unique Constraint untuk Meta Phone ID (Routing Safety)
+CREATE UNIQUE INDEX IF NOT EXISTS "tenants_meta_phone_id_key" ON "public"."tenants" ("meta_phone_id");
 
--- Generate API Key untuk tenant lama yang belum punya
-UPDATE "public"."tenants" 
-SET "api_key" = 'sk_' || encode(gen_random_bytes(24), 'hex') 
-WHERE "api_key" IS NULL;
-
--- 2. Tambah Log Error sederhana untuk Invite
-ALTER TABLE "public"."user_invites" ADD COLUMN IF NOT EXISTS "last_error" TEXT;
+-- 2. Unique Constraint untuk Message ID (Idempotency Atomic)
+-- Note: Pastikan duplikat sudah dibersihkan sebelum menjalankan ini
+CREATE UNIQUE INDEX IF NOT EXISTS "messages_wa_message_id_key" ON "public"."messages" ("wa_message_id");
 
 -- ==========================================
--- MIGRATION V4: HYBRID PROVIDER (META CLOUD API)
+-- MIGRATION V6: MARKETING MODULE (WA BLAST)
 -- ==========================================
 
--- 1. Tambah kolom Provider Config di tabel Tenants
-ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "wa_provider" VARCHAR(20) DEFAULT 'whatsmeow';
-ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "meta_phone_id" TEXT;
-ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "meta_waba_id" TEXT;
-ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "meta_token" TEXT; -- Simpan token (bisa dienkripsi di level aplikasi nanti)
+-- 1. Tabel Group Kontak (Tagging)
+CREATE TABLE IF NOT EXISTS "public"."contact_groups" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "tenant_id" UUID NOT NULL REFERENCES "public"."tenants" ("id") ON DELETE CASCADE,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    UNIQUE("tenant_id", "name")
+);
 
--- Index untuk mempercepat lookup webhook Meta (jika nanti pakai phone_id sebagai identifier)
-CREATE INDEX IF NOT EXISTS "idx_tenants_meta_phone_id" ON "public"."tenants" ("meta_phone_id");
+-- 2. Relasi Kontak <-> Group (Many to Many)
+CREATE TABLE IF NOT EXISTS "public"."contact_group_members" (
+    "contact_id" UUID NOT NULL REFERENCES "public"."contacts" ("id") ON DELETE CASCADE,
+    "group_id" UUID NOT NULL REFERENCES "public"."contact_groups" ("id") ON DELETE CASCADE,
+    "joined_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    PRIMARY KEY ("contact_id", "group_id")
+);
+
+-- 3. Tabel Kampanye (Campaign Header)
+CREATE TABLE IF NOT EXISTS "public"."campaigns" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "tenant_id" UUID NOT NULL REFERENCES "public"."tenants" ("id") ON DELETE CASCADE,
+    "name" TEXT NOT NULL,
+    "message_template" TEXT NOT NULL,
+    "status" VARCHAR(20) DEFAULT 'draft', -- draft, scheduled, processing, completed, paused, failed
+    "scheduled_at" TIMESTAMP WITH TIME ZONE, -- Jika null, kirim sekarang (immediate)
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    "completed_at" TIMESTAMP WITH TIME ZONE,
+    "total_targets" INT DEFAULT 0,
+    "success_count" INT DEFAULT 0,
+    "failed_count" INT DEFAULT 0
+);
+
+-- 4. Tabel Log Pengiriman (Campaign Queue)
+CREATE TABLE IF NOT EXISTS "public"."campaign_messages" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "campaign_id" UUID NOT NULL REFERENCES "public"."campaigns" ("id") ON DELETE CASCADE,
+    "contact_id" UUID NOT NULL REFERENCES "public"."contacts" ("id") ON DELETE CASCADE,
+    "phone_number" TEXT NOT NULL, -- Snapshot nomor saat blast (jaga-jaga kontak dihapus/ubah)
+    "status" VARCHAR(20) DEFAULT 'pending', -- pending, sent, failed
+    "error_message" TEXT,
+    "sent_at" TIMESTAMP WITH TIME ZONE,
+    "wa_message_id" TEXT,
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Index untuk mempercepat query antrian
+CREATE INDEX IF NOT EXISTS "idx_campaign_queue" ON "public"."campaign_messages" ("campaign_id", "status");
