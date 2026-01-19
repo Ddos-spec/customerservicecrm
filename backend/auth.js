@@ -775,84 +775,123 @@ router.patch('/tenants/:id/status', requireRole('super_admin'), async (req, res)
 
 /**
  * PATCH /api/v1/admin/tenants/:id/session
- * Set session_id for tenant (1 tenant = 1 session)
+ * Configure WhatsApp Connection (Unofficial / Official)
  */
 router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res) => {
     try {
         const { id } = req.params;
-        const rawSessionId = req.body?.session_id;
-        const rawGatewayUrl = req.body?.gateway_url;
-
-        const hasSessionId = typeof rawSessionId !== 'undefined';
-        const hasGatewayUrl = typeof rawGatewayUrl !== 'undefined';
-
-        if (!hasSessionId && !hasGatewayUrl) {
-            return res.status(400).json({ success: false, error: 'Session ID atau Gateway URL diperlukan' });
-        }
+        const { 
+            wa_provider,
+            session_id: rawSessionId,
+            gateway_url: rawGatewayUrl,
+            meta_phone_id,
+            meta_waba_id,
+            meta_token
+        } = req.body;
 
         const existingTenant = await db.getTenantById(id);
         if (!existingTenant) {
             return res.status(404).json({ success: false, error: 'Tenant not found' });
         }
-        
-        let normalizedSessionId = existingTenant.session_id;
-        if (hasSessionId) {
-            let sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
-            if (sessionId) {
-                sessionId = sessionId.replace(/\D/g, '');
-                if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
+
+        const updates = {};
+
+        // 1. Provider Type
+        if (wa_provider) {
+            if (!['whatsmeow', 'meta'].includes(wa_provider)) {
+                return res.status(400).json({ success: false, error: 'Invalid provider type' });
             }
-            normalizedSessionId = sessionId === '' ? null : sessionId;
+            updates.wa_provider = wa_provider;
+        }
+        const effectiveProvider = wa_provider || existingTenant.wa_provider || 'whatsmeow';
+
+        // 2. Meta Configuration
+        if (effectiveProvider === 'meta') {
+            if (meta_phone_id !== undefined) updates.meta_phone_id = meta_phone_id ? meta_phone_id.trim() : null;
+            if (meta_waba_id !== undefined) updates.meta_waba_id = meta_waba_id ? meta_waba_id.trim() : null;
+            if (meta_token !== undefined) updates.meta_token = meta_token ? meta_token.trim() : null;
+            
+            // Clear legacy session if switching to Meta (optional, but cleaner)
+            // updates.session_id = null; 
         }
 
-        let normalizedGatewayUrl = existingTenant.gateway_url;
-        if (hasGatewayUrl) {
-            const gatewayUrl = typeof rawGatewayUrl === 'string' ? rawGatewayUrl.trim() : '';
-            normalizedGatewayUrl = gatewayUrl === '' ? null : gatewayUrl;
-            if (normalizedGatewayUrl && !/^https?:\/\//i.test(normalizedGatewayUrl)) {
-                return res.status(400).json({ success: false, error: 'Gateway URL harus diawali http:// atau https://' });
+        // 3. Whatsmeow Configuration
+        if (effectiveProvider === 'whatsmeow' || rawSessionId !== undefined || rawGatewayUrl !== undefined) {
+            const hasSessionId = typeof rawSessionId !== 'undefined';
+            const hasGatewayUrl = typeof rawGatewayUrl !== 'undefined';
+
+            let normalizedSessionId = existingTenant.session_id;
+            if (hasSessionId) {
+                let sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+                if (sessionId) {
+                    sessionId = sessionId.replace(/\D/g, '');
+                    if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
+                }
+                normalizedSessionId = sessionId === '' ? null : sessionId;
+                updates.session_id = normalizedSessionId;
+            }
+
+            let normalizedGatewayUrl = existingTenant.gateway_url;
+            if (hasGatewayUrl) {
+                const gatewayUrl = typeof rawGatewayUrl === 'string' ? rawGatewayUrl.trim() : '';
+                normalizedGatewayUrl = gatewayUrl === '' ? null : gatewayUrl;
+                if (normalizedGatewayUrl && !/^https?:\/\//i.test(normalizedGatewayUrl)) {
+                    return res.status(400).json({ success: false, error: 'Gateway URL harus diawali http:// atau https://' });
+                }
+                updates.gateway_url = normalizedGatewayUrl;
+            }
+
+            // Auto-assign Gateway logic (Only if session_id is present)
+            if (normalizedSessionId) {
+                const tenants = await db.getAllTenants();
+                const assignment = await resolveGatewayAssignment({
+                    tenants,
+                    existingTenant,
+                    sessionId: normalizedSessionId,
+                    gatewayUrl: normalizedGatewayUrl,
+                    hasGatewayUrl,
+                    hasSessionId
+                });
+                if (assignment?.error) {
+                    return res.status(409).json({ success: false, error: assignment.error });
+                }
+                updates.gateway_url = assignment.gatewayUrl;
+                normalizedGatewayUrl = assignment.gatewayUrl;
             }
         }
 
-        const tenants = await db.getAllTenants();
-        const assignment = await resolveGatewayAssignment({
-            tenants,
-            existingTenant,
-            sessionId: normalizedSessionId,
-            gatewayUrl: normalizedGatewayUrl,
-            hasGatewayUrl,
-            hasSessionId
-        });
-        if (assignment?.error) {
-            return res.status(409).json({ success: false, error: assignment.error });
-        }
-        normalizedGatewayUrl = assignment.gatewayUrl;
+        // 4. Perform Update
+        const tenant = await db.updateTenantConfig(id, updates);
 
-        const previousResolved = resolveGatewayUrl(existingTenant.gateway_url);
-        const nextResolved = resolveGatewayUrl(normalizedGatewayUrl);
-        const gatewayChanged = previousResolved !== nextResolved;
-
-        const tenant = await db.updateTenantSessionGateway(id, normalizedSessionId, normalizedGatewayUrl);
-
-        if (existingTenant.session_id && existingTenant.session_id !== normalizedSessionId) {
-            waGateway.removeSessionToken(existingTenant.session_id);
-            waGateway.setSessionGatewayUrl(existingTenant.session_id, null);
-        }
-
-        if (normalizedSessionId) {
-            if (gatewayChanged) {
-                waGateway.removeSessionToken(normalizedSessionId);
+        // 5. Side Effects (Whatsmeow Session Management)
+        if (effectiveProvider === 'whatsmeow') {
+            const nextSessionId = updates.session_id !== undefined ? updates.session_id : existingTenant.session_id;
+            const nextGatewayUrl = updates.gateway_url !== undefined ? updates.gateway_url : existingTenant.gateway_url;
+            
+            // Clean up old session if changed
+            if (existingTenant.session_id && existingTenant.session_id !== nextSessionId) {
+                waGateway.removeSessionToken(existingTenant.session_id);
+                waGateway.setSessionGatewayUrl(existingTenant.session_id, null);
             }
-            waGateway.setSessionGatewayUrl(normalizedSessionId, normalizedGatewayUrl);
+
+            // Register new session
+            if (nextSessionId) {
+                if (nextGatewayUrl) {
+                    waGateway.setSessionGatewayUrl(nextSessionId, nextGatewayUrl);
+                } else {
+                    // If url became null, remove mapping
+                    waGateway.setSessionGatewayUrl(nextSessionId, null);
+                }
+            }
         }
 
         res.json({ success: true, tenant });
     } catch (error) {
         if (error.code === '23505') {
-            return res.status(409).json({ success: false, error: 'Session ID already assigned to another tenant' });
+            return res.status(409).json({ success: false, error: 'Session ID/API Key/Phone ID duplicate conflict' });
         }
-        console.error('Error updating tenant session:', error);
-        res.status(500).json({ success: false, error: 'Failed to update tenant session' });
+        console.error('Error updating tenant config:', error);
+        res.status(500).json({ success: false, error: 'Failed to update tenant configuration' });
     }
 });
 
