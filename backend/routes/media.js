@@ -20,9 +20,8 @@ const upload = multer({ storage });
 
 function buildMediaRouter(deps) {
     const { log, validateToken } = deps;
-    router.use(validateToken);
 
-    router.post('/media', upload.single('file'), (req, res) => {
+    router.post('/media', validateToken, upload.single('file'), (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
         if (!req.file) {
             log('API error', 'SYSTEM', { event: 'api-error', error: 'No file uploaded.', endpoint: req.originalUrl });
@@ -59,7 +58,7 @@ function buildMediaRouter(deps) {
         });
     });
 
-    router.post('/download-media', async (req, res) => {
+    router.post('/download-media', validateToken, async (req, res) => {
         return res.status(501).json({
             status: 'error',
             message: 'Download media belum didukung di integrasi gateway Go.'

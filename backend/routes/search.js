@@ -4,9 +4,9 @@ const router = express.Router();
 
 function buildSearchRouter(deps) {
     const { validateToken } = deps;
-    router.use(validateToken);
+    // router.use(validateToken); // REMOVED
 
-    router.post('/search', (req, res) => {
+    router.post('/search', validateToken, (req, res) => {
         res.status(501).json({
             status: 'error',
             message: 'Search pesan belum didukung di gateway Go.'

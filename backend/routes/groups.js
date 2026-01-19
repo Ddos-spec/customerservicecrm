@@ -19,9 +19,7 @@ function buildGroupsRouter(deps) {
         res.status(501).json({ status: 'error', message });
     };
 
-    router.use(validateToken);
-
-    router.get('/groups', async (req, res) => {
+    router.get('/groups', validateToken, async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId;
 
         try {
@@ -50,7 +48,7 @@ function buildGroupsRouter(deps) {
         }
     });
 
-    router.post('/groups/accept-invite', async (req, res) => {
+    router.post('/groups/accept-invite', validateToken, async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
         const { inviteCode } = req.body;
 
@@ -85,7 +83,7 @@ function buildGroupsRouter(deps) {
         }
     });
 
-    router.post('/groups/:groupId/leave', async (req, res) => {
+    router.post('/groups/:groupId/leave', validateToken, async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
         const { groupId } = req.params;
 
