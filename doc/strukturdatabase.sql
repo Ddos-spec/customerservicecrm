@@ -317,9 +317,13 @@ ON "public"."users" (
   "role" ASC,
   "status" ASC
 );
-CREATE INDEX "idx_tenants_meta_phone_id" 
+CREATE UNIQUE INDEX "tenants_meta_phone_id_key" 
 ON "public"."tenants" (
   "meta_phone_id" ASC
+);
+CREATE UNIQUE INDEX "messages_wa_message_id_key" 
+ON "public"."messages" (
+  "wa_message_id" ASC
 );
 ALTER TABLE "public"."users" ADD CONSTRAINT "users_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."contacts" ADD CONSTRAINT "contacts_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
