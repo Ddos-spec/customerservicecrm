@@ -812,7 +812,7 @@ const TenantManagement = () => {
                 isAuthenticated: true
             });
             toast.success(`Berhasil masuk ke ${tenant.company_name}`);
-            window.location.href = '/admin/dashboard';
+            window.location.href = '/admin';
         }
     } catch (error: any) {
         console.error('Impersonate failed:', error);

@@ -91,7 +91,7 @@ export const useAuthStore = create<AuthState>()(
             set({ user: res.data.user });
             toast.success('Kembali ke Super Admin');
             // Force reload to clear any cached tenant data
-            window.location.href = '/admin/dashboard'; 
+            window.location.href = '/super-admin'; 
           }
         } catch (error) {
           console.error('Failed to stop impersonate:', error);
