@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Megaphone, Plus, Users, PauseCircle } from 'lucide-react';
+import { Megaphone, Plus, Users, PauseCircle, Trash2 } from 'lucide-react';
 import api from '../../lib/api';
 import { toast } from 'sonner';
 
@@ -56,6 +56,19 @@ const CampaignList = () => {
         }
     } catch (error: any) {
         toast.error(error.response?.data?.message || 'Gagal cancel campaign');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Yakin ingin MENGHAPUS campaign ini? Semua riwayat pengiriman akan hilang.')) return;
+    try {
+        const res = await api.delete(`/marketing/campaigns/${id}`);
+        if (res.data?.status === 'success') {
+            toast.success('Campaign dihapus');
+            void fetchCampaigns();
+        }
+    } catch (error: any) {
+        toast.error(error.response?.data?.message || 'Gagal hapus campaign');
     }
   };
 
@@ -125,6 +138,7 @@ const CampaignList = () => {
                 const success = Number(campaign.success_count || 0);
                 const progressLabel = totalTargets > 0 ? `${success}/${totalTargets}` : '0/0';
                 const canCancel = ['scheduled', 'processing'].includes(campaign.status || '');
+                const canDelete = ['draft', 'paused', 'failed', 'completed'].includes(campaign.status || '');
 
                 return (
                   <tr key={campaign.id} className="border-t border-gray-100 dark:border-slate-700">
@@ -150,10 +164,15 @@ const CampaignList = () => {
                     <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
                       {new Date(campaign.created_at).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right flex justify-end gap-2">
                         {canCancel && (
                             <button onClick={() => handleCancel(campaign.id)} className="text-red-500 hover:text-red-700 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Pause Campaign">
                                 <PauseCircle size={18} />
+                            </button>
+                        )}
+                        {canDelete && (
+                            <button onClick={() => handleDelete(campaign.id)} className="text-gray-400 hover:text-red-500 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Hapus Campaign">
+                                <Trash2 size={18} />
                             </button>
                         )}
                     </td>

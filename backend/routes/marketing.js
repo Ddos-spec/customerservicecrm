@@ -257,6 +257,30 @@ function buildMarketingRouter(deps) {
         }
     });
 
+    router.delete('/campaigns/:id', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+
+        const campaignId = req.params.id;
+
+        try {
+            // Prevent deleting active campaigns
+            const check = await db.query('SELECT status FROM campaigns WHERE id = $1 AND tenant_id = $2', [campaignId, ctx.tenantId]);
+            if (check.rows.length === 0) {
+                return res.status(404).json({ status: 'error', message: 'Campaign tidak ditemukan' });
+            }
+            const status = check.rows[0].status;
+            if (status === 'processing' || status === 'scheduled') {
+                return res.status(400).json({ status: 'error', message: 'Tidak bisa menghapus campaign yang sedang berjalan atau terjadwal. Pause/Cancel terlebih dahulu.' });
+            }
+
+            await db.query('DELETE FROM campaigns WHERE id = $1 AND tenant_id = $2', [campaignId, ctx.tenantId]);
+            res.json({ status: 'success', message: 'Campaign berhasil dihapus' });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
     return router;
 }
 
