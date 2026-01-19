@@ -64,11 +64,12 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
 
             // 1. Massive SQL Sync for Contacts (Fastest Way)
             // Copy data directly from whatsmeow_contacts to contacts table
-            // This bypasses Node.js memory loop and HTTP overhead
+            const sessionWildcard = sessionId + '%'; // Prepare wildcard in JS
+            
             const syncQuery = `
                 INSERT INTO public.contacts (tenant_id, jid, phone_number, full_name, updated_at)
                 SELECT 
-                    $1::uuid, 
+                    $1, 
                     wc.their_jid, 
                     split_part(wc.their_jid, '@', 1), 
                     COALESCE(wc.full_name, wc.first_name, wc.push_name, split_part(wc.their_jid, '@', 1)), 
@@ -76,15 +77,14 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
                 FROM 
                     public.whatsmeow_contacts wc
                 WHERE 
-                    wc.our_jid LIKE $2 || '%'
+                    wc.our_jid LIKE $2
                 ON CONFLICT (tenant_id, jid) 
                 DO UPDATE SET
                     full_name = EXCLUDED.full_name,
                     updated_at = NOW()
             `;
             
-            // Use session_id as prefix match for our_jid
-            const contactsResult = await db.query(syncQuery, [tenantId, sessionId]);
+            const contactsResult = await db.query(syncQuery, [tenantId, sessionWildcard]);
             const syncedCount = contactsResult.rowCount;
             console.log(`[Sync] SQL Sync completed. Processed ${syncedCount} contacts.`);
 
