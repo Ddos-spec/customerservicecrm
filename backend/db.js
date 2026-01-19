@@ -213,6 +213,7 @@ async function logMessage({ chatId, senderType, senderId, senderName, messageTyp
         
         if (!message) {
             // Already exists, fetch it
+            console.warn(`[DB Mitigation] Duplicate message detected (Collision or Retry): ${waMessageId}`);
             const existRes = await query('SELECT * FROM messages WHERE wa_message_id = $1', [waMessageId]);
             message = existRes.rows[0];
             // Don't update chat preview if it's an old message
