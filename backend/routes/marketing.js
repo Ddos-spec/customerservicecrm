@@ -232,6 +232,31 @@ function buildMarketingRouter(deps) {
         }
     });
 
+    router.post('/campaigns/:id/cancel', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+
+        const campaignId = req.params.id;
+
+        try {
+            // Only allow canceling if not already completed/failed
+            const result = await db.query(`
+                UPDATE campaigns
+                SET status = 'paused'
+                WHERE id = $1 AND tenant_id = $2 AND status NOT IN ('completed', 'failed', 'paused')
+                RETURNING *
+            `, [campaignId, ctx.tenantId]);
+
+            if (result.rowCount === 0) {
+                return res.status(404).json({ status: 'error', message: 'Campaign tidak ditemukan atau sudah selesai' });
+            }
+
+            res.json({ status: 'success', message: 'Campaign berhasil dihentikan sementara (Paused)' });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
     return router;
 }
 

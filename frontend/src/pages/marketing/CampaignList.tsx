@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Megaphone, Plus, Users } from 'lucide-react';
+import { Megaphone, Plus, Users, PauseCircle } from 'lucide-react';
 import api from '../../lib/api';
 import { toast } from 'sonner';
 
@@ -46,6 +46,19 @@ const CampaignList = () => {
     void fetchCampaigns();
   }, [fetchCampaigns]);
 
+  const handleCancel = async (id: string) => {
+    if (!confirm('Yakin ingin menghentikan campaign ini? Pengiriman akan di-pause.')) return;
+    try {
+        const res = await api.post(`/marketing/campaigns/${id}/cancel`);
+        if (res.data?.status === 'success') {
+            toast.success('Campaign dihentikan');
+            void fetchCampaigns();
+        }
+    } catch (error: any) {
+        toast.error(error.response?.data?.message || 'Gagal cancel campaign');
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   return (
@@ -89,19 +102,20 @@ const CampaignList = () => {
                 <th className="text-left px-6 py-4 font-semibold">Progress</th>
                 <th className="text-left px-6 py-4 font-semibold">Terjadwal</th>
                 <th className="text-left px-6 py-4 font-semibold">Dibuat</th>
+                <th className="text-right px-6 py-4 font-semibold">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td className="px-6 py-6 text-gray-500 dark:text-gray-400" colSpan={5}>
+                  <td className="px-6 py-6 text-gray-500 dark:text-gray-400" colSpan={6}>
                     Memuat data...
                   </td>
                 </tr>
               )}
               {!loading && campaigns.length === 0 && (
                 <tr>
-                  <td className="px-6 py-6 text-gray-500 dark:text-gray-400" colSpan={5}>
+                  <td className="px-6 py-6 text-gray-500 dark:text-gray-400" colSpan={6}>
                     Belum ada campaign.
                   </td>
                 </tr>
@@ -110,13 +124,20 @@ const CampaignList = () => {
                 const totalTargets = Number(campaign.total_targets || 0);
                 const success = Number(campaign.success_count || 0);
                 const progressLabel = totalTargets > 0 ? `${success}/${totalTargets}` : '0/0';
+                const canCancel = ['scheduled', 'processing'].includes(campaign.status || '');
+
                 return (
                   <tr key={campaign.id} className="border-t border-gray-100 dark:border-slate-700">
                     <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
                       {campaign.name}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                          campaign.status === 'completed' ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                          campaign.status === 'failed' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
+                          campaign.status === 'paused' ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' :
+                          'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                      }`}>
                         {campaign.status || 'draft'}
                       </span>
                     </td>
@@ -129,12 +150,20 @@ const CampaignList = () => {
                     <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
                       {new Date(campaign.created_at).toLocaleString()}
                     </td>
+                    <td className="px-6 py-4 text-right">
+                        {canCancel && (
+                            <button onClick={() => handleCancel(campaign.id)} className="text-red-500 hover:text-red-700 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Pause Campaign">
+                                <PauseCircle size={18} />
+                            </button>
+                        )}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
+
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-slate-700">
           <span className="text-xs text-gray-500 dark:text-gray-400">
             Total {total} campaign
