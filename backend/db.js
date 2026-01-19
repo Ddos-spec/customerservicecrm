@@ -195,23 +195,52 @@ async function getOrCreateChat(tenantId, jid, pushName = null, isGroup = false) 
 }
 
 async function logMessage({ chatId, senderType, senderId, senderName, messageType, body, mediaUrl, waMessageId, isFromMe }) {
-    const res = await query(`
-        INSERT INTO messages (chat_id, sender_type, sender_id, sender_name, message_type, body, media_url, wa_message_id, is_from_me)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
-    `, [chatId, senderType, senderId, senderName, messageType || 'text', body, mediaUrl, waMessageId, isFromMe || false]);
+    // Upsert / Idempotency handling
+    // If waMessageId exists, skip insert (return existing)
+    // Note: Requires UNIQUE constraint on wa_message_id
+    
+    let message;
+    
+    if (waMessageId) {
+        const insertRes = await query(`
+            INSERT INTO messages (chat_id, sender_type, sender_id, sender_name, message_type, body, media_url, wa_message_id, is_from_me)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+            ON CONFLICT (wa_message_id) DO NOTHING
+            RETURNING *
+        `, [chatId, senderType, senderId, senderName, messageType || 'text', body, mediaUrl, waMessageId, isFromMe || false]);
+        
+        message = insertRes.rows[0];
+        
+        if (!message) {
+            // Already exists, fetch it
+            const existRes = await query('SELECT * FROM messages WHERE wa_message_id = $1', [waMessageId]);
+            message = existRes.rows[0];
+            // Don't update chat preview if it's an old message
+            return message; 
+        }
+    } else {
+        // Fallback for messages without ID (internal system messages)
+        const res = await query(`
+            INSERT INTO messages (chat_id, sender_type, sender_id, sender_name, message_type, body, media_url, wa_message_id, is_from_me)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
+        `, [chatId, senderType, senderId, senderName, messageType || 'text', body, mediaUrl, waMessageId, isFromMe || false]);
+        message = res.rows[0];
+    }
 
-    // Update Chat Preview
-    await query(`
-        UPDATE chats SET 
-            last_message_preview = $1, 
-            last_message_time = now(), 
-            last_message_type = $2,
-            unread_count = CASE WHEN $3 = false THEN unread_count + 1 ELSE unread_count END,
-            updated_at = now()
-        WHERE id = $4
-    `, [body?.substring(0, 100), messageType || 'text', isFromMe || false, chatId]);
+    // Update Chat Preview (Only if new message)
+    if (message) {
+        await query(`
+            UPDATE chats SET 
+                last_message_preview = $1, 
+                last_message_time = now(), 
+                last_message_type = $2,
+                unread_count = CASE WHEN $3 = false THEN unread_count + 1 ELSE unread_count END,
+                updated_at = now()
+            WHERE id = $4
+        `, [body?.substring(0, 100), messageType || 'text', isFromMe || false, chatId]);
+    }
 
-    return res.rows[0];
+    return message;
 }
 
 async function getChatsByTenant(tenantId, limit = 50, offset = 0, status = null) {

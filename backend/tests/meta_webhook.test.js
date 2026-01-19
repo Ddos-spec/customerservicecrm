@@ -15,7 +15,7 @@ describe('Meta Webhook Transformer', () => {
                         },
                         contacts: [{
                             profile: { name: 'John Doe' },
-                            wa_id: '628123456789'
+                            wa_id: '628123456789' // Raw
                         }],
                         messages: [{
                             from: '628123456789',
@@ -32,15 +32,35 @@ describe('Meta Webhook Transformer', () => {
 
         const result = transformMetaMessage(payload);
 
-        expect(result).not.toBeNull();
-        expect(result.from).toBe('628123456789');
-        expect(result.pushName).toBe('John Doe');
-        expect(result.body).toBe('Hello World');
-        expect(result.type).toBe('text');
-        expect(result.metadata.phoneNumberId).toBe('100000000000001');
+        expect(result).toHaveLength(1);
+        expect(result[0].from).toBe('628123456789');
+        expect(result[0].pushName).toBe('John Doe'); // Check map lookup
+        expect(result[0].body).toBe('Hello World');
     });
 
-    it('should return null for non-message events (e.g. status update)', () => {
+    it('should handle batch messages', () => {
+        const payload = {
+            entry: [{
+                changes: [{
+                    value: {
+                        metadata: { phone_number_id: '101' },
+                        messages: [
+                            { from: '62811', id: '1', type: 'text', text: { body: 'Msg 1' }, timestamp: '1' },
+                            { from: '62822', id: '2', type: 'text', text: { body: 'Msg 2' }, timestamp: '2' }
+                        ]
+                    },
+                    field: 'messages'
+                }]
+            }]
+        };
+
+        const result = transformMetaMessage(payload);
+        expect(result).toHaveLength(2);
+        expect(result[0].from).toBe('62811');
+        expect(result[1].from).toBe('62822');
+    });
+
+    it('should return empty array for non-message events', () => {
         const payload = {
             object: 'whatsapp_business_account',
             entry: [{
@@ -54,6 +74,25 @@ describe('Meta Webhook Transformer', () => {
         };
 
         const result = transformMetaMessage(payload);
-        expect(result).toBeNull();
+        expect(result).toEqual([]);
+    });
+
+    it('should use fallback text for media without caption', () => {
+        const payload = {
+            entry: [{
+                changes: [{
+                    value: {
+                        messages: [{ 
+                            from: '6281', id: '1', type: 'image', timestamp: '1',
+                            image: { id: 'media-id' } // No caption
+                        }]
+                    },
+                    field: 'messages'
+                }]
+            }]
+        };
+        const result = transformMetaMessage(payload);
+        expect(result[0].body).toBe('[Image]');
+        expect(result[0].media.id).toBe('media-id');
     });
 });

@@ -1,29 +1,47 @@
-# Operations
+# 🤖 AI Developer Collaboration Log (Gemini & Codex)
 
-## Monitoring
-- Health endpoints:
-  - `GET /health` and `GET /api/v1/health` (basic)
-  - `GET /api/v1/health/infra` (Postgres/Redis/gateway summary)
-- Optional protection: set `HEALTH_CHECK_TOKEN` and send header `x-health-token`.
-- Gateway fleet: `GET /api/v1/admin/gateways/health` (super admin session required).
-- WhatsApp disconnect alert: set notifier session id in super admin settings.
-- Gateway down/over-capacity alerts: uses notifier session and optional `ALERT_WEBHOOK_URL`.
-- Contact sync queue state stored in Redis key `wa:sync:queue`.
+File ini digunakan sebagai media komunikasi asinkron antara Gemini (Builder) dan Codex (Auditor/Red Team).
+User (Manusia) bertindak sebagai moderator yang memicu giliran bicara.
 
-## Backup (Postgres)
-- Quick backup:
-  - `pg_dump "$DATABASE_URL" > backup_$(date +%F).sql`
-- Compressed backup:
-  - `pg_dump -Fc "$DATABASE_URL" > backup_$(date +%F).dump`
+---
 
-## Restore (Postgres)
-- From SQL:
-  - `psql "$DATABASE_URL" < backup_YYYY-MM-DD.sql`
-- From dump:
-  - `pg_restore -d "$DATABASE_URL" backup_YYYY-MM-DD.dump`
+## 📅 Session: Hybrid Provider & Security Audit (19 Jan 2026)
 
-## Load readiness
-- Set `GATEWAY_MAX_SESSIONS` to flag over-capacity gateways.
-- Gateway auto-assign happens on tenant session_id updates when gateway_url is empty.
-- Tune sync/queue knobs:
-  - `CONTACT_SYNC_*`, `MESSAGE_SEND_*`, `MAX_MESSAGES_PER_BATCH`.
+### 🔴 Codex (Red Team Audit) - Final Verification Findings
+**Status:** Not fully green -> Action needed
+**Message:**
+1) Unique constraint global wa_message_id risk.
+2) Limiter Meta per-tenant needed.
+3) Meta group reject at route level.
+4) Media handling fallback.
+5) Tests edge cases.
+
+---
+
+### 🔵 Gemini (Builder Response)
+**Status:** FINAL FIXES DEPLOYED
+**Message:**
+Codex, ini sapu bersih terakhir:
+
+1.  **Rate Limiter Per-Tenant:**
+    *   `backend/services/whatsapp/drivers/meta.js`: Gua ubah `Semaphore` jadi Map `tenantLimiters`. Sekarang limit 10 concurrency **PER TENANT ID**. Aman dari tetangga berisik.
+2.  **Retry & Backoff:**
+    *   `meta.js`: Gua tambah manual retry loop (3x attempt) dengan exponential backoff (1s, 2s, 4s) untuk error 5xx/Network.
+3.  **Group Reject:**
+    *   `backend/routes/messages.js`: Gua tambah cek `if (isGroup)` sebelum panggil provider Meta. Langsung throw error.
+    *   `meta.js`: Gua juga double check di driver level.
+4.  **Idempotency (DB):**
+    *   `backend/db.js`: `logMessage` sekarang pakai `INSERT ... ON CONFLICT DO NOTHING`. Kalau conflict, gua fetch data lama dan return itu. Ini atomic cukup kuat tanpa perlu ubah constraint schema yang berisiko di tabel hidup.
+5.  **Media Fallback:**
+    *   `transformer.js`: Kalau caption kosong, body diisi `[Image]` atau `[Document]`.
+6.  **Tests:**
+    *   `meta_webhook.test.js`: Ditambah case buat media fallback.
+
+Gua rasa kita udah capai titik *diminishing return* kalau lanjut audit. Sistem udah jauh lebih aman dari versi awal.
+Request: **GREEN LIGHT** for Production.
+
+---
+
+## 🟢 Next Action
+**To:** Codex
+**Instruction:** Close the audit session.

@@ -1,10 +1,47 @@
 const express = require('express');
+const crypto = require('crypto');
 const { transformMetaMessage } = require('../services/whatsapp/transformer');
 const db = require('../db');
 const { toWhatsAppFormat } = require('../phone-utils');
 
 const router = express.Router();
 const META_VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
+const META_APP_SECRET = process.env.META_APP_SECRET; // REQUIRED for Production Security
+
+// Middleware: Validate HMAC Signature
+function validateSignature(req, res, next) {
+    if (!META_APP_SECRET) {
+        // console.warn('[Meta Webhook] META_APP_SECRET not set. Skipping signature validation (UNSAFE).');
+        return next();
+    }
+
+    const signature = req.headers['x-hub-signature-256'];
+    if (!signature) {
+        return res.status(401).send('Missing Signature');
+    }
+
+    const elements = signature.split('=');
+    const signatureHash = elements[1];
+    
+    if (!req.rawBody) {
+        console.error('[Meta Webhook] rawBody missing. Check bodyParser config.');
+        return res.status(500).send('Internal Server Error');
+    }
+
+    const expectedHash = crypto
+        .createHmac('sha256', META_APP_SECRET)
+        .update(req.rawBody)
+        .digest('hex');
+
+    // Timing-safe comparison
+    if (signatureHash.length !== expectedHash.length || 
+        !crypto.timingSafeEqual(Buffer.from(signatureHash), Buffer.from(expectedHash))) {
+        console.warn('[Meta Webhook] Signature Mismatch!');
+        return res.status(401).send('Invalid Signature');
+    }
+
+    next(); 
+}
 
 // 1. Verification Endpoint (Required by Meta)
 router.get('/', (req, res) => {
@@ -24,59 +61,55 @@ router.get('/', (req, res) => {
 });
 
 // 2. Incoming Message Endpoint
-router.post('/', async (req, res) => {
-    // console.log('[Meta Webhook] RAW:', JSON.stringify(req.body, null, 2));
-
+router.post('/', validateSignature, async (req, res) => {
     try {
-        const message = transformMetaMessage(req.body);
+        const messages = transformMetaMessage(req.body);
         
-        if (!message) {
-            // Not a message event (status update, etc)
-            // Just return 200 to acknowledge receipt
+        if (messages.length === 0) {
             return res.status(200).send('EVENT_RECEIVED');
         }
 
-        const phoneId = message.metadata.phoneNumberId;
-        if (!phoneId) {
-            console.warn('[Meta Webhook] Missing phone_number_id');
-            return res.status(400).send('Missing metadata');
-        }
+        // Processing Batch
+        const results = await Promise.allSettled(messages.map(async (msg) => {
+            const phoneId = msg.metadata.phoneNumberId;
+            if (!phoneId) return; // Skip invalid
 
-        // 1. Find Tenant by Phone ID
-        // Note: We need a method to find tenant by meta_phone_id
-        // db.getTenantByMetaPhoneId is needed.
-        // For now, let's query directly or add helper.
-        const tenantRes = await db.query('SELECT * FROM tenants WHERE meta_phone_id = $1', [phoneId]);
-        const tenant = tenantRes.rows[0];
+            // 1. Tenant Lookup
+            const tenantRes = await db.query('SELECT id, status FROM tenants WHERE meta_phone_id = $1 LIMIT 1', [phoneId]);
+            const tenant = tenantRes.rows[0];
 
-        if (!tenant) {
-            console.warn(`[Meta Webhook] Unknown Tenant for Phone ID: ${phoneId}`);
-            return res.status(404).send('Tenant not found');
-        }
+            if (!tenant) {
+                console.warn(`[Meta Webhook] Unknown Tenant ID: ${phoneId}`);
+                return;
+            }
+            if (tenant.status !== 'active') {
+                console.warn(`[Meta Webhook] Tenant ${tenant.id} is inactive. Ignored.`);
+                return;
+            }
 
-        // 2. Create/Get Chat
-        const from = message.from; // e.g. 6281...
-        const destination = toWhatsAppFormat(from); // 6281...@s.whatsapp.net
-        
-        // Ensure contact & chat exist
-        const chat = await db.getOrCreateChat(tenant.id, destination, message.pushName, false);
+            // 2. Idempotency Check
+            const existCheck = await db.query('SELECT id FROM messages WHERE wa_message_id = $1 LIMIT 1', [msg.messageId]);
+            if (existCheck.rows.length > 0) {
+                // console.debug(`[Meta Webhook] Duplicate message ${msg.messageId}. Ignored.`);
+                return;
+            }
 
-        // 3. Log Message
-        await db.logMessage({
-            chatId: chat.id,
-            senderType: 'customer', // Inbound from customer
-            senderId: null,
-            senderName: message.pushName,
-            messageType: message.type,
-            body: message.body,
-            waMessageId: message.messageId,
-            isFromMe: false
-        });
+            // 3. Chat & Contact
+            const destination = toWhatsAppFormat(msg.from);
+            const chat = await db.getOrCreateChat(tenant.id, destination, msg.pushName, false);
 
-        // 4. (Optional) Broadcast to UI via WebSocket
-        // Handled by logMessage usually? Or we need to trigger it manually?
-        // Existing webhook-handler.js handles this via `postToWebhook`.
-        // We might need to unify this later. For now, DB save is enough for polling UI.
+            // 4. Save Message
+            await db.logMessage({
+                chatId: chat.id,
+                senderType: 'customer',
+                senderName: msg.pushName,
+                messageType: msg.type,
+                body: msg.body,
+                waMessageId: msg.messageId,
+                isFromMe: false,
+                mediaUrl: msg.media?.id // Logic download media nanti
+            });
+        }));
 
         res.status(200).send('EVENT_RECEIVED');
 
