@@ -22,6 +22,7 @@ const { buildChannelsRouter } = require('./routes/channels');
 const { buildContactsRouter } = require('./routes/contacts');
 const { buildSearchRouter } = require('./routes/search');
 const { buildSyncRouter } = require('./routes/sync'); // Import Sync Router
+const { buildMarketingRouter } = require('./routes/marketing');
 const metaWebhookRouter = require('./routes/webhook-meta'); // Import Meta Webhook
 const waGateway = require('./wa-gateway-client');
 
@@ -282,6 +283,7 @@ function initializeApi(
     router.use(buildContactsRouter({ sessions, formatPhoneNumber, validateToken, waGateway, db }));
     router.use('/sync', buildSyncRouter({ waGateway, db, validateToken })); // Mount Sync Router
     router.use('/webhook/meta', metaWebhookRouter); // Mount Meta Webhook
+    router.use('/marketing', buildMarketingRouter({ db, validateToken }));
     router.use(buildSearchRouter({ validateToken }));
 
     return router;

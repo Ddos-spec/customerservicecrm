@@ -33,6 +33,7 @@ const waGateway = require('./wa-gateway-client');
 const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 const { getGatewayHealthSummary } = require('./utils/gateway-health');
 const { sendAlertWebhook, initAlertSystem } = require('./utils/alert-webhook');
+const marketingProcessor = require('./services/marketing/processor');
 
 const SESSION_STATUS_TTL_SEC = parseInt(process.env.SESSION_STATUS_TTL_SEC || `${7 * 24 * 60 * 60}`, 10);
 const CONTACT_SYNC_INTERVAL_MINUTES = parseInt(process.env.CONTACT_SYNC_INTERVAL_MINUTES || '360', 10);
@@ -1398,6 +1399,10 @@ if (!isTest) {
             void runGatewayAlerts();
         }, GATEWAY_ALERT_TICK_MS);
         console.log(`[Cron] Gateway alert checks enabled (tick ${GATEWAY_ALERT_TICK_MS / 1000}s)`);
+        setInterval(() => {
+            void marketingProcessor.processBatch();
+        }, 60 * 1000);
+        console.log('[Cron] Marketing processor enabled (tick 60s)');
     });
 }
 
