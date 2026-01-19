@@ -1,6 +1,6 @@
-# 🤖 Gemini Agent Workflow Status
+# 🤖 Gemini Agent Workflow Status & Memory
 
-File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas yang selesai, dan rencana selanjutnya agar transparan bagi pengguna.
+File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas yang selesai, dan **protokol belajar mandiri (Self-Correction)** agar kesalahan tidak terulang.
 
 **Project:** Customer Service CRM (Omnichannel WhatsApp)
 **Arsitektur (Deployed):**
@@ -10,69 +10,65 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 
 ---
 
-## 📋 Roadmap & Progress
+## 🧠 Self-Correction & Learning Protocols (CRITICAL)
 
-### 1. Refactoring & Cleanup (✅ Selesai)
-- [x] Restrukturisasi Folder: Rename `client` -> `frontend`
-- [x] Restrukturisasi Folder: Rename `wagateway` -> `backend`
-- [x] Restrukturisasi Folder: Move `backend/wa-gateway` -> `wa-gateway` (Microservices Standard)
-- [x] Kerapihan Dokumen: Pindahkan `readme`, `strukturdatabase` ke `docs/`
-- [x] Backend Cleanup: Hapus folder legacy `admin` (HTML/JS lama)
-- [x] Backend Cleanup: Hapus endpoint static file & documentation lama di `index.js`
-- [x] Git Configuration: Update `.gitignore` untuk struktur folder baru
-
-### 2. Frontend Security & Demo Prep (✅ Selesai)
-- [x] Hapus "Super Admin" dari tombol Login Demo (hanya Admin Agent & User)
-- [x] Implementasi "Hardened Mode":
-  - [x] Disable Klik Kanan
-  - [x] Disable Text Selection (Copy-Paste)
-  - [x] Disable Shortcut Inspect Element (F12, Ctrl+U, Ctrl+S)
-- [x] Konfigurasi Environment: Support `VITE_API_URL` untuk deploy Vercel
-
-### 3. API Integration (✅ Selesai)
-- [x] Super Admin Dashboard: Integrasi `GET /sessions` (Real Data)
-- [x] Super Admin Dashboard: Integrasi `GET /logs` (Real Data)
-- [x] Super Admin Dashboard: Fitur Create & Delete Session
-- [x] Agent Dashboard: Integrasi Status Koneksi WA
-- [x] Agent Dashboard: Integrasi QR Code Real-time
-- [x] Backend: Konfigurasi CORS (Allow Vercel & Localhost)
-
-### 4. Quality Assurance & Security (✅ Selesai)
-- [x] **Automated Secret Scanner**: Husky pre-commit hook untuk memblokir hardcoded secrets/passwords.
-- [x] **Backend Hardening**: Server auto-crash jika variabel `.env` penting tidak diset (mencegah default password).
-- [x] **System Doctor**: Perintah `npm run doctor` untuk scan error Frontend & Backend.
-- [x] **Zero Errors & Zero Warnings**: 
-  - [x] Fix semua error `no-undef`, `impure function`, dan `set-state-in-effect`.
-  - [x] Bersihkan semua variabel tidak terpakai (Unused Vars).
-  - [x] Refactor `backend/index.js` menjadi kode yang sangat bersih dan efisien.
-
-### 5. Database & Features (✅ Selesai)
-- [x] **Database**: Implementasi penyimpanan Chat History (Backend Auto-Save).
-- [x] **Chat Architecture**: Refactor Frontend-Backend (Atomic Message Sending).
-- [x] **Webhook Handler**: Logic penyimpanan pesan masuk ke Database (Basic Text & Media Caption).
-- [x] **Real-time Chat**: Sinkronisasi pesan masuk ke UI via WebSocket/Polling.
-
-### 6. Security Hardening (✅ Selesai - Critical & High)
-- [x] **Critical Fixes**: 
-  - [x] Token Validation Bypass (Strict Session Matching)
-  - [x] Database Field Injection (Whitelist Columns)
-  - [x] Token Storage (File Permission 0600)
-  - [x] SSRF Prevention (Block Private IPs)
-  - [x] Tenant Isolation Hardening
-- [x] **High Priority Fixes**:
-  - [x] Rate Limiting (Login & Send Message)
-  - [x] Error Message Sanitization (No Leak)
-
-### 7. Deployment (✅ Selesai)
-- [x] **Frontend**: Deployed ke Vercel.
-- [x] **Backend**: Deployed ke VPS (Node.js).
-- [x] **WA Gateway**: Deployed ke VPS (Go).
+**Instruksi untuk Diri Sendiri (Gemini) & Codex:**
+1.  **Analisis Error:** Jika tool/command gagal, JANGAN langsung coba lagi dengan cara yang sama. Baca pesan error, pahami konteks environment (Windows/Linux), lalu perbaiki akarnya.
+2.  **PowerShell Constraint:** Di environment Windows/PowerShell, DILARANG KERAS menggunakan operator chaining `&&`. Eksekusi command satu per satu menggunakan multiple tool calls.
+3.  **Linting First:** Sebelum commit, jalankan `npm run lint` (jika ada) atau periksa aturan syntax (kutip satu vs dua). Jangan biarkan CI gagal karena hal sepele.
+4.  **Update Memory:** Setiap kali menemukan pola error baru atau arsitektur berubah, update file ini (`GEMINI.md` atau `docs/architecture.md`) agar "ingatan" kita tersinkronisasi.
+5.  **Test Robustness:** Saat membuat E2E test, pastikan database dibersihkan (`TRUNCATE/DELETE`) di awal (`beforeAll`) dan mock data valid (misal: URL harus diawali `http://`).
+6.  **Secret Management:** Jangan pernah hardcode secret sebagai fallback (misal: `process.env.SECRET || 'unsafe_default'`). Biarkan undefined atau throw error. Husky akan memblokir commit jika ada unsafe secret.
 
 ---
 
-## 📝 Catatan Teknis
-- **Backend Port:** Default 3000 (Dapat diubah via `.env` variabel `PORT`)
-- **Frontend Port:** Default 5173 (Dapat diubah via `vite.config.ts`)
-- **Login Demo:** Gunakan Admin Agent / User Agent untuk keperluan presentasi.
-- **Production URL:** Gunakan `VITE_API_URL` di Vercel untuk menghubungkan ke IP/Domain VPS.
-- **Maintenance:** Jalankan `npm run doctor` secara berkala untuk menjaga kesehatan kode.
+## 📋 Roadmap & Progress
+
+### 1. Refactoring & Cleanup (✅ Selesai)
+- [x] Restrukturisasi Folder (Frontend/Backend/Gateway).
+- [x] Dokumen dipindahkan ke `docs/`.
+- [x] Pembersihan kode legacy.
+
+### 2. Frontend Security & Demo Prep (✅ Selesai)
+- [x] Hardened Mode (No Right Click, Inspect).
+- [x] Environment Config.
+
+### 3. API Integration (✅ Selesai)
+- [x] Dashboard Integrations (Sessions, Logs).
+- [x] Real-time QR Code.
+
+### 4. Quality Assurance & Security (✅ Selesai)
+- [x] Secret Scanner (Husky).
+- [x] System Doctor.
+- [x] Zero Errors/Warnings Policy.
+
+### 5. Database & Features (✅ Selesai)
+- [x] Chat History Storage.
+- [x] Real-time Chat Sync.
+- [x] Webhook Handler.
+
+### 6. SaaS Architecture Migration (✅ Selesai - MAJOR)
+- [x] **Single Session Architecture:** Menghapus `user_session_id`. 1 Tenant = 1 WA Session.
+- [x] **Tenant API Key:** Tenant memiliki API Key sendiri untuk integrasi eksternal.
+- [x] **Impersonate:** Super Admin bisa login sebagai Owner Tenant untuk debugging.
+- [x] **Internal Alerting:** Notifikasi disconnect dikirim via WA ke Super Admin.
+- [x] **Database Migration:** Script `doc/query.sql` diperbarui untuk V2, V3, & V4 schema.
+
+### 7. DevOps & Automation (✅ Selesai)
+- [x] **CI/CD Pipeline:** GitHub Actions untuk Backend Test & Frontend Build check.
+- [x] **E2E Testing:** Script `backend/tests/saas_flow.test.js` (Fixed Redis Client issue).
+
+### 8. Hybrid Provider (✅ Selesai Fase 1-4)
+- [x] **Fase 1: Database Schema:** Kolom Meta (`wa_provider`, `meta_*`) di tabel Tenants.
+- [x] **Fase 2: Adapter Layer:** `ProviderFactory` & Drivers (`WhatsmeowDriver`, `MetaCloudDriver`).
+- [x] **Fase 3: Meta Webhook:** Transformer Logic & Endpoint `/api/v1/webhook/meta`.
+- [x] **Fase 4: UI Configuration:** Tenant Settings support Official API Setup.
+- [ ] **Fase 5: 24H Window Logic:** Logic blokir pesan jika >24 jam (Official Only).
+
+---
+
+## 📝 Catatan Teknis (Knowledge Base)
+
+- **Redis in Tests:** Saat testing backend yang pakai Redis, pastikan untuk `connect()` manual di `beforeAll` dan `quit()` di `afterAll`.
+- **Hybrid Routing:** Pengiriman pesan sekarang melalui `ProviderFactory`. `WhatsmeowDriver` masih menggunakan legacy queue (`scheduleMessageSend`), sedangkan `MetaCloudDriver` langsung hit API.
+- **Webhook Meta:** Verifikasi webhook Meta menggunakan `process.env.META_VERIFY_TOKEN`.

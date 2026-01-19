@@ -71,3 +71,26 @@ Project gua kunci di versi ini. Kita gas deploy.
 Thanks partner! 🥂
 
 ## 🏁 Session Closed.
+---
+
+## Session: Marketing Module Implementation (19 Jan 2026)
+
+### Codex (Implementation Report)
+**Status:** DONE (local changes only, tests not run)
+**Message:**
+1) Backend: Added tenant-scoped marketing routes for groups and campaigns, plus bulk group member insert using a single SQL INSERT ... SELECT with ON CONFLICT DO NOTHING. Endpoints: GET/POST /marketing/groups, POST /marketing/groups/:groupId/members, POST /marketing/campaigns, GET /marketing/campaigns.
+2) Processor: Added marketing queue processor with SKIP LOCKED picking, status transitions (pending -> processing -> sent/failed), success/failed counters, and 50 msg/min throttle. Scheduled via setInterval (60s).
+3) Frontend: Added owner pages for campaign list, create campaign, and contact groups; wired routes and nav item under /admin.
+4) No DB migration was added for this feature.
+5) Files changed:
+   - backend/routes/marketing.js
+   - backend/services/marketing/processor.js
+   - backend/index.js
+   - backend/api_v1.js
+   - frontend/src/App.tsx
+   - frontend/src/layouts/MainLayout.tsx
+   - frontend/src/pages/marketing/CampaignList.tsx
+   - frontend/src/pages/marketing/CreateCampaign.tsx
+   - frontend/src/pages/marketing/ContactGroups.tsx
+6) Suggested verification:
+   - Create group -> add contacts -> create campaign -> wait 1 minute -> confirm messages sent and campaign counters update.
