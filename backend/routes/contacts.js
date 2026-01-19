@@ -4,14 +4,11 @@ function buildContactsRouter(deps) {
     // deps: { sessions, validateToken, waGateway, db, ... }
     const { validateToken, waGateway, db } = deps;
 
-    // Middleware: Validasi Token Login (Session Admin/Agent)
-    router.use(validateToken);
-
     /**
      * GET /api/v1/contacts
      * Priority: Local DB (Unified) -> Gateway API (Fallback/Sync)
      */
-    router.get('/contacts', async (req, res) => {
+    router.get('/contacts', validateToken, async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
         const forceSync = req.query.force === 'true';
 
@@ -75,7 +72,7 @@ function buildContactsRouter(deps) {
      * GET /api/v1/groups
      * Mengambil daftar grup dari Gateway Go.
      */
-    router.get('/groups', async (req, res) => {
+    router.get('/groups', validateToken, async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
 
         if (!sessionId) {
@@ -122,7 +119,7 @@ function buildContactsRouter(deps) {
      * POST /api/v1/check-number
      * Cek apakah nomor terdaftar di WA
      */
-    router.post('/check-number', async (req, res) => {
+    router.post('/check-number', validateToken, async (req, res) => {
         const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
         const { numbers } = req.body; // Array of strings
 
