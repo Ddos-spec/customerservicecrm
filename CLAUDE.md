@@ -8,13 +8,13 @@ This file serves as the **primary context and instruction set** for Claude when 
     *   **Frontend:** React (Vite, TypeScript, Tailwind).
     *   **Backend:** Node.js (Express).
     *   **Database:** PostgreSQL.
-    *   **Gateway:** Go (Whatsmeow) - Unofficial API.
-*   **Current State:** Ready for Early Access (Closed Beta).
+    *   **Gateway:** Hybrid (Whatsmeow Unofficial + Meta Cloud API Official).
+*   **Current State:** Hybrid Provider Implemented (Phase 4 Done).
 
 ## 🏛️ Architecture & Source of Truth
 **CRITICAL:** Before writing any code, ALWAYS check **`docs/architecture.md`**.
 *   That file contains the Roadmap, Data Structure, and Logic Flow.
-*   **Do not hallucinate** features. Implement exactly what is in the roadmap (currently Phase 5 DONE, Phase 6 Planned).
+*   **Do not hallucinate** features. Implement exactly what is in the roadmap.
 
 ## ⚡ Core Rules (Non-Negotiable)
 
@@ -35,26 +35,27 @@ This file serves as the **primary context and instruction set** for Claude when 
 
 4.  **Self-Correction Protocol:**
     *   If a tool fails, **ANALYZE the error**. Do not blindly retry.
-    *   If a test fails, fix the *test logic* or the *code logic*, don't just skip it.
+    *   If a test fails, check environment dependencies (Redis/DB).
 
-## 🔐 Key Architectural Decisions (Current) 
+## 🔐 Key Architectural Decisions (Current)
 
 1.  **Single Session Architecture:**
     *   1 Tenant = 1 WhatsApp Session.
-    *   Users (Agents) do NOT have their own sessions. They inherit `tenants.session_id`.
-    *   Column `users.session_id` is REMOVED.
+    *   Users (Agents) inherit `tenants.session_id`.
 
-2.  **Impersonation:**
-    *   Super Admin can login as any Tenant Owner.
-    *   Frontend shows a "Banner" when impersonating.
+2.  **Hybrid Provider (Adapter Pattern):**
+    *   We use `backend/services/whatsapp/factory.js` to switch between drivers.
+    *   **Whatsmeow:** Uses local Go gateway & internal queue (`scheduleMessageSend`).
+    *   **Meta:** Uses Direct Graph API call.
+    *   **Routing:** `backend/routes/messages.js` handles the switch automatically.
 
-3.  **Internal Alerting:**
-    *   No external webhooks for system alerts.
-    *   Backend sends WhatsApp messages to Super Admin's number using `notifier_session_id`.
+3.  **Incoming Webhook:**
+    *   `/api/v1/webhook` -> Whatsmeow (Legacy).
+    *   `/api/v1/webhook/meta` -> Meta Cloud API (New).
 
-4.  **Hybrid Provider (Future):**
-    *   We are preparing to support Meta Cloud API (Official) alongside Whatsmeow.
-    *   Follow `docs/architecture.md` Phase 6 for implementation details.
+4.  **Testing Strategy:**
+    *   E2E Tests (`saas_flow.test.js`) run in GitHub Actions.
+    *   Redis Client MUST be exported from `index.js` to allow tests to manage connection.
 
 ## 🛠️ Common Commands
 *   **Backend Test:** `cd backend; npm test` (Requires DB `customerservice_test`)
