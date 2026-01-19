@@ -90,42 +90,51 @@ function buildSyncRouter({ waGateway, db, validateToken }) {
 
             // 2. Sync Groups via Gateway API (To get participant metadata correctly)
             // Groups are usually fewer in number, so API fetch is safe
-            const groupsRes = await waGateway.getGroups(sessionId);
-            const groups = groupsRes.status === 'success' ? (groupsRes.data || []) : [];
+            // Wrap in try-catch to ensure contact sync success is returned even if groups fail
+            let unifiedGroups = [];
+            let groupErrorMsg = null;
             
-            const unifiedGroups = [];
-            for (const g of groups) {
-                const rawJid = g.JID || g.jid;
-                if (!rawJid) continue;
-                const jid = normalizeJid(rawJid, { isGroup: true });
-                if (!jid) continue;
-                const groupName = g.Subject || g.subject || g.Name || g.name || 'Unknown Group';
+            try {
+                const groupsRes = await waGateway.getGroups(sessionId);
+                const groups = groupsRes.status === 'success' ? (groupsRes.data || []) : [];
                 
-                unifiedGroups.push({
-                    jid: jid,
-                    fullName: groupName,
-                    displayName: groupName,
-                    phone: getJidUser(jid),
-                    isBusiness: false,
-                    isGroup: true
-                });
-            }
-
-            if (unifiedGroups.length > 0) {
-                await db.syncContacts(tenantId, unifiedGroups);
-                
-                // Auto-create Chat entries for groups
-                for (const c of unifiedGroups) {
-                    await db.getOrCreateChat(tenantId, c.jid, c.displayName, true);
+                for (const g of groups) {
+                    const rawJid = g.JID || g.jid;
+                    if (!rawJid) continue;
+                    const jid = normalizeJid(rawJid, { isGroup: true });
+                    if (!jid) continue;
+                    const groupName = g.Subject || g.subject || g.Name || g.name || 'Unknown Group';
+                    
+                    unifiedGroups.push({
+                        jid: jid,
+                        fullName: groupName,
+                        displayName: groupName,
+                        phone: getJidUser(jid),
+                        isBusiness: false,
+                        isGroup: true
+                    });
                 }
+
+                if (unifiedGroups.length > 0) {
+                    await db.syncContacts(tenantId, unifiedGroups);
+                    
+                    // Auto-create Chat entries for groups
+                    for (const c of unifiedGroups) {
+                        await db.getOrCreateChat(tenantId, c.jid, c.displayName, true);
+                    }
+                }
+            } catch (err) {
+                console.warn(`[Sync] Group sync failed for ${sessionId}:`, err.message);
+                groupErrorMsg = err.message;
             }
 
             res.json({
                 status: 'success',
-                message: `Synced ${syncedCount} contacts (SQL) and ${unifiedGroups.length} groups (API).`,
+                message: `Synced ${syncedCount} contacts (SQL).` + (groupErrorMsg ? ` Groups failed: ${groupErrorMsg}` : ` and ${unifiedGroups.length} groups.`),
                 details: {
                     contacts: syncedCount,
-                    groups: unifiedGroups.length
+                    groups: unifiedGroups.length,
+                    groupError: groupErrorMsg
                 }
             });
 
