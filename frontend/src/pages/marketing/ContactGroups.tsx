@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Users, UserPlus, Plus } from 'lucide-react';
+import { Users, UserPlus, Plus, CheckSquare, Square } from 'lucide-react';
 import api from '../../lib/api';
 import { toast } from 'sonner';
 
@@ -65,6 +65,21 @@ const ContactGroups = () => {
       return nameValue.includes(q) || phoneValue.includes(q);
     });
   }, [contacts, searchQuery]);
+
+  // --- Logic Select All ---
+  const isAllSelected = filteredContacts.length > 0 && filteredContacts.every((c) => selectedContactIds.includes(c.id));
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      // Unselect filtered
+      const idsToRemove = filteredContacts.map(c => c.id);
+      setSelectedContactIds(prev => prev.filter(id => !idsToRemove.includes(id)));
+    } else {
+      // Select all filtered
+      const idsToAdd = filteredContacts.map(c => c.id);
+      setSelectedContactIds(prev => Array.from(new Set([...prev, ...idsToAdd])));
+    }
+  };
 
   const openModal = (group: ContactGroup) => {
     setSelectedGroup(group);
@@ -199,9 +214,9 @@ const ContactGroups = () => {
       </div>
 
       {isModalOpen && selectedGroup && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-2xl space-y-4 border border-gray-200 dark:border-slate-700">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-2xl space-y-4 border border-gray-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between shrink-0">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                 Tambah Member ke {selectedGroup.name}
               </h3>
@@ -215,14 +230,28 @@ const ContactGroups = () => {
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shrink-0"
               placeholder="Cari kontak..."
             />
-            <div className="max-h-72 overflow-y-auto border border-gray-100 dark:border-slate-800 rounded-xl">
+            
+            <div className="flex items-center justify-between px-2 shrink-0">
+              <button 
+                onClick={handleSelectAll}
+                className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"
+              >
+                {isAllSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                {isAllSelected ? 'Batalkan Semua' : 'Pilih Semua (Yang Tampil)'}
+              </button>
+              <span className="text-sm text-gray-500">
+                {selectedContactIds.length} terpilih
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto border border-gray-100 dark:border-slate-800 rounded-xl min-h-0">
               {filteredContacts.map((contact) => (
                 <label
                   key={contact.id}
-                  className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-800"
+                  className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
                 >
                   <div>
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -234,18 +263,19 @@ const ContactGroups = () => {
                   </div>
                   <input
                     type="checkbox"
+                    className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500"
                     checked={selectedContactIds.includes(contact.id)}
                     onChange={() => toggleContact(contact.id)}
                   />
                 </label>
               ))}
               {filteredContacts.length === 0 && (
-                <div className="p-4 text-sm text-gray-500 dark:text-gray-400">
+                <div className="p-10 text-center text-sm text-gray-500 dark:text-gray-400">
                   Kontak tidak ditemukan.
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 shrink-0 pt-2">
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="px-4 py-2 rounded-xl border border-gray-200 dark:border-slate-700"
@@ -254,9 +284,9 @@ const ContactGroups = () => {
               </button>
               <button
                 onClick={handleAddMembers}
-                className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700"
+                className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 font-semibold"
               >
-                Simpan
+                Simpan ({selectedContactIds.length})
               </button>
             </div>
           </div>
