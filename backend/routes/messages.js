@@ -106,12 +106,7 @@ function buildMessagesRouter(deps) {
         }
     }
 
-    /**
-     * POST /api/v1/messages/external
-     * Public endpoint to send message using Tenant API Key
-     * Header: X-Tenant-Key: sk_...
-     */
-    router.post('/external', externalApiLimiter, async (req, res) => {
+    async function handleExternalSend(req, res) {
         const apiKeyHeader = req.headers['x-tenant-key'];
         const apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
         const sanitizedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
@@ -159,7 +154,17 @@ function buildMessagesRouter(deps) {
             console.error('[External Message API]', error);
             res.status(500).json({ status: 'error', message: error.message });
         }
-    });
+    }
+
+    /**
+     * POST /api/v1/messages/external
+     * Public endpoint to send message using Tenant API Key
+     * Header: X-Tenant-Key: sk_...
+     */
+    router.post('/messages/external', externalApiLimiter, handleExternalSend);
+
+    // Backward-compatible alias (if any clients used /external)
+    router.post('/external', externalApiLimiter, handleExternalSend);
 
     /**
      * POST /internal/messages

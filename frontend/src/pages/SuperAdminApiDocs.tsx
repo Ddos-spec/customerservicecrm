@@ -121,7 +121,16 @@ const SuperAdminApiDocs = () => {
                     Copy
                   </button>
                 </div>
-                <pre className="bg-slate-900 text-slate-300 p-6 rounded-2xl overflow-x-auto font-mono text-sm leading-relaxed border-4 border-slate-800 shadow-inner">
+                <pre
+                  role="button"
+                  tabIndex={0}
+                  title="Klik untuk copy"
+                  onClick={() => copyToClipboard(doc.curl)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') copyToClipboard(doc.curl);
+                  }}
+                  className="bg-slate-900 text-slate-300 p-6 rounded-2xl overflow-x-auto font-mono text-sm leading-relaxed border-4 border-slate-800 shadow-inner cursor-pointer"
+                >
                   {doc.curl}
                 </pre>
               </div>
