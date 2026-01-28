@@ -58,11 +58,6 @@ const TenantManagement = () => {
   const [isSessionSaving, setIsSessionSaving] = useState(false);
   
   // Advanced Tools State
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [sessionTokenSessionId, setSessionTokenSessionId] = useState('');
-  const [isSessionTokenLoading, setIsSessionTokenLoading] = useState(false);
-  const [isSessionTokenRegenerating, setIsSessionTokenRegenerating] = useState(false);
-  const [showSessionToken, setShowSessionToken] = useState(false);
   const [tenantApiKey, setTenantApiKey] = useState<string | null>(null);
   const [showTenantApiKey, setShowTenantApiKey] = useState(false);
   const [isTenantApiKeyRegenerating, setIsTenantApiKeyRegenerating] = useState(false);
@@ -224,59 +219,6 @@ const TenantManagement = () => {
     }
   };
 
-  const fetchSessionToken = async (sessionId: string, options: { silent?: boolean } = {}) => {
-    const trimmed = sessionId.trim();
-    if (!trimmed) return;
-    setIsSessionTokenLoading(true);
-    try {
-      const res = await api.get(`/sessions/${encodeURIComponent(trimmed)}/token`);
-      if (res.data?.status === 'success') {
-        setSessionToken(res.data.token || null);
-        setSessionTokenSessionId(trimmed);
-        if (!res.data.token && !options.silent) {
-          toast.info('Token belum dibuat. Klik Generate untuk membuat.');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch session token:', error);
-      if (!options.silent) {
-        toast.error('Gagal memuat token session');
-      }
-    } finally {
-      setIsSessionTokenLoading(false);
-    }
-  };
-
-  const handleRegenerateSessionToken = async () => {
-    const trimmed = sessionIdInput.trim();
-    if (!trimmed) {
-      toast.error('Session ID harus diisi dulu');
-      return;
-    }
-    if (!confirm('Regenerate token? Token lama akan tidak berlaku.')) return;
-    setIsSessionTokenRegenerating(true);
-    try {
-      const res = await api.post(`/sessions/${encodeURIComponent(trimmed)}/token`, { regenerate: true });
-      if (res.data?.status === 'success') {
-        setSessionToken(res.data.token || null);
-        setSessionTokenSessionId(trimmed);
-        setShowSessionToken(true);
-        toast.success('Token berhasil diperbarui');
-      }
-    } catch (error: any) {
-      console.error('Failed to regenerate session token:', error);
-      toast.error(error.response?.data?.message || 'Gagal regenerate token');
-    } finally {
-      setIsSessionTokenRegenerating(false);
-    }
-  };
-
-  const handleCopySessionToken = async () => {
-    if (!sessionToken) return;
-    await navigator.clipboard.writeText(sessionToken);
-    toast.success('Token disalin');
-  };
-
   const handleCopyTenantApiKey = async () => {
     if (!tenantApiKey) return;
     await navigator.clipboard.writeText(tenantApiKey);
@@ -411,9 +353,6 @@ const TenantManagement = () => {
     setMetaWabaId(tenant.meta_waba_id || '');
     setMetaToken(tenant.meta_token || '');
     
-    setSessionToken(null);
-    setSessionTokenSessionId('');
-    setShowSessionToken(false);
     setTenantApiKey(tenant.api_key || null);
     setShowTenantApiKey(false);
     setTenantWebhookUrl('');
@@ -422,9 +361,6 @@ const TenantManagement = () => {
     setIsTenantWebhookSaving(false);
     setTenantWebhookDeletingId(null);
     setIsSessionModalOpen(true);
-    if (tenant.session_id && (!tenant.wa_provider || tenant.wa_provider === 'whatsmeow')) {
-      void fetchSessionToken(tenant.session_id, { silent: true });
-    }
     void fetchTenantWebhooks(tenant.id);
   };
 
@@ -438,9 +374,6 @@ const TenantManagement = () => {
     setMetaWabaId('');
     setMetaToken('');
     
-    setSessionToken(null);
-    setSessionTokenSessionId('');
-    setShowSessionToken(false);
     setTenantApiKey(null);
     setShowTenantApiKey(false);
     setTenantWebhookUrl('');
@@ -449,15 +382,6 @@ const TenantManagement = () => {
     setIsTenantWebhookSaving(false);
     setTenantWebhookDeletingId(null);
   };
-
-  useEffect(() => {
-    const trimmed = sessionIdInput.trim();
-    if (sessionTokenSessionId && trimmed && trimmed !== sessionTokenSessionId) {
-      setSessionToken(null);
-      setSessionTokenSessionId('');
-      setShowSessionToken(false);
-    }
-  }, [sessionIdInput, sessionTokenSessionId]);
 
   const handleSaveSessionId = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1007,56 +931,6 @@ const TenantManagement = () => {
   -H "X-Tenant-Key: ${tenantApiKey || 'TENANT_API_KEY'}" \
   -d '{ "phone": "628123456789", "message": "Halo!" }'`}
                   </pre>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">API Token (Legacy)</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Token ini dipakai buat header <span className="font-bold">apikey</span>.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={isSessionTokenLoading}
-                      onClick={() => fetchSessionToken(sessionIdInput)}
-                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
-                    >
-                      {isSessionTokenLoading ? 'Loading...' : 'Load'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSessionTokenRegenerating}
-                      onClick={handleRegenerateSessionToken}
-                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
-                    >
-                      {isSessionTokenRegenerating ? 'Generating...' : 'Generate'}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    readOnly
-                    value={sessionToken ? (showSessionToken ? sessionToken : '********') : '-'}
-                    className="flex-1 p-3 bg-white dark:bg-slate-900 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-slate-700"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSessionToken((prev) => !prev)}
-                    disabled={!sessionToken}
-                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
-                  >
-                    {showSessionToken ? 'Hide' : 'Show'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCopySessionToken}
-                    disabled={!sessionToken}
-                    className="p-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
-                    title="Copy token"
-                  >
-                    <Copy size={14} />
-                  </button>
                 </div>
               </div>
               <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
