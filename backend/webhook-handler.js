@@ -11,6 +11,7 @@ const db = require('./db');
 const waGateway = require('./wa-gateway-client');
 const { normalizeJid, getJidUser } = require('./utils/jid');
 const { sendAlertWebhook } = require('./utils/alert-webhook');
+const { getWebhookUrl } = require('./api_v1');
 
 // Event handlers map (can be extended by other modules)
 const eventHandlers = new Map();
@@ -239,17 +240,20 @@ async function handleMessage(sessionId, data) {
 
         // 5. Forward to external webhooks
         if (!message.isFromMe) {
+            const payload = {
+                event: 'message',
+                sessionId,
+                tenantId: tenant.id,
+                tenantName: tenant.company_name,
+                message,
+                chatId: chat.id
+            };
+
             const webhooks = await db.getTenantWebhooks(tenant.id);
             if (webhooks && webhooks.length > 0) {
-                await forwardToTenantWebhooks(webhooks, {
-                    event: 'message',
-                    sessionId,
-                    tenantId: tenant.id,
-                    tenantName: tenant.company_name,
-                    message,
-                    chatId: chat.id
-                });
+                await forwardToTenantWebhooks(webhooks, payload);
             }
+            await forwardToSessionWebhook(sessionId, payload);
         }
 
     } catch (error) {
@@ -406,6 +410,24 @@ async function forwardToTenantWebhooks(webhooks, payload) {
             })
         )
     );
+}
+
+async function forwardToSessionWebhook(sessionId, payload) {
+    try {
+        const url = await getWebhookUrl(sessionId);
+        if (!url) return;
+        const axios = require('axios');
+        await axios.post(url, payload, {
+            timeout: 5000,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Webhook-Source': 'customerservice-crm',
+                'X-Webhook-Target': 'session',
+            },
+        });
+    } catch (error) {
+        console.warn('[Webhook] Failed to forward to session webhook:', error?.message || error);
+    }
 }
 
 async function notifySessionDisconnected(sessionId, status, reason) {
