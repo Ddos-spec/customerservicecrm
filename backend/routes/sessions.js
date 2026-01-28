@@ -12,9 +12,6 @@ function buildSessionsRouter(deps) {
         phonePairing,
         saveSessionSettings,
         regenerateSessionToken,
-        setWebhookUrl,
-        getWebhookUrl,
-        deleteWebhookUrl,
         scheduleMessageSend,
         validateWhatsAppRecipient,
         validateToken,
@@ -266,37 +263,6 @@ function buildSessionsRouter(deps) {
             log('API error', 'SYSTEM', { event: 'api-error', error: error.message, endpoint: req.originalUrl });
             res.status(500).json({ status: 'error', message: error.message });
         }
-    });
-
-    router.post('/sessions/webhook', validateToken, async (req, res) => {
-        log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
-        const { url, sessionId } = req.body;
-        if (!url || !sessionId) {
-            log('API error', 'SYSTEM', { event: 'api-error', error: 'URL and sessionId are required.', endpoint: req.originalUrl });
-            return res.status(400).json({ status: 'error', message: 'URL and sessionId are required.' });
-        }
-        await setWebhookUrl(sessionId, url);
-        log('Webhook URL updated', url, { event: 'webhook-updated', sessionId, url });
-        res.status(200).json({ status: 'success', message: `Webhook URL for session ${sessionId} updated to ${url}` });
-    });
-
-    router.get('/sessions/webhook', validateToken, async (req, res) => {
-        const { sessionId } = req.query;
-        if (!sessionId) {
-            return res.status(400).json({ status: 'error', message: 'sessionId is required.' });
-        }
-        const url = await getWebhookUrl(sessionId);
-        res.status(200).json({ status: 'success', sessionId, url: url || null });
-    });
-
-    router.delete('/sessions/webhook', validateToken, async (req, res) => {
-        const { sessionId } = req.body;
-        if (!sessionId) {
-            return res.status(400).json({ status: 'error', message: 'sessionId is required.' });
-        }
-        await deleteWebhookUrl(sessionId);
-        log('Webhook URL deleted', '', { event: 'webhook-deleted', sessionId });
-        res.status(200).json({ status: 'success', message: `Webhook for session ${sessionId} deleted.` });
     });
 
     return router;
