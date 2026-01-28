@@ -239,13 +239,38 @@ async function handleMessage(sessionId, data) {
 
         // 5. Forward to external webhooks
         if (!message.isFromMe) {
+            const toJid = message.to ? await resolveCanonicalJid(message.to, { isGroup }) : null;
+            const fromCanonical = senderJid || null;
+            const fromPhone = fromCanonical ? getJidUser(fromCanonical) : null;
+            const toCanonical = toJid || null;
+            const toPhone = !isGroup && toCanonical ? getJidUser(toCanonical) : null;
+            const chatPhone = !isGroup && targetJid ? getJidUser(targetJid) : null;
             const payload = {
                 event: 'message',
                 sessionId,
                 tenantId: tenant.id,
                 tenantName: tenant.company_name,
-                message,
-                chatId: chat.id
+                provider: 'whatsmeow',
+                chatId: chat.id,
+                chatJid: targetJid,
+                chatPhone,
+                chatName: displayName,
+                messageId: message.id,
+                dbMessageId: savedMessage.id,
+                messageType: message.type,
+                messageText: messageText,
+                messageTimestamp: message.timestamp || null,
+                receivedAt: new Date().toISOString(),
+                isFromMe: message.isFromMe,
+                isGroup,
+                senderName,
+                from: message.from,
+                fromCanonical,
+                fromPhone,
+                to: message.to || null,
+                toCanonical,
+                toPhone,
+                message
             };
 
             const webhooks = await db.getTenantWebhooks(tenant.id);
