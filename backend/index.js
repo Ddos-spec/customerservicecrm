@@ -361,11 +361,6 @@ async function removeSessionContact(sessionId, contactId) {
     await saveSessionContacts(sessionId, filtered);
 }
 
-// --- Session Settings (Redis) ---
-async function saveSessionSettings(sessionId, settings) {
-    await redisClient.set(`wa:settings:${sessionId}`, JSON.stringify(settings));
-}
-
 // --- Scheduled Contact Sync ---
 const CONTACT_SYNC_INTERVAL_MS = CONTACT_SYNC_INTERVAL_MINUTES * 60 * 1000;
 const CONTACT_SYNC_BACKOFF_BASE_MS = CONTACT_SYNC_BACKOFF_BASE_MINUTES * 60 * 1000;
@@ -972,16 +967,6 @@ async function deleteSession(sessionId) {
 }
 
 /**
- * Regenerate session token
- */
-async function regenerateSessionToken(sessionId) {
-    const token = crypto.randomBytes(32).toString('hex');
-    sessionTokens.set(sessionId, token);
-    saveTokens();
-    return token;
-}
-
-/**
  * Validate WhatsApp recipient via Go gateway
  */
 async function validateWhatsAppRecipient(sessionId, destination) {
@@ -1261,8 +1246,6 @@ app.use('/api/v1', initializeApi(
     deleteSession,
     console.log,
     null, // phonePairing - not used with Go gateway
-    saveSessionSettings,
-    regenerateSessionToken,
     scheduleMessageSend,
     validateWhatsAppRecipient,
     getSessionContacts,

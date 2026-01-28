@@ -40,7 +40,6 @@ function buildMessagesRouter(deps) {
         validateMessageEnvelope,
         normalizeDestination,
         validateMediaIdOrLink,
-        validateToken,
     } = deps;
     const unsupportedTypes = new Set(['button', 'list', 'template', 'contacts']);
 
@@ -228,29 +227,6 @@ function buildMessagesRouter(deps) {
             return res.status(503).json({ status: 'error', message: clientMessage });
         }
     });
-
-    // --- Legacy Routes (Backward Compatibility) ---
-    // These routes still assume Whatsmeow/SessionId logic heavily.
-    // Ideally we should refactor them too, but for Phase 2 let's keep them as is 
-    // or wrap minimally if needed. Most rely on `sessions` map directly.
-
-    const handleSendMessage = async (req, res) => {
-        // ... (Keep existing logic for /api/v1/messages batch)
-        // For now, batch send is NOT refactored to use ProviderFactory 
-        // because it is tightly coupled with Whatsmeow session logic.
-        // We will mark it as deprecated for Hybrid tenants.
-        
-        const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
-        // Check if tenant is using Meta?
-        // This endpoint is legacy Public API using sessionID.
-        // If a tenant switches to Meta, they should use /messages/external with API Key.
-        // So we leave this as "Whatsmeow Only".
-        
-        return res.status(501).json({ status: 'error', message: 'Endpoint ini hanya untuk Legacy Whatsmeow. Gunakan /messages/external untuk Hybrid support.' });
-    };
-
-    router.post('/messages', validateToken, handleSendMessage); // Deprecated
-    router.post('/', validateToken, handleSendMessage); // Deprecated
 
     return router;
 }
