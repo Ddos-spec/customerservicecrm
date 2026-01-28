@@ -1235,6 +1235,25 @@ webhookHandler.on('connection', (sessionId, data) => {
     broadcastSessionUpdate();
 });
 
+// Fallback: if we receive inbound messages but miss connection events,
+// mark session as CONNECTED so UI doesn't show false offline.
+webhookHandler.on('message', (sessionId, data) => {
+    if (data?.message?.isFromMe) return;
+    const session = sessions.get(sessionId);
+    if (!session) return;
+    if (session.status !== 'CONNECTED') {
+        session.status = 'CONNECTED';
+        session.qr = null;
+        sessions.set(sessionId, session);
+        persistSessionStatus(sessionId, {
+            status: session.status,
+            qr: session.qr,
+            connectedNumber: session.connectedNumber || null
+        });
+        broadcastSessionUpdate();
+    }
+});
+
 app.use('/api/v1/webhook', webhookHandler.router);
 
 // WhatsApp API routes
