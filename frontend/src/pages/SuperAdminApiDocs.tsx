@@ -27,26 +27,6 @@ const SuperAdminApiDocs = () => {
   }'`
     },
     {
-      title: 'Session Webhook (Per Nomor)',
-      description: 'Simpan webhook untuk session tertentu agar pesan masuk diteruskan ke n8n.',
-      icon: <Terminal className="text-indigo-500" />,
-      curl: `# set webhook
-curl -X POST "${apiUrl}/sessions/webhook" \
-  -H "Content-Type: application/json" \
-  -H "apikey: SESSION_TOKEN" \
-  -d '{ "sessionId": "628123456789", "url": "https://n8n.yourdomain/webhook/xxx" }'
-
-# get webhook
-curl -X GET "${apiUrl}/sessions/webhook?sessionId=628123456789" \
-  -H "apikey: SESSION_TOKEN"
-
-# delete webhook
-curl -X DELETE "${apiUrl}/sessions/webhook" \
-  -H "Content-Type: application/json" \
-  -H "apikey: SESSION_TOKEN" \
-  -d '{ "sessionId": "628123456789" }'`
-    },
-    {
       title: 'Incoming Message Log',
       description: 'Gunakan ini untuk mencatat pesan yang masuk dari customer ke database CRM.',
       icon: <MessageSquare className="text-emerald-500" />,
@@ -114,7 +94,7 @@ curl -X DELETE "${apiUrl}/sessions/webhook" \
               <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">Security Note</h3>
               <p className="text-emerald-700/80 dark:text-emerald-300/80 text-sm mt-1 leading-relaxed">
                 Endpoint <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n</code> pakai header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code> (isi dari <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">N8N_API_KEY</code>).
-                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages</code> dan <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/sessions/webhook</code> gunakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">apikey</code> (token per session, bisa diambil di menu Tenant).
+                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages</code> gunakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">apikey</code> (token per session, bisa diambil di menu Tenant).
               </p>
             </div>
           </div>

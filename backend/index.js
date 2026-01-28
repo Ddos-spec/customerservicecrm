@@ -15,7 +15,7 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
 const { createClient } = require('redis');
-const { initializeApi, getWebhookUrl } = require('./api_v1');
+const { initializeApi } = require('./api_v1');
 const { router: authRouter, ensureSuperAdmin, syncContactsForTenant } = require('./auth');
 const db = require('./db');
 const { initializeN8nApi } = require('./n8n-api');
@@ -737,12 +737,6 @@ function scheduleMessageSend(sessionId, operation, options = {}) {
     });
 }
 
-// --- Webhook ---
-async function postToWebhook(data) {
-    const url = await getWebhookUrl(data.sessionId);
-    if (url) axios.post(url, data).catch(() => {});
-}
-
 // --- Session Management (via Go Gateway) ---
 function getSessionsDetails() {
     // Self-healing: If memory is empty, try to load from disk immediately
@@ -1269,13 +1263,9 @@ app.use('/api/v1', initializeApi(
     null, // phonePairing - not used with Go gateway
     saveSessionSettings,
     regenerateSessionToken,
-    redisClient,
     scheduleMessageSend,
     validateWhatsAppRecipient,
     getSessionContacts,
-    upsertSessionContact,
-    removeSessionContact,
-    postToWebhook,
     refreshSession
 ));
 
