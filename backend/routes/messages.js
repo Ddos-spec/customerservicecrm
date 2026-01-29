@@ -52,9 +52,14 @@ function buildMessagesRouter(deps) {
         // Whatsmeow needs JID (6281...@s.whatsapp.net), Meta needs Phone (6281...)
         let destination = to;
         if (provider instanceof WhatsmeowDriver) {
-             // For Whatsmeow (Go Gateway), we send the formatted number (628...) for private chats.
-             // The Gateway handles JID construction. Sending JID (628...@s.whatsapp.net) might cause double-suffixing.
-             destination = isGroup ? to : formatPhoneNumber(to);
+             // For Whatsmeow (Go Gateway):
+             // 1. If 'to' already has '@' (e.g. valid JID like ...@s.whatsapp.net or ...@g.us), use it AS-IS.
+             // 2. If 'to' is just numbers, format it (628...) and let Gateway handle suffix.
+             if (to.includes('@')) {
+                 destination = to;
+             } else {
+                 destination = formatPhoneNumber(to);
+             }
         } else {
              // Meta Cloud API: usually expects country code + phone without +
              if (isGroup || to.includes('@g.us')) {
