@@ -785,7 +785,8 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             gateway_url: rawGatewayUrl,
             meta_phone_id,
             meta_waba_id,
-            meta_token
+            meta_token,
+            webhook_events
         } = req.body;
 
         const existingTenant = await db.getTenantById(id);
@@ -794,6 +795,11 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         }
 
         const updates = {};
+        
+        // 0. Webhook Events
+        if (webhook_events !== undefined) {
+             updates.webhook_events = webhook_events;
+        }
 
         // 1. Provider Type
         if (wa_provider) {
