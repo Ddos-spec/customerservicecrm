@@ -420,6 +420,7 @@ module.exports = {
         if (config.meta_phone_id !== undefined) { fields.push(`meta_phone_id = $${idx++}`); values.push(config.meta_phone_id); }
         if (config.meta_waba_id !== undefined) { fields.push(`meta_waba_id = $${idx++}`); values.push(config.meta_waba_id); }
         if (config.meta_token !== undefined) { fields.push(`meta_token = $${idx++}`); values.push(config.meta_token); }
+        if (config.webhook_events !== undefined) { fields.push(`webhook_events = $${idx++}`); values.push(config.webhook_events); }
 
         if (fields.length === 0) return null;
         values.push(id);
@@ -432,6 +433,7 @@ module.exports = {
     ensureTenantWebhooksTable: async () => query('CREATE TABLE IF NOT EXISTS tenant_webhooks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, url TEXT NOT NULL, created_at TIMESTAMP DEFAULT now(), UNIQUE(tenant_id, url))'),
     ensureTenantSessionColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_id TEXT UNIQUE'),
     ensureTenantGatewayColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS gateway_url TEXT'),
+    ensureTenantWebhookEventsColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS webhook_events JSONB DEFAULT \'{"groups": true, "private": true, "self": false}\'::jsonb'),
     ensureUserInvitesTable: async () => query('CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT \'pending\', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())'),
     ensureInviteErrorColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS last_error TEXT'),
     ensureSystemSettingsTable: async () => query('CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
