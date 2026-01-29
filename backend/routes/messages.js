@@ -128,6 +128,14 @@ function buildMessagesRouter(deps) {
                 return res.status(400).json({ status: 'error', message: 'phone and message are required' });
             }
 
+            // DEBUG TRACE
+            console.log(`[DEBUG-TRACE] External Send:
+              - API Key: ${sanitizedKey.substring(0, 10)}...
+              - Tenant: ${tenant.company_name} (Session: ${tenant.session_id})
+              - Target Phone: ${rawPhone}
+              - Msg: ${messageText.substring(0, 15)}...
+            `);
+
             // Send via Provider
             const result = await sendMessageViaProvider(tenant, rawPhone, messageText, false);
 
