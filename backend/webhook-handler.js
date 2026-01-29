@@ -238,7 +238,14 @@ async function handleMessage(sessionId, data) {
         });
 
         // 5. Forward to external webhooks
-        if (!message.isFromMe) {
+        const webhookEvents = tenant.webhook_events || { groups: true, private: true, self: false };
+        const shouldForward = (() => {
+            if (message.isFromMe) return webhookEvents.self;
+            if (isGroup) return webhookEvents.groups;
+            return webhookEvents.private;
+        })();
+
+        if (shouldForward) {
             const toJid = message.to ? await resolveCanonicalJid(message.to, { isGroup }) : null;
             const fromCanonical = senderJid || null;
             const fromPhone = fromCanonical ? getJidUser(fromCanonical) : null;

@@ -18,6 +18,11 @@ interface Tenant {
   meta_phone_id?: string | null;
   meta_waba_id?: string | null;
   meta_token?: string | null;
+  webhook_events?: {
+    groups: boolean;
+    private: boolean;
+    self: boolean;
+  } | null;
 }
 
 interface AdminUser {
@@ -352,6 +357,11 @@ const TenantManagement = () => {
     setMetaPhoneId(tenant.meta_phone_id || '');
     setMetaWabaId(tenant.meta_waba_id || '');
     setMetaToken(tenant.meta_token || '');
+    setWebhookEvents(tenant.webhook_events || {
+        groups: true,
+        private: true,
+        self: false
+    });
     
     setTenantApiKey(tenant.api_key || null);
     setShowTenantApiKey(false);
@@ -402,7 +412,8 @@ const TenantManagement = () => {
     setIsSessionSaving(true);
     try {
       const payload: any = {
-        wa_provider: waProvider
+        wa_provider: waProvider,
+        webhook_events: webhookEvents
       };
 
       if (waProvider === 'whatsmeow') {
@@ -427,7 +438,8 @@ const TenantManagement = () => {
               meta_phone_id: updated.meta_phone_id,
               meta_waba_id: updated.meta_waba_id,
               meta_token: updated.meta_token,
-              api_key: updated.api_key
+              api_key: updated.api_key,
+              webhook_events: updated.webhook_events
           } : t
         )));
         toast.success('Konfigurasi WA tersimpan');
@@ -986,6 +998,43 @@ const TenantManagement = () => {
                   <p className="text-[11px] text-gray-400 dark:text-gray-500">Belum ada webhook tenant.</p>
                 )}
               </div>
+
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Event Webhook</p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Pilih jenis pesan yang diforward ke webhook.</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={webhookEvents.private}
+                            onChange={(e) => setWebhookEvents({ ...webhookEvents, private: e.target.checked })}
+                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Pribadi (Direct Message)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={webhookEvents.groups}
+                            onChange={(e) => setWebhookEvents({ ...webhookEvents, groups: e.target.checked })}
+                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Grup (Group Message)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={webhookEvents.self}
+                            onChange={(e) => setWebhookEvents({ ...webhookEvents, self: e.target.checked })}
+                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Saya (Outgoing/Sync)</span>
+                    </label>
+                </div>
+              </div>
+
               <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4 space-y-3">
                 <div>
                   <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Maintenance</p>

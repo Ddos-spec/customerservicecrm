@@ -996,12 +996,13 @@ app.use(helmet({
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
 }));
 
-app.use(rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-}));
+// Rate limiting removed per user request for n8n integration
+// app.use(rateLimit({
+//     windowMs: 15 * 60 * 1000,
+//     max: 100,
+//     standardHeaders: true,
+//     legacyHeaders: false,
+// }));
 
 app.use(session({
     store: new RedisStore({ client: redisSessionClient }),
@@ -1279,6 +1280,7 @@ if (!isTest) {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
             await db.ensureTenantGatewayColumn();
+            await db.ensureTenantWebhookEventsColumn();
             await db.ensureTenantApiKeyColumn();
             await db.ensureUserInvitesTable();
             await db.ensureInviteErrorColumn();
