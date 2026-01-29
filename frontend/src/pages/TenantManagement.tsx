@@ -60,6 +60,11 @@ const TenantManagement = () => {
   const [metaPhoneId, setMetaPhoneId] = useState('');
   const [metaWabaId, setMetaWabaId] = useState('');
   const [metaToken, setMetaToken] = useState('');
+  const [webhookEvents, setWebhookEvents] = useState({
+    groups: true,
+    private: true,
+    self: false
+  });
   const [isSessionSaving, setIsSessionSaving] = useState(false);
   
   // Advanced Tools State
