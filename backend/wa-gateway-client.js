@@ -389,6 +389,27 @@ async function sendText(jid, to, message) {
         const form = buildUrlEncoded({ msisdn: to, message });
         return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
     } catch (error) {
+        // RETRY LOGIC: If 500 (Client not logged in) or 401 (Unauthorized)
+        if (error?.response?.status === 500 || error?.response?.status === 401) {
+            console.warn(`[Gateway-Retry] Send failed (${error.response.status}). Attempting re-auth for ${jid}...`);
+            try {
+                // Try to re-authenticate
+                const password = process.env.WA_GATEWAY_PASSWORD;
+                if (password) {
+                    const auth = await authenticate(jid, password);
+                    if (auth?.data?.token) {
+                        setSessionToken(jid, auth.data.token);
+                        console.log(`[Gateway-Retry] Re-auth successful for ${jid}. Retrying send...`);
+                        // Retry the request with new token
+                        const form = buildUrlEncoded({ msisdn: to, message });
+                        return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
+                    }
+                }
+            } catch (retryErr) {
+                console.error(`[Gateway-Retry] Retry failed for ${jid}: ${retryErr.message}`);
+            }
+        }
+        
         handleGatewayError(jid, error, error?.response);
         throw new Error(`Send text failed: ${error.message}`);
     }
