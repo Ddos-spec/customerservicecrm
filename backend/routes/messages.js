@@ -52,7 +52,9 @@ function buildMessagesRouter(deps) {
         // Whatsmeow needs JID (6281...@s.whatsapp.net), Meta needs Phone (6281...)
         let destination = to;
         if (provider instanceof WhatsmeowDriver) {
-             destination = isGroup ? to : toWhatsAppFormat(formatPhoneNumber(to));
+             // For Whatsmeow (Go Gateway), we send the formatted number (628...) for private chats.
+             // The Gateway handles JID construction. Sending JID (628...@s.whatsapp.net) might cause double-suffixing.
+             destination = isGroup ? to : formatPhoneNumber(to);
         } else {
              // Meta Cloud API: usually expects country code + phone without +
              if (isGroup || to.includes('@g.us')) {
@@ -152,7 +154,11 @@ function buildMessagesRouter(deps) {
 
         } catch (error) {
             console.error('[External Message API]', error);
-            res.status(500).json({ status: 'error', message: error.message });
+            let message = error.message;
+            if (message.includes('status code 500')) {
+                message += '. Check if the WhatsApp session is connected and the Gateway is healthy.';
+            }
+            res.status(500).json({ status: 'error', message });
         }
     }
 
