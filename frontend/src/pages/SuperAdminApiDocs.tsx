@@ -13,38 +13,16 @@ const SuperAdminApiDocs = () => {
 
   const docs = [
     {
-      title: 'Direct Send (API Token)',
-      description: 'Kirim pesan WhatsApp langsung via API token per session (per nomor).',
+      title: 'Direct Send (Tenant API Key)',
+      description: 'Kirim pesan WhatsApp langsung via Tenant API Key.',
       icon: <Terminal className="text-slate-500" />,
-      curl: `curl -X POST "${apiUrl}/messages" \
+      curl: `curl -X POST "${apiUrl}/messages/external" \
   -H "Content-Type: application/json" \
-  -H "apikey: SESSION_TOKEN" \
+  -H "X-Tenant-Key: TENANT_API_KEY" \
   -d '{ 
-    "sessionId": "628123456789",
-    "to": "628123456789",
-    "type": "text",
-    "text": { "body": "Halo! Ini pesan otomatis." }
+    "phone": "628123456789",
+    "message": "Halo! Ini pesan otomatis."
   }'`
-    },
-    {
-      title: 'Session Webhook (Per Nomor)',
-      description: 'Simpan webhook untuk session tertentu agar pesan masuk diteruskan ke n8n.',
-      icon: <Terminal className="text-indigo-500" />,
-      curl: `# set webhook
-curl -X POST "${apiUrl}/sessions/webhook" \
-  -H "Content-Type: application/json" \
-  -H "apikey: SESSION_TOKEN" \
-  -d '{ "sessionId": "628123456789", "url": "https://n8n.yourdomain/webhook/xxx" }'
-
-# get webhook
-curl -X GET "${apiUrl}/sessions/webhook?sessionId=628123456789" \
-  -H "apikey: SESSION_TOKEN"
-
-# delete webhook
-curl -X DELETE "${apiUrl}/sessions/webhook" \
-  -H "Content-Type: application/json" \
-  -H "apikey: SESSION_TOKEN" \
-  -d '{ "sessionId": "628123456789" }'`
     },
     {
       title: 'Incoming Message Log',
@@ -114,7 +92,7 @@ curl -X DELETE "${apiUrl}/sessions/webhook" \
               <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">Security Note</h3>
               <p className="text-emerald-700/80 dark:text-emerald-300/80 text-sm mt-1 leading-relaxed">
                 Endpoint <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n</code> pakai header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code> (isi dari <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">N8N_API_KEY</code>).
-                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages</code> dan <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/sessions/webhook</code> gunakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">apikey</code> (token per session, bisa diambil di menu Tenant).
+                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages/external</code> gunakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code> (API key per tenant).
               </p>
             </div>
           </div>
@@ -143,7 +121,16 @@ curl -X DELETE "${apiUrl}/sessions/webhook" \
                     Copy
                   </button>
                 </div>
-                <pre className="bg-slate-900 text-slate-300 p-6 rounded-2xl overflow-x-auto font-mono text-sm leading-relaxed border-4 border-slate-800 shadow-inner">
+                <pre
+                  role="button"
+                  tabIndex={0}
+                  title="Klik untuk copy"
+                  onClick={() => copyToClipboard(doc.curl)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') copyToClipboard(doc.curl);
+                  }}
+                  className="bg-slate-900 text-slate-300 p-6 rounded-2xl overflow-x-auto font-mono text-sm leading-relaxed border-4 border-slate-800 shadow-inner cursor-pointer"
+                >
                   {doc.curl}
                 </pre>
               </div>

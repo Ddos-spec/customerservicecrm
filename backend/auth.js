@@ -12,7 +12,6 @@ const { normalizeJid, getJidUser } = require('./utils/jid');
 const axios = require('axios');
 const waGateway = require('./wa-gateway-client');
 const { getGatewayHealthSummary } = require('./utils/gateway-health');
-const { getWebhookUrl } = require('./api_v1');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 const DEFAULT_GATEWAY_URL = process.env.WA_GATEWAY_URL || 'http://localhost:3001/api/v1/whatsapp';
 const MAX_GATEWAY_SESSIONS_RAW = Number.parseInt(process.env.GATEWAY_MAX_SESSIONS || '0', 10);
@@ -348,7 +347,7 @@ async function ensureSuperAdmin() {
 
 function getFrontendBase() {
     const raw = process.env.FRONTEND_URL || 'https://customerservicecrm.vercel.app';
-    return raw.replace(/\/+$/, '');
+    return raw.replace(///+$/, '');
 }
 
 /**
@@ -787,7 +786,8 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             meta_phone_id,
             meta_waba_id,
             meta_token,
-            analysis_webhook_url
+            analysis_webhook_url,
+            webhook_events
         } = req.body;
 
         const existingTenant = await db.getTenantById(id);
@@ -800,6 +800,11 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         // 0. Analysis Config
         if (analysis_webhook_url !== undefined) {
             updates.analysis_webhook_url = analysis_webhook_url ? analysis_webhook_url.trim() : null;
+        }
+
+        // 0. Webhook Events
+        if (webhook_events !== undefined) {
+             updates.webhook_events = webhook_events;
         }
 
         // 1. Provider Type
@@ -1107,48 +1112,6 @@ router.delete('/tenants/:id/webhooks/:webhookId', requireRole('super_admin'), as
     } catch (error) {
         console.error('Error deleting tenant webhook:', error);
         res.status(500).json({ success: false, error: 'Failed to delete tenant webhook' });
-    }
-});
-
-/**
- * POST /api/v1/admin/sessions/:sessionId/webhook-test
- * Send a test payload to the stored session webhook (super admin only)
- */
-router.post('/sessions/:sessionId/webhook-test', requireRole('super_admin'), async (req, res) => {
-    try {
-        const sessionId = (req.params.sessionId || '').toString().trim();
-        if (!sessionId) {
-            return res.status(400).json({ success: false, error: 'sessionId is required' });
-        }
-
-        const url = await getWebhookUrl(sessionId);
-        if (!url) {
-            return res.status(404).json({ success: false, error: 'Webhook URL not set for this session' });
-        }
-
-        const payload = {
-            event: 'webhook_test',
-            sessionId,
-            timestamp: new Date().toISOString(),
-            message: {
-                id: 'test-message',
-                from: 'system',
-                text: 'Webhook test from Super Admin'
-            }
-        };
-
-        const response = await axios.post(url, payload, {
-            timeout: 5000,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Webhook-Test': 'true'
-            }
-        });
-
-        res.json({ success: true, status: response.status, url });
-    } catch (error) {
-        console.error('Error sending webhook test:', error);
-        res.status(502).json({ success: false, error: error.message });
     }
 });
 

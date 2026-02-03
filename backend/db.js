@@ -421,6 +421,7 @@ module.exports = {
         if (config.meta_waba_id !== undefined) { fields.push(`meta_waba_id = $${idx++}`); values.push(config.meta_waba_id); }
         if (config.meta_token !== undefined) { fields.push(`meta_token = $${idx++}`); values.push(config.meta_token); }
         if (config.analysis_webhook_url !== undefined) { fields.push(`analysis_webhook_url = $${idx++}`); values.push(config.analysis_webhook_url); }
+        if (config.webhook_events !== undefined) { fields.push(`webhook_events = $${idx++}`); values.push(config.webhook_events); }
 
         if (fields.length === 0) return null;
         values.push(id);
@@ -433,92 +434,4 @@ module.exports = {
     ensureTenantWebhooksTable: async () => query('CREATE TABLE IF NOT EXISTS tenant_webhooks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, url TEXT NOT NULL, created_at TIMESTAMP DEFAULT now(), UNIQUE(tenant_id, url))'),
     ensureTenantSessionColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_id TEXT UNIQUE'),
     ensureTenantGatewayColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS gateway_url TEXT'),
-    ensureUserInvitesTable: async () => query('CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT \'pending\', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())'),
-    ensureInviteErrorColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS last_error TEXT'),
-    ensureSystemSettingsTable: async () => query('CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
-    ensureUserPhoneColumn: async () => query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT'),
-    ensureInvitePhoneColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS phone_number TEXT'),
-    ensureContactSyncTrigger: async () => {
-        const funcSQL = `
-            CREATE OR REPLACE FUNCTION "public"."sync_whatsmeow_to_crm_contact"() RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-            DECLARE
-              v_tenant_id UUID;
-              v_our_phone TEXT;
-              v_phone TEXT;
-              v_full_name TEXT;
-              v_their_jid TEXT;
-              v_lid TEXT;
-              v_pn TEXT;
-            BEGIN
-              -- Extract phone number from our_jid (e.g., 6289xxx@s.whatsapp.net → 6289xxx)
-              v_our_phone := split_part(NEW.our_jid, '@', 1);
-
-              -- Match our_jid with tenant's session_id for proper tenant isolation
-              SELECT id INTO v_tenant_id FROM tenants
-              WHERE session_id = v_our_phone AND status = 'active'
-              LIMIT 1;
-
-              IF v_tenant_id IS NOT NULL THEN
-                v_their_jid := NEW.their_jid;
-
-                IF v_their_jid LIKE '%@lid' OR v_their_jid LIKE '%@lid.whatsapp.net' THEN
-                  v_lid := split_part(v_their_jid, '@', 1);
-                  SELECT pn INTO v_pn FROM whatsmeow_lid_map WHERE lid = v_lid LIMIT 1;
-                  IF v_pn IS NOT NULL AND v_pn <> '' THEN
-                    v_their_jid := v_pn || '@s.whatsapp.net';
-                  END IF;
-                END IF;
-
-                v_phone := split_part(v_their_jid, '@', 1);
-                -- Priority: FullName > FirstName > PushName > Phone
-                v_full_name := COALESCE(NEW.full_name, NEW.first_name, NEW.push_name);
-
-                IF v_full_name IS NULL OR v_full_name = '' THEN
-                    v_full_name := v_phone;
-                END IF;
-
-                INSERT INTO contacts (tenant_id, jid, phone_number, full_name, updated_at)
-                VALUES (v_tenant_id, v_their_jid, v_phone, v_full_name, now())
-                ON CONFLICT (tenant_id, jid)
-                DO UPDATE SET
-                  phone_number = EXCLUDED.phone_number,
-                  full_name = EXCLUDED.full_name,
-                  updated_at = now();
-              END IF;
-
-              RETURN NEW;
-            END;
-            $$;
-        `;
-        await query(funcSQL);
-        
-        // Ensure Trigger Exists
-        await query(`
-            DO $$
-            BEGIN
-              IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_sync_wm_contacts') THEN
-                CREATE TRIGGER trg_sync_wm_contacts
-                AFTER INSERT OR UPDATE ON "public"."whatsmeow_contacts"
-                FOR EACH ROW EXECUTE FUNCTION sync_whatsmeow_to_crm_contact();
-              END IF;
-            END
-            $$;
-        `);
-    },
-    createUserInvite: async (i) => (await query('INSERT INTO user_invites (tenant_id, email, token, role, created_by, expires_at, phone_number, name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *', [i.tenant_id, i.email, i.token, i.role, i.created_by, i.expires_at, i.phone_number, i.name])).rows[0],
-    getInviteByToken: async (t) => (await query('SELECT i.*, t.company_name as tenant_name FROM user_invites i JOIN tenants t ON i.tenant_id = t.id WHERE i.token = $1', [t])).rows[0],
-    acceptInvite: async (t) => await query("UPDATE user_invites SET status = 'accepted' WHERE token = $1", [t]),
-    // Contacts
-    syncContacts, getContactsByTenant, getContactCountByTenant, getContactByJid, getPnByLid,
-    // Chats & Messages
-    getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead,
-    // System
-    getSystemSetting: async (key) => {
-        const res = await query('SELECT value FROM system_settings WHERE key = $1', [key]);
-        return res.rows[0]?.value || null;
-    },
-    setSystemSetting: async (key, val) => {
-        await query('INSERT INTO system_settings(key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, val]);
-    },
-    getDashboardStats, getSuperAdminStats
-};
+    ensureTenantWebhookEventsColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS webhook_events JSONB DEFAULT \'{
