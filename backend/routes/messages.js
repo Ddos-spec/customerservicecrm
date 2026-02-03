@@ -40,7 +40,6 @@ function buildMessagesRouter(deps) {
         validateMessageEnvelope,
         normalizeDestination,
         validateMediaIdOrLink,
-        validateToken,
     } = deps;
     const unsupportedTypes = new Set(['button', 'list', 'template', 'contacts']);
 
@@ -53,7 +52,14 @@ function buildMessagesRouter(deps) {
         // Whatsmeow needs JID (6281...@s.whatsapp.net), Meta needs Phone (6281...)
         let destination = to;
         if (provider instanceof WhatsmeowDriver) {
-             destination = isGroup ? to : toWhatsAppFormat(formatPhoneNumber(to));
+             // For Whatsmeow (Go Gateway):
+             // 1. If 'to' already has '@' (e.g. valid JID like ...@s.whatsapp.net or ...@g.us), use it AS-IS.
+             // 2. If 'to' is just numbers, format it (628...) and let Gateway handle suffix.
+             if (to.includes('@')) {
+                 destination = to;
+             } else {
+                 destination = formatPhoneNumber(to);
+             }
         } else {
              // Meta Cloud API: usually expects country code + phone without +
              if (isGroup || to.includes('@g.us')) {
@@ -107,12 +113,7 @@ function buildMessagesRouter(deps) {
         }
     }
 
-    /**
-     * POST /api/v1/messages/external
-     * Public endpoint to send message using Tenant API Key
-     * Header: X-Tenant-Key: sk_...
-     */
-    router.post('/external', externalApiLimiter, async (req, res) => {
+    async function handleExternalSend(req, res) {
         const apiKeyHeader = req.headers['x-tenant-key'];
         const apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
         const sanitizedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
@@ -131,6 +132,14 @@ function buildMessagesRouter(deps) {
             if (!rawPhone || !messageText) {
                 return res.status(400).json({ status: 'error', message: 'phone and message are required' });
             }
+
+            // DEBUG TRACE
+            console.log(`[DEBUG-TRACE] External Send:
+              - API Key: ${sanitizedKey.substring(0, 10)}...
+              - Tenant: ${tenant.company_name} (Session: ${tenant.session_id})
+              - Target Phone: ${rawPhone}
+              - Msg: ${messageText.substring(0, 15)}...
+            `);
 
             // Send via Provider
             const result = await sendMessageViaProvider(tenant, rawPhone, messageText, false);
@@ -158,9 +167,23 @@ function buildMessagesRouter(deps) {
 
         } catch (error) {
             console.error('[External Message API]', error);
-            res.status(500).json({ status: 'error', message: error.message });
+            let message = error.message;
+            if (message.includes('status code 500')) {
+                message += '. Check if the WhatsApp session is connected and the Gateway is healthy.';
+            }
+            res.status(500).json({ status: 'error', message });
         }
-    });
+    }
+
+    /**
+     * POST /api/v1/messages/external
+     * Public endpoint to send message using Tenant API Key
+     * Header: X-Tenant-Key: sk_...
+     */
+    router.post('/messages/external', externalApiLimiter, handleExternalSend);
+
+    // Backward-compatible alias (if any clients used /external)
+    router.post('/external', externalApiLimiter, handleExternalSend);
 
     /**
      * POST /internal/messages
@@ -228,29 +251,6 @@ function buildMessagesRouter(deps) {
             return res.status(503).json({ status: 'error', message: clientMessage });
         }
     });
-
-    // --- Legacy Routes (Backward Compatibility) ---
-    // These routes still assume Whatsmeow/SessionId logic heavily.
-    // Ideally we should refactor them too, but for Phase 2 let's keep them as is 
-    // or wrap minimally if needed. Most rely on `sessions` map directly.
-
-    const handleSendMessage = async (req, res) => {
-        // ... (Keep existing logic for /api/v1/messages batch)
-        // For now, batch send is NOT refactored to use ProviderFactory 
-        // because it is tightly coupled with Whatsmeow session logic.
-        // We will mark it as deprecated for Hybrid tenants.
-        
-        const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
-        // Check if tenant is using Meta?
-        // This endpoint is legacy Public API using sessionID.
-        // If a tenant switches to Meta, they should use /messages/external with API Key.
-        // So we leave this as "Whatsmeow Only".
-        
-        return res.status(501).json({ status: 'error', message: 'Endpoint ini hanya untuk Legacy Whatsmeow. Gunakan /messages/external untuk Hybrid support.' });
-    };
-
-    router.post('/messages', validateToken, handleSendMessage); // Deprecated
-    router.post('/', validateToken, handleSendMessage); // Deprecated
 
     return router;
 }

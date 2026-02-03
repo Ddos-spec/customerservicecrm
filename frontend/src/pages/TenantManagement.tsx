@@ -19,6 +19,11 @@ interface Tenant {
   meta_waba_id?: string | null;
   meta_token?: string | null;
   analysis_webhook_url?: string | null;
+  webhook_events?: {
+    groups: boolean;
+    private: boolean;
+    self: boolean;
+  } | null;
 }
 
 interface AdminUser {
@@ -27,6 +32,12 @@ interface AdminUser {
   email: string;
   phone_number?: string;
   role: string;
+}
+
+interface TenantWebhook {
+  id: string;
+  url: string;
+  created_at?: string;
 }
 
 const TenantManagement = () => {
@@ -50,22 +61,22 @@ const TenantManagement = () => {
   const [metaPhoneId, setMetaPhoneId] = useState('');
   const [metaWabaId, setMetaWabaId] = useState('');
   const [metaToken, setMetaToken] = useState('');
+  const [webhookEvents, setWebhookEvents] = useState({
+    groups: true,
+    private: true,
+    self: false
+  });
   const [isSessionSaving, setIsSessionSaving] = useState(false);
   
   // Advanced Tools State
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [sessionTokenSessionId, setSessionTokenSessionId] = useState('');
-  const [isSessionTokenLoading, setIsSessionTokenLoading] = useState(false);
-  const [isSessionTokenRegenerating, setIsSessionTokenRegenerating] = useState(false);
-  const [showSessionToken, setShowSessionToken] = useState(false);
   const [tenantApiKey, setTenantApiKey] = useState<string | null>(null);
   const [showTenantApiKey, setShowTenantApiKey] = useState(false);
   const [isTenantApiKeyRegenerating, setIsTenantApiKeyRegenerating] = useState(false);
-  const [sessionWebhookUrl, setSessionWebhookUrl] = useState('');
-  const [isSessionWebhookLoading, setIsSessionWebhookLoading] = useState(false);
-  const [isSessionWebhookSaving, setIsSessionWebhookSaving] = useState(false);
-  const [isSessionWebhookDeleting, setIsSessionWebhookDeleting] = useState(false);
-  const [isSessionWebhookTesting, setIsSessionWebhookTesting] = useState(false);
+  const [tenantWebhookUrl, setTenantWebhookUrl] = useState('');
+  const [tenantWebhooks, setTenantWebhooks] = useState<TenantWebhook[]>([]);
+  const [isTenantWebhookLoading, setIsTenantWebhookLoading] = useState(false);
+  const [isTenantWebhookSaving, setIsTenantWebhookSaving] = useState(false);
+  const [tenantWebhookDeletingId, setTenantWebhookDeletingId] = useState<string | null>(null);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isFixingContacts, setIsFixingContacts] = useState(false);
   
@@ -225,59 +236,6 @@ const TenantManagement = () => {
     }
   };
 
-  const fetchSessionToken = async (sessionId: string, options: { silent?: boolean } = {}) => {
-    const trimmed = sessionId.trim();
-    if (!trimmed) return;
-    setIsSessionTokenLoading(true);
-    try {
-      const res = await api.get(`/sessions/${encodeURIComponent(trimmed)}/token`);
-      if (res.data?.status === 'success') {
-        setSessionToken(res.data.token || null);
-        setSessionTokenSessionId(trimmed);
-        if (!res.data.token && !options.silent) {
-          toast.info('Token belum dibuat. Klik Generate untuk membuat.');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch session token:', error);
-      if (!options.silent) {
-        toast.error('Gagal memuat token session');
-      }
-    } finally {
-      setIsSessionTokenLoading(false);
-    }
-  };
-
-  const handleRegenerateSessionToken = async () => {
-    const trimmed = sessionIdInput.trim();
-    if (!trimmed) {
-      toast.error('Session ID harus diisi dulu');
-      return;
-    }
-    if (!confirm('Regenerate token? Token lama akan tidak berlaku.')) return;
-    setIsSessionTokenRegenerating(true);
-    try {
-      const res = await api.post(`/sessions/${encodeURIComponent(trimmed)}/token`, { regenerate: true });
-      if (res.data?.status === 'success') {
-        setSessionToken(res.data.token || null);
-        setSessionTokenSessionId(trimmed);
-        setShowSessionToken(true);
-        toast.success('Token berhasil diperbarui');
-      }
-    } catch (error: any) {
-      console.error('Failed to regenerate session token:', error);
-      toast.error(error.response?.data?.message || 'Gagal regenerate token');
-    } finally {
-      setIsSessionTokenRegenerating(false);
-    }
-  };
-
-  const handleCopySessionToken = async () => {
-    if (!sessionToken) return;
-    await navigator.clipboard.writeText(sessionToken);
-    toast.success('Token disalin');
-  };
-
   const handleCopyTenantApiKey = async () => {
     if (!tenantApiKey) return;
     await navigator.clipboard.writeText(tenantApiKey);
@@ -308,47 +266,24 @@ const TenantManagement = () => {
     }
   };
 
-  const getSessionAuthConfig = () => {
-    if (!sessionToken) {
-      toast.error('Token belum ada. Load/Generate dulu.');
-      return null;
-    }
-    return { headers: { apikey: sessionToken } };
-  };
-
-  const fetchSessionWebhook = async () => {
-    const trimmed = sessionIdInput.trim();
-    if (!trimmed) {
-      toast.error('Session ID harus diisi dulu');
-      return;
-    }
-    const config = getSessionAuthConfig();
-    if (!config) return;
-    setIsSessionWebhookLoading(true);
+  const fetchTenantWebhooks = async (tenantId: number) => {
+    setIsTenantWebhookLoading(true);
     try {
-      const res = await api.get('/sessions/webhook', {
-        ...config,
-        params: { sessionId: trimmed }
-      });
-      if (res.data?.status === 'success') {
-        setSessionWebhookUrl(res.data.url || '');
-        toast.success(res.data.url ? 'Webhook loaded' : 'Webhook belum diset');
+      const res = await api.get(`/admin/tenants/${tenantId}/webhooks`);
+      if (res.data?.success) {
+        setTenantWebhooks(res.data.webhooks || []);
       }
     } catch (error: any) {
-      console.error('Failed to fetch session webhook:', error);
-      toast.error(error.response?.data?.message || 'Gagal memuat webhook session');
+      console.error('Failed to fetch tenant webhooks:', error);
+      toast.error(error.response?.data?.error || 'Gagal memuat webhook tenant');
     } finally {
-      setIsSessionWebhookLoading(false);
+      setIsTenantWebhookLoading(false);
     }
   };
 
-  const handleSaveSessionWebhook = async () => {
-    const trimmed = sessionIdInput.trim();
-    const url = sessionWebhookUrl.trim();
-    if (!trimmed) {
-      toast.error('Session ID harus diisi dulu');
-      return;
-    }
+  const handleAddTenantWebhook = async () => {
+    if (!sessionTenant) return;
+    const url = tenantWebhookUrl.trim();
     if (!url) {
       toast.error('URL webhook wajib diisi');
       return;
@@ -357,66 +292,37 @@ const TenantManagement = () => {
       toast.error('Webhook URL harus diawali http:// atau https://');
       return;
     }
-    const config = getSessionAuthConfig();
-    if (!config) return;
-    setIsSessionWebhookSaving(true);
+    setIsTenantWebhookSaving(true);
     try {
-      const res = await api.post('/sessions/webhook', { url, sessionId: trimmed }, config);
-      if (res.data?.status === 'success') {
-        toast.success('Webhook session tersimpan');
-      }
-    } catch (error: any) {
-      console.error('Failed to save session webhook:', error);
-      toast.error(error.response?.data?.message || 'Gagal menyimpan webhook session');
-    } finally {
-      setIsSessionWebhookSaving(false);
-    }
-  };
-
-  const handleDeleteSessionWebhook = async () => {
-    const trimmed = sessionIdInput.trim();
-    if (!trimmed) {
-      toast.error('Session ID harus diisi dulu');
-      return;
-    }
-    if (!confirm('Hapus webhook session ini?')) return;
-    const config = getSessionAuthConfig();
-    if (!config) return;
-    setIsSessionWebhookDeleting(true);
-    try {
-      const res = await api.delete('/sessions/webhook', {
-        ...config,
-        data: { sessionId: trimmed }
-      });
-      if (res.data?.status === 'success') {
-        setSessionWebhookUrl('');
-        toast.success('Webhook session dihapus');
-      }
-    } catch (error: any) {
-      console.error('Failed to delete session webhook:', error);
-      toast.error(error.response?.data?.message || 'Gagal menghapus webhook session');
-    } finally {
-      setIsSessionWebhookDeleting(false);
-    }
-  };
-
-  const handleTestSessionWebhook = async () => {
-    const trimmed = sessionIdInput.trim();
-    if (!trimmed) {
-      toast.error('Session ID harus diisi dulu');
-      return;
-    }
-    setIsSessionWebhookTesting(true);
-    try {
-      const res = await api.post(`/admin/sessions/${encodeURIComponent(trimmed)}/webhook-test`);
+      const res = await api.post(`/admin/tenants/${sessionTenant.id}/webhooks`, { url });
       if (res.data?.success) {
-        toast.success('Test webhook terkirim');
+        setTenantWebhooks((prev) => [res.data.webhook, ...prev]);
+        setTenantWebhookUrl('');
+        toast.success('Webhook tenant tersimpan');
       }
     } catch (error: any) {
-      console.error('Failed to test session webhook:', error);
-      toast.error(error.response?.data?.error || 'Gagal test webhook');
+      console.error('Failed to save tenant webhook:', error);
+      toast.error(error.response?.data?.error || 'Gagal menyimpan webhook tenant');
     } finally {
-      setIsSessionWebhookTesting(false);
+      setIsTenantWebhookSaving(false);
+    }
+  };
+
+  const handleDeleteTenantWebhook = async (webhookId: string) => {
+    if (!sessionTenant) return;
+    if (!confirm('Hapus webhook tenant ini?')) return;
+    setTenantWebhookDeletingId(webhookId);
+    try {
+      const res = await api.delete(`/admin/tenants/${sessionTenant.id}/webhooks/${webhookId}`);
+      if (res.data?.success) {
+        setTenantWebhooks((prev) => prev.filter((wh) => wh.id !== webhookId));
+        toast.success('Webhook tenant dihapus');
+      }
+    } catch (error: any) {
+      console.error('Failed to delete tenant webhook:', error);
+      toast.error(error.response?.data?.error || 'Gagal menghapus webhook tenant');
+    } finally {
+      setTenantWebhookDeletingId(null);
     }
   };
 
@@ -464,17 +370,21 @@ const TenantManagement = () => {
     setMetaWabaId(tenant.meta_waba_id || '');
     setMetaToken(tenant.meta_token || '');
     setAnalysisWebhookUrl(tenant.analysis_webhook_url || '');
+    setWebhookEvents(tenant.webhook_events || {
+        groups: true,
+        private: true,
+        self: false
+    });
     
-    setSessionToken(null);
-    setSessionTokenSessionId('');
-    setShowSessionToken(false);
     setTenantApiKey(tenant.api_key || null);
     setShowTenantApiKey(false);
-    setSessionWebhookUrl('');
+    setTenantWebhookUrl('');
+    setTenantWebhooks([]);
+    setIsTenantWebhookLoading(false);
+    setIsTenantWebhookSaving(false);
+    setTenantWebhookDeletingId(null);
     setIsSessionModalOpen(true);
-    if (tenant.session_id && (!tenant.wa_provider || tenant.wa_provider === 'whatsmeow')) {
-      void fetchSessionToken(tenant.session_id, { silent: true });
-    }
+    void fetchTenantWebhooks(tenant.id);
   };
 
   const closeSessionModal = () => {
@@ -488,22 +398,14 @@ const TenantManagement = () => {
     setMetaToken('');
     setAnalysisWebhookUrl('');
     
-    setSessionToken(null);
-    setSessionTokenSessionId('');
-    setShowSessionToken(false);
     setTenantApiKey(null);
     setShowTenantApiKey(false);
-    setSessionWebhookUrl('');
+    setTenantWebhookUrl('');
+    setTenantWebhooks([]);
+    setIsTenantWebhookLoading(false);
+    setIsTenantWebhookSaving(false);
+    setTenantWebhookDeletingId(null);
   };
-
-  useEffect(() => {
-    const trimmed = sessionIdInput.trim();
-    if (sessionTokenSessionId && trimmed && trimmed !== sessionTokenSessionId) {
-      setSessionToken(null);
-      setSessionTokenSessionId('');
-      setShowSessionToken(false);
-    }
-  }, [sessionIdInput, sessionTokenSessionId]);
 
   const handleSaveSessionId = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -525,7 +427,8 @@ const TenantManagement = () => {
     try {
       const payload: any = {
         wa_provider: waProvider,
-        analysis_webhook_url: analysisWebhookUrl.trim()
+        analysis_webhook_url: analysisWebhookUrl.trim(),
+        webhook_events: webhookEvents
       };
 
       if (waProvider === 'whatsmeow') {
@@ -551,7 +454,8 @@ const TenantManagement = () => {
               meta_waba_id: updated.meta_waba_id,
               meta_token: updated.meta_token,
               api_key: updated.api_key,
-              analysis_webhook_url: updated.analysis_webhook_url
+              analysis_webhook_url: updated.analysis_webhook_url,
+              webhook_events: updated.webhook_events
           } : t
         )));
         toast.success('Konfigurasi WA tersimpan');
@@ -1107,104 +1011,90 @@ const TenantManagement = () => {
               <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">API Token (Legacy)</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Token ini dipakai buat header <span className="font-bold">apikey</span>.</p>
+                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Webhook Tenant (Incoming)</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Forward pesan masuk ke n8n/AI. Bisa lebih dari satu URL.</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      disabled={isSessionTokenLoading}
-                      onClick={() => fetchSessionToken(sessionIdInput)}
+                      onClick={() => sessionTenant && fetchTenantWebhooks(sessionTenant.id)}
+                      disabled={isTenantWebhookLoading || !sessionTenant}
                       className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
                     >
-                      {isSessionTokenLoading ? 'Loading...' : 'Load'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSessionTokenRegenerating}
-                      onClick={handleRegenerateSessionToken}
-                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
-                    >
-                      {isSessionTokenRegenerating ? 'Generating...' : 'Generate'}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    readOnly
-                    value={sessionToken ? (showSessionToken ? sessionToken : '********') : '-'}
-                    className="flex-1 p-3 bg-white dark:bg-slate-900 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-slate-700"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSessionToken((prev) => !prev)}
-                    disabled={!sessionToken}
-                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
-                  >
-                    {showSessionToken ? 'Hide' : 'Show'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCopySessionToken}
-                    disabled={!sessionToken}
-                    className="p-2 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
-                    title="Copy token"
-                  >
-                    <Copy size={14} />
-                  </button>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Webhook Integrasi</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Kirim pesan masuk ke n8n/Zapier.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={fetchSessionWebhook}
-                      disabled={isSessionWebhookLoading || !sessionToken}
-                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors disabled:opacity-60"
-                    >
-                      {isSessionWebhookLoading ? 'Loading...' : 'Load'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleTestSessionWebhook}
-                      disabled={isSessionWebhookTesting}
-                      className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60"
-                    >
-                      {isSessionWebhookTesting ? 'Testing...' : 'Test'}
+                      {isTenantWebhookLoading ? 'Loading...' : 'Reload'}
                     </button>
                   </div>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     placeholder="https://example.com/webhook"
-                    value={sessionWebhookUrl}
-                    onChange={(e) => setSessionWebhookUrl(e.target.value)}
+                    value={tenantWebhookUrl}
+                    onChange={(e) => setTenantWebhookUrl(e.target.value)}
                     className="flex-1 p-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-slate-700"
                   />
                   <button
                     type="button"
-                    onClick={handleSaveSessionWebhook}
-                    disabled={isSessionWebhookSaving || !sessionToken}
+                    onClick={handleAddTenantWebhook}
+                    disabled={isTenantWebhookSaving || !sessionTenant}
                     className="px-4 py-3 text-[11px] font-black uppercase tracking-widest rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400 transition-colors"
                   >
-                    {isSessionWebhookSaving ? 'Saving...' : 'Simpan'}
+                    {isTenantWebhookSaving ? 'Saving...' : 'Tambah'}
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleDeleteSessionWebhook}
-                    disabled={isSessionWebhookDeleting || !sessionToken}
-                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-700 text-rose-600 dark:text-rose-300 hover:border-rose-400 transition-colors disabled:opacity-60"
-                  >
-                    {isSessionWebhookDeleting ? 'Deleting...' : 'Hapus'}
-                  </button>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Wajib Load/Generate token dulu.</p>
+                {tenantWebhooks.length > 0 ? (
+                  <div className="space-y-2">
+                    {tenantWebhooks.map((wh) => (
+                      <div key={wh.id} className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800/60 border border-gray-200 dark:border-slate-700 rounded-lg px-3 py-2">
+                        <div className="flex-1 text-[11px] font-mono break-all text-gray-700 dark:text-gray-200">{wh.url}</div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTenantWebhook(wh.id)}
+                          disabled={tenantWebhookDeletingId === wh.id}
+                          className="px-2 py-1 text-[10px] font-black uppercase tracking-widest rounded-md bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-700 text-rose-600 dark:text-rose-300 hover:border-rose-400 transition-colors disabled:opacity-60"
+                        >
+                          {tenantWebhookDeletingId === wh.id ? 'Deleting...' : 'Hapus'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Belum ada webhook tenant.</p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Event Webhook</p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Pilih jenis pesan yang diforward ke webhook.</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={webhookEvents.private}
+                            onChange={(e) => setWebhookEvents({ ...webhookEvents, private: e.target.checked })}
+                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Pribadi (Direct Message)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={webhookEvents.groups}
+                            onChange={(e) => setWebhookEvents({ ...webhookEvents, groups: e.target.checked })}
+                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Grup (Group Message)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={webhookEvents.self}
+                            onChange={(e) => setWebhookEvents({ ...webhookEvents, self: e.target.checked })}
+                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Saya (Outgoing/Sync)</span>
+                    </label>
                 </div>
               </div>
 

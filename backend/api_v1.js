@@ -33,59 +33,6 @@ const INTERNAL_REPLY_WINDOW_HOURS = parseInt(process.env.INTERNAL_REPLY_WINDOW_H
 const DISABLE_PUBLIC_MESSAGES = process.env.DISABLE_PUBLIC_MESSAGES === 'true'
     || (process.env.NODE_ENV === 'production' && process.env.ALLOW_PUBLIC_MESSAGES !== 'true');
 
-let redisClient = null;
-const webhookUrls = new Map();
-
-function setRedisClient(client) {
-    redisClient = client;
-}
-
-async function getWebhookUrl(sessionId) {
-    if (redisClient) {
-        try {
-            const url = await redisClient.get(`webhook:url:${sessionId}`);
-            if (url) return url;
-        } catch (error) {
-            console.error('Redis error in getWebhookUrl, falling back to in-memory:', error.message);
-        }
-    }
-    return webhookUrls.get(sessionId) || process.env.WEBHOOK_URL || '';
-}
-
-async function setWebhookUrl(sessionId, url) {
-    if (redisClient) {
-        try {
-            if (url) {
-                await redisClient.setEx(`webhook:url:${sessionId}`, 86400 * 30, url);
-            } else {
-                await redisClient.del(`webhook:url:${sessionId}`);
-            }
-            return true;
-        } catch (error) {
-            console.error('Redis error in setWebhookUrl, falling back to in-memory:', error.message);
-        }
-    }
-    if (url) {
-        webhookUrls.set(sessionId, url);
-    } else {
-        webhookUrls.delete(sessionId);
-    }
-    return false;
-}
-
-async function deleteWebhookUrl(sessionId) {
-    if (redisClient) {
-        try {
-            await redisClient.del(`webhook:url:${sessionId}`);
-            return true;
-        } catch (error) {
-            console.error('Redis error in deleteWebhookUrl, falling back to in-memory:', error.message);
-        }
-    }
-    webhookUrls.delete(sessionId);
-    return false;
-}
-
 function initializeApi(
     sessions,
     sessionTokens,
@@ -94,18 +41,11 @@ function initializeApi(
     deleteSession,
     log,
     phonePairing,
-    saveSessionSettings,
-    regenerateSessionToken,
-    redisClientInstance,
     scheduleMessageSend,
     validateWhatsAppRecipient,
     getSessionContacts,
     refreshSession // New parameter
 ) {
-    if (redisClientInstance) {
-        setRedisClient(redisClientInstance);
-    }
-
     const validateToken = buildTokenValidator(sessionTokens);
 
     const sharedDeps = {
@@ -116,11 +56,6 @@ function initializeApi(
         deleteSession,
         log,
         phonePairing,
-        saveSessionSettings,
-        regenerateSessionToken,
-        setWebhookUrl,
-        getWebhookUrl,
-        deleteWebhookUrl,
         scheduleMessageSend,
         validateWhatsAppRecipient,
         validateToken,
@@ -289,4 +224,4 @@ function initializeApi(
     return router;
 }
 
-module.exports = { initializeApi, getWebhookUrl };
+module.exports = { initializeApi };

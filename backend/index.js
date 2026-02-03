@@ -15,7 +15,7 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
 const { createClient } = require('redis');
-const { initializeApi, getWebhookUrl } = require('./api_v1');
+const { initializeApi } = require('./api_v1');
 const { router: authRouter, ensureSuperAdmin, syncContactsForTenant } = require('./auth');
 const db = require('./db');
 const { initializeN8nApi } = require('./n8n-api');
@@ -218,38 +218,15 @@ async function syncGatewayMappingForSession(sessionId) {
     }
 }
 
-// Register session error callback to auto-disconnect on Gateway errors
+// Register session error callback
 waGateway.setSessionErrorCallback((sessionId, error) => {
-    console.warn(`[Auto-Disconnect] Session ${sessionId} error detected: ${error?.message || 'Unknown error'}`);
-
-    // Get session from memory
-    let session = sessions.get(sessionId);
-    if (session) {
-        // Only update if currently showing as CONNECTED (to prevent looping)
-        if (session.status === 'CONNECTED') {
-            session.status = 'DISCONNECTED';
-            session.qr = null;
-            sessions.set(sessionId, session);
-
-            console.log(`[Auto-Disconnect] Session ${sessionId} marked as DISCONNECTED due to Gateway error`);
-
-            // Broadcast status update to all WebSocket clients
-            const data = JSON.stringify({
-                type: 'session-update',
-                data: [{
-                    sessionId,
-                    status: 'DISCONNECTED',
-                    reason: error?.message || 'Gateway error',
-                    connectedNumber: session.connectedNumber || null
-                }]
-            });
-            wss.clients.forEach(client => {
-                if (client.readyState === 1) {
-                    client.send(data);
-                }
-            });
-        }
-    }
+    // FIX: Don't auto-disconnect on generic errors. Only log them.
+    // Real disconnections come from 'connection' webhook events (logged_out/disconnected)
+    console.warn(`[Gateway-Warn] Session ${sessionId} reported error: ${error?.message || 'Unknown'}`);
+    
+    // We do NOT set status to DISCONNECTED here anymore.
+    // We trust the Webhook Event 'connection' -> 'disconnected' to do that.
+    // This prevents "Ghost Disconnects" where the phone is fine but the UI says offline.
 });
 
 // --- Encryption ---
@@ -359,11 +336,6 @@ async function removeSessionContact(sessionId, contactId) {
     const contacts = await getSessionContacts(sessionId);
     const filtered = contacts.filter(c => c.contactId !== contactId);
     await saveSessionContacts(sessionId, filtered);
-}
-
-// --- Session Settings (Redis) ---
-async function saveSessionSettings(sessionId, settings) {
-    await redisClient.set(`wa:settings:${sessionId}`, JSON.stringify(settings));
 }
 
 // --- Scheduled Contact Sync ---
@@ -737,12 +709,6 @@ function scheduleMessageSend(sessionId, operation, options = {}) {
     });
 }
 
-// --- Webhook ---
-async function postToWebhook(data) {
-    const url = await getWebhookUrl(data.sessionId);
-    if (url) axios.post(url, data).catch(() => {});
-}
-
 // --- Session Management (via Go Gateway) ---
 function getSessionsDetails() {
     // Self-healing: If memory is empty, try to load from disk immediately
@@ -978,16 +944,6 @@ async function deleteSession(sessionId) {
 }
 
 /**
- * Regenerate session token
- */
-async function regenerateSessionToken(sessionId) {
-    const token = crypto.randomBytes(32).toString('hex');
-    sessionTokens.set(sessionId, token);
-    saveTokens();
-    return token;
-}
-
-/**
  * Validate WhatsApp recipient via Go gateway
  */
 async function validateWhatsAppRecipient(sessionId, destination) {
@@ -1017,12 +973,13 @@ app.use(helmet({
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
 }));
 
-app.use(rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-}));
+// Rate limiting removed per user request for n8n integration
+// app.use(rateLimit({
+//     windowMs: 15 * 60 * 1000,
+//     max: 100,
+//     standardHeaders: true,
+//     legacyHeaders: false,
+// }));
 
 app.use(session({
     store: new RedisStore({ client: redisSessionClient }),
@@ -1256,6 +1213,25 @@ webhookHandler.on('connection', (sessionId, data) => {
     broadcastSessionUpdate();
 });
 
+// Fallback: if we receive inbound messages but miss connection events,
+// mark session as CONNECTED so UI doesn't show false offline.
+webhookHandler.on('message', (sessionId, data) => {
+    if (data?.message?.isFromMe) return;
+    const session = sessions.get(sessionId);
+    if (!session) return;
+    if (session.status !== 'CONNECTED') {
+        session.status = 'CONNECTED';
+        session.qr = null;
+        sessions.set(sessionId, session);
+        persistSessionStatus(sessionId, {
+            status: session.status,
+            qr: session.qr,
+            connectedNumber: session.connectedNumber || null
+        });
+        broadcastSessionUpdate();
+    }
+});
+
 app.use('/api/v1/webhook', webhookHandler.router);
 
 // WhatsApp API routes
@@ -1267,17 +1243,76 @@ app.use('/api/v1', initializeApi(
     deleteSession,
     console.log,
     null, // phonePairing - not used with Go gateway
-    saveSessionSettings,
-    regenerateSessionToken,
-    redisClient,
     scheduleMessageSend,
     validateWhatsAppRecipient,
     getSessionContacts,
-    upsertSessionContact,
-    removeSessionContact,
-    postToWebhook,
     refreshSession
 ));
+
+// --- Self-Healing: Sync with DB ---
+async function syncSessionsWithDatabase() {
+    console.log('[Self-Healing] Checking Database for missing sessions...');
+    try {
+        const tenants = await db.getAllTenants();
+        const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+        let restoredCount = 0;
+
+        for (const tenant of tenants) {
+            if (!tenant.session_id) continue;
+            
+            // If session is already known and has token, skip
+            if (sessionTokens.has(tenant.session_id) && waGateway.getSessionToken(tenant.session_id)) {
+                continue;
+            }
+
+            console.log(`[Self-Healing] Found orphaned session in DB: ${tenant.session_id} (${tenant.company_name}). Attempting restore...`);
+
+            try {
+                // 1. Ensure Gateway URL is set
+                if (tenant.gateway_url) {
+                    waGateway.setSessionGatewayUrl(tenant.session_id, tenant.gateway_url);
+                }
+
+                // 2. Authenticate with Gateway
+                if (gatewayPassword) {
+                    const auth = await waGateway.authenticate(tenant.session_id, gatewayPassword);
+                    if (auth.status && auth.data?.token) {
+                        waGateway.setSessionToken(tenant.session_id, auth.data.token);
+                        
+                        // 3. Save to local memory & disk
+                        sessionTokens.set(tenant.session_id, auth.data.token);
+                        saveTokens();
+                        
+                        // 4. Initialize Session State
+                        if (!sessions.has(tenant.session_id)) {
+                            sessions.set(tenant.session_id, {
+                                sessionId: tenant.session_id,
+                                sock: createCompatSocket(tenant.session_id),
+                                status: 'UNKNOWN' // Will be updated by next sync loop
+                            });
+                        }
+                        
+                        restoredCount++;
+                        console.log(`[Self-Healing] Session ${tenant.session_id} restored successfully.`);
+                    } else {
+                         console.warn(`[Self-Healing] Failed to auth session ${tenant.session_id}: Invalid response`);
+                    }
+                }
+            } catch (err) {
+                console.warn(`[Self-Healing] Failed to restore ${tenant.session_id}: ${err.message}`);
+            }
+        }
+        
+        if (restoredCount > 0) {
+            console.log(`[Self-Healing] Total sessions restored from DB: ${restoredCount}`);
+        } else {
+            console.log('[Self-Healing] Local state is in sync with Database.');
+        }
+
+    } catch (error) {
+        console.error(`[Self-Healing] Critical Error: ${error.message}`);
+    }
+}
 
 // --- Server Start ---
 const PORT = process.env.PORT || 3000;
@@ -1287,6 +1322,7 @@ if (!isTest) {
             await db.ensureTenantWebhooksTable();
             await db.ensureTenantSessionColumn();
             await db.ensureTenantGatewayColumn();
+            await db.ensureTenantWebhookEventsColumn();
             await db.ensureTenantApiKeyColumn();
             await db.ensureUserInvitesTable();
             await db.ensureInviteErrorColumn();
@@ -1306,6 +1342,7 @@ if (!isTest) {
 
         await hydrateGatewayMappingsFromTenants();
         await loadTokens();
+        await syncSessionsWithDatabase(); // <--- NEW CALL HERE
         await seedContactSyncQueue(true);
 
         // Check Go gateway health

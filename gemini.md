@@ -58,12 +58,16 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 - [x] **CI/CD Pipeline:** GitHub Actions untuk Backend Test & Frontend Build check.
 - [x] **E2E Testing:** Script `backend/tests/saas_flow.test.js` (Fixed Redis Client issue).
 
-### 8. Hybrid Provider (✅ Selesai Fase 1-4)
-- [x] **Fase 1: Database Schema:** Kolom Meta (`wa_provider`, `meta_*`) di tabel Tenants.
-- [x] **Fase 2: Adapter Layer:** `ProviderFactory` & Drivers (`WhatsmeowDriver`, `MetaCloudDriver`).
-- [x] **Fase 3: Meta Webhook:** Transformer Logic & Endpoint `/api/v1/webhook/meta`.
-- [x] **Fase 4: UI Configuration:** Tenant Settings support Official API Setup.
-- [ ] **Fase 5: 24H Window Logic:** Logic blokir pesan jika >24 jam (Official Only).
+### 9. Tenant Webhook Controls (✅ Selesai)
+- [x] **Rate Limit Removal:** Menghapus rate limiter untuk integrasi n8n yang lebih lancar.
+- [x] **Webhook Event Filtering:** Menambahkan kontrol event webhook per tenant (Groups, Private, Self).
+- [x] **DB Schema Update:** Kolom `webhook_events` (JSONB) di tabel `tenants`.
+- [x] **UI Integration:** Checkbox konfigurasi di menu "Atur Session WA".
+
+### 10. Next Steps (Planned)
+- [ ] **24H Window Logic (Official API).**
+- [ ] **Broadcast/Campaign Feature.**
+
 
 ---
 

@@ -55,10 +55,6 @@ if [ -z "$HTTP_BASE_URL" ]; then
   export HTTP_BASE_URL="/api/v1/whatsapp"
 fi
 
-if [ -z "$WEBHOOK_URL" ]; then
-  export WEBHOOK_URL="http://127.0.0.1:3000/api/v1/webhook/incoming"
-fi
-
 echo "Starting Go WA Gateway..."
 cd /app/wa-gateway
 ./gowam-rest &
