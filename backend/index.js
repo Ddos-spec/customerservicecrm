@@ -107,13 +107,18 @@ const corsOptions = {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
         
-        // Trust any origin (Reflection) - Solves the "Cookie Blocked" issue
+        // Explicitly allow known domains (Vercel, Localhost)
+        if (origin.endsWith('.vercel.app') || origin.includes('localhost') || origin.startsWith('http://127.0.0.1')) {
+             return callback(null, true);
+        }
+        
+        // Default: Trust any origin (Reflection) - Solves the "Cookie Blocked" issue
         // Since we have strict session security, this is acceptable for this use case
         return callback(null, true);
     },
     credentials: true, // Required for cookies
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'Cookie']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'Cookie', 'X-Requested-With', 'Accept', 'Origin', 'Access-Control-Request-Method', 'Access-Control-Request-Headers']
 };
 
 app.use(cors(corsOptions));

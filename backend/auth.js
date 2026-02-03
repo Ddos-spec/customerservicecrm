@@ -347,7 +347,7 @@ async function ensureSuperAdmin() {
 
 function getFrontendBase() {
     const raw = process.env.FRONTEND_URL || 'https://customerservicecrm.vercel.app';
-    return raw.replace(///+$/, '');
+    return raw.replace(/\/+$/, '');
 }
 
 /**
