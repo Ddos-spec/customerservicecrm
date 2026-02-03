@@ -420,6 +420,7 @@ module.exports = {
         if (config.meta_phone_id !== undefined) { fields.push(`meta_phone_id = $${idx++}`); values.push(config.meta_phone_id); }
         if (config.meta_waba_id !== undefined) { fields.push(`meta_waba_id = $${idx++}`); values.push(config.meta_waba_id); }
         if (config.meta_token !== undefined) { fields.push(`meta_token = $${idx++}`); values.push(config.meta_token); }
+        if (config.analysis_webhook_url !== undefined) { fields.push(`analysis_webhook_url = $${idx++}`); values.push(config.analysis_webhook_url); }
 
         if (fields.length === 0) return null;
         values.push(id);

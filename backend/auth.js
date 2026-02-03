@@ -786,7 +786,8 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             gateway_url: rawGatewayUrl,
             meta_phone_id,
             meta_waba_id,
-            meta_token
+            meta_token,
+            analysis_webhook_url
         } = req.body;
 
         const existingTenant = await db.getTenantById(id);
@@ -795,6 +796,11 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         }
 
         const updates = {};
+        
+        // 0. Analysis Config
+        if (analysis_webhook_url !== undefined) {
+            updates.analysis_webhook_url = analysis_webhook_url ? analysis_webhook_url.trim() : null;
+        }
 
         // 1. Provider Type
         if (wa_provider) {
@@ -900,6 +906,59 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         }
         console.error('Error updating tenant config:', error);
         res.status(500).json({ success: false, error: 'Failed to update tenant configuration' });
+    }
+});
+
+/**
+ * POST /api/v1/admin/tenants/:id/analyze
+ * Trigger analysis webhook for a tenant
+ */
+router.post('/tenants/:id/analyze', requireRole('super_admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const tenant = await db.getTenantById(id);
+        
+        if (!tenant) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
+
+        if (!tenant.analysis_webhook_url) {
+            return res.status(400).json({ success: false, error: 'Webhook analisis belum dikonfigurasi untuk tenant ini.' });
+        }
+
+        // Prepare context data for the AI Agent
+        const payload = {
+            tenant_id: tenant.id,
+            company_name: tenant.company_name,
+            timestamp: new Date().toISOString(),
+            requested_by: req.session.user.email
+        };
+
+        // Call External Webhook (n8n)
+        const response = await axios.post(tenant.analysis_webhook_url, payload, {
+            timeout: 60000 // 60s timeout for AI processing
+        });
+
+        // Forward the AI response
+        res.json({ 
+            success: true, 
+            data: response.data 
+        });
+
+    } catch (error) {
+        console.error('Error triggering analysis:', error.message);
+        
+        let errorMessage = 'Gagal menghubungi AI Agent';
+        if (error.response) {
+            // The request was made and the server responded with a status code
+            // that falls out of the range of 2xx
+            errorMessage = `AI Error (${error.response.status}): ${JSON.stringify(error.response.data)}`;
+        } else if (error.request) {
+            // The request was made but no response was received
+            errorMessage = 'Tidak ada respon dari AI Agent (Timeout/Down)';
+        }
+
+        res.status(502).json({ success: false, error: errorMessage });
     }
 });
 
