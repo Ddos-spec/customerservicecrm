@@ -67,7 +67,8 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 ### 10. Chat Analytics & Categorization (✅ Selesai)
 - [x] **Keyword Analysis:** Endpoint `/api/v1/analytics/keywords` untuk menghitung frekuensi kata.
 - [x] **Business Category:** Kolom `business_category` di tabel `tenants` (Food, Health, Retail, dll).
-- [x] **UI Widget:** Card "Analisis Topik" di Admin Dashboard dengan selector kategori.
+- [x] **UI Widget:** Card "Analisis Topik" di Admin Dashboard.
+- [x] **Super Admin Control:** Pilihan kategori dipindahkan ke Tenant Management (Super Admin only).
 - [x] **Stopwords:** Filter kata umum bahasa Indonesia.
 
 ### 11. Next Steps (Planned)
