@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, MessageSquare, Shield, Settings,
-  ExternalLink, ArrowUpRight, Wifi, Smartphone, X, RefreshCw, MessageCircle, ChevronDown
+  ExternalLink, ArrowUpRight, Wifi, Smartphone, X, RefreshCw, MessageCircle
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/api';
@@ -46,7 +46,6 @@ const AdminDashboard = () => {
   // Analytics State
   const [keywords, setKeywords] = useState<{ word: string; count: number }[]>([]);
   const [businessCategory, setBusinessCategory] = useState('general');
-  const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
 
   // WhatsApp Connection State
   const sessionId = user?.session_id || '';
@@ -90,20 +89,6 @@ const AdminDashboard = () => {
       console.error('Failed to fetch analytics:', error);
     }
   }, []);
-
-  const updateCategory = async (newCategory: string) => {
-    setIsUpdatingCategory(true);
-    try {
-      await api.put('/analytics/category', { category: newCategory });
-      setBusinessCategory(newCategory);
-      toast.success('Kategori bisnis diperbarui');
-    } catch (error) {
-      console.error('Failed to update category:', error);
-      toast.error('Gagal memperbarui kategori');
-    } finally {
-      setIsUpdatingCategory(false);
-    }
-  };
 
   const fetchSessionStatus = useCallback(async () => {
     if (!sessionId) {
@@ -412,22 +397,8 @@ const AdminDashboard = () => {
                   Kata kunci yang paling sering muncul dari pelanggan
                 </p>
               </div>
-              <div className="relative">
-                <select
-                  value={businessCategory}
-                  onChange={(e) => updateCategory(e.target.value)}
-                  disabled={isUpdatingCategory}
-                  className="appearance-none pl-4 pr-10 py-2.5 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer disabled:opacity-50"
-                >
-                  <option value="general">Umum / Lainnya</option>
-                  <option value="fnb">Kuliner (F&B)</option>
-                  <option value="retail">Retail / Toko Online</option>
-                  <option value="health">Kesehatan / Klinik</option>
-                  <option value="services">Jasa / Service</option>
-                  <option value="property">Properti</option>
-                  <option value="automotive">Otomotif</option>
-                </select>
-                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              <div className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 rounded-xl text-sm font-bold border border-purple-100 dark:border-purple-800">
+                Kategori: <span className="uppercase">{businessCategory}</span>
               </div>
             </div>
 
@@ -467,9 +438,9 @@ const AdminDashboard = () => {
                 <Settings size={16} />
               </div>
               <div>
-                <p className="text-xs font-bold text-gray-900 dark:text-white">Tip Optimasi:</p>
+                <p className="text-xs font-bold text-gray-900 dark:text-white">Info Kategori:</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                  Pilih kategori bisnis yang sesuai agar sistem dapat mempelajari pola percakapan dan memberikan insight yang lebih akurat di masa mendatang.
+                  Kategori bisnis ini diatur oleh Super Admin untuk memastikan akurasi analisis topik percakapan Anda. Hubungi admin jika kategori tidak sesuai.
                 </p>
               </div>
             </div>

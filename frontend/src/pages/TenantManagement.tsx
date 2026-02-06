@@ -19,6 +19,7 @@ interface Tenant {
   meta_waba_id?: string | null;
   meta_token?: string | null;
   analysis_webhook_url?: string | null;
+  business_category?: string | null;
   webhook_events?: {
     groups: boolean;
     private: boolean;
@@ -61,6 +62,7 @@ const TenantManagement = () => {
   const [metaPhoneId, setMetaPhoneId] = useState('');
   const [metaWabaId, setMetaWabaId] = useState('');
   const [metaToken, setMetaToken] = useState('');
+  const [businessCategory, setBusinessCategory] = useState('general');
   const [webhookEvents, setWebhookEvents] = useState({
     groups: true,
     private: true,
@@ -107,7 +109,8 @@ const TenantManagement = () => {
     admin_password: '',
     admin_phone_number: '',
     session_id: '',
-    gateway_url: ''
+    gateway_url: '',
+    business_category: 'general'
   });
   const [showAdminPassword, setShowAdminPassword] = useState(false);
 
@@ -212,7 +215,8 @@ const TenantManagement = () => {
         admin_password: formData.admin_password,
         admin_phone_number: formData.admin_phone_number,
         session_id: formData.session_id,
-        gateway_url: formData.gateway_url.trim()
+        gateway_url: formData.gateway_url.trim(),
+        business_category: formData.business_category
       });
       if (res.data.success) {
         setTenants([res.data.tenant, ...tenants]);
@@ -225,7 +229,8 @@ const TenantManagement = () => {
           admin_password: '',
           admin_phone_number: '',
           session_id: '',
-          gateway_url: ''
+          gateway_url: '',
+          business_category: 'general'
         });
       }
     } catch (error: any) {
@@ -370,6 +375,7 @@ const TenantManagement = () => {
     setMetaWabaId(tenant.meta_waba_id || '');
     setMetaToken(tenant.meta_token || '');
     setAnalysisWebhookUrl(tenant.analysis_webhook_url || '');
+    setBusinessCategory(tenant.business_category || 'general');
     setWebhookEvents(tenant.webhook_events || {
         groups: true,
         private: true,
@@ -428,6 +434,7 @@ const TenantManagement = () => {
       const payload: any = {
         wa_provider: waProvider,
         analysis_webhook_url: analysisWebhookUrl.trim(),
+        business_category: businessCategory,
         webhook_events: webhookEvents
       };
 
@@ -455,6 +462,7 @@ const TenantManagement = () => {
               meta_token: updated.meta_token,
               api_key: updated.api_key,
               analysis_webhook_url: updated.analysis_webhook_url,
+              business_category: updated.business_category,
               webhook_events: updated.webhook_events
           } : t
         )));
@@ -794,6 +802,22 @@ const TenantManagement = () => {
              </div>
              <form onSubmit={handleAddTenant} className="space-y-4">
                 <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Kategori Bisnis</label>
+                  <select
+                    value={formData.business_category}
+                    onChange={(e) => setFormData({...formData, business_category: e.target.value})}
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  >
+                    <option value="general">Umum / Lainnya</option>
+                    <option value="fnb">Kuliner (F&B)</option>
+                    <option value="retail">Retail / Toko Online</option>
+                    <option value="health">Kesehatan / Klinik</option>
+                    <option value="services">Jasa / Service</option>
+                    <option value="property">Properti</option>
+                    <option value="automotive">Otomotif</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Nama Perusahaan</label>
                   <input
                     required
@@ -1102,6 +1126,22 @@ const TenantManagement = () => {
                 <div>
                   <p className="text-xs font-black text-blue-800 dark:text-blue-100 uppercase tracking-widest">Konfigurasi Analisis Tenant (AI)</p>
                   <p className="text-[11px] text-blue-600 dark:text-blue-300">Hubungkan dengan n8n untuk analisis performa tenant.</p>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Kategori Bisnis</label>
+                    <select
+                        value={businessCategory}
+                        onChange={(e) => setBusinessCategory(e.target.value)}
+                        className="w-full p-3 bg-white dark:bg-slate-900 rounded-xl font-bold text-xs text-gray-800 dark:text-gray-200 border border-blue-200 dark:border-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    >
+                        <option value="general">Umum / Lainnya</option>
+                        <option value="fnb">Kuliner (F&B)</option>
+                        <option value="retail">Retail / Toko Online</option>
+                        <option value="health">Kesehatan / Klinik</option>
+                        <option value="services">Jasa / Service</option>
+                        <option value="property">Properti</option>
+                        <option value="automotive">Otomotif</option>
+                    </select>
                 </div>
                 <div>
                     <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Webhook URL (n8n)</label>
