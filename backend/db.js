@@ -423,6 +423,7 @@ module.exports = {
         if (config.analysis_webhook_url !== undefined) { fields.push(`analysis_webhook_url = $${idx++}`); values.push(config.analysis_webhook_url); }
         if (config.webhook_events !== undefined) { fields.push(`webhook_events = $${idx++}`); values.push(config.webhook_events); }
         if (config.business_category !== undefined) { fields.push(`business_category = $${idx++}`); values.push(config.business_category); }
+        if (config.api_key !== undefined) { fields.push(`api_key = $${idx++}`); values.push(config.api_key); }
 
         if (fields.length === 0) return null;
         values.push(id);

@@ -789,7 +789,8 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             meta_token,
             analysis_webhook_url,
             webhook_events,
-            business_category
+            business_category,
+            api_key
         } = req.body;
 
         const existingTenant = await db.getTenantById(id);
@@ -807,6 +808,11 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         // 0. Business Category
         if (business_category !== undefined) {
             updates.business_category = business_category;
+        }
+
+        // 0. API Key (Manual Override)
+        if (api_key !== undefined) {
+            updates.api_key = api_key.trim();
         }
 
         // 0. Webhook Events
