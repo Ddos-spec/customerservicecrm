@@ -435,7 +435,8 @@ const TenantManagement = () => {
         wa_provider: waProvider,
         analysis_webhook_url: analysisWebhookUrl.trim(),
         business_category: businessCategory,
-        webhook_events: webhookEvents
+        webhook_events: webhookEvents,
+        api_key: tenantApiKey ? tenantApiKey.trim() : undefined
       };
 
       if (waProvider === 'whatsmeow') {
@@ -1000,15 +1001,16 @@ const TenantManagement = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <input
-                    readOnly
-                    value={tenantApiKey ? (showTenantApiKey ? tenantApiKey : '********') : '-'}
-                    className="flex-1 p-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-slate-700"
+                    value={tenantApiKey || ''}
+                    onChange={(e) => setTenantApiKey(e.target.value)}
+                    type={showTenantApiKey ? 'text' : 'password'}
+                    placeholder="Masukkan API Key Custom..."
+                    className="flex-1 p-3 bg-white dark:bg-slate-900 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-amber-200 dark:border-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                   />
                   <button
                     type="button"
                     onClick={() => setShowTenantApiKey((prev) => !prev)}
-                    disabled={!tenantApiKey}
-                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-amber-400 transition-colors disabled:opacity-60"
+                    className="px-3 py-2 text-[11px] font-black uppercase tracking-widest rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-amber-400 transition-colors"
                   >
                     {showTenantApiKey ? 'Hide' : 'Show'}
                   </button>
