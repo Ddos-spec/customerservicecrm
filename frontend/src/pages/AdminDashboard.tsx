@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, MessageSquare, Shield, Settings,
-  ExternalLink, ArrowUpRight, Wifi, Smartphone, X, RefreshCw, MessageCircle
+  ExternalLink, ArrowUpRight, Wifi, Smartphone, X, RefreshCw, MessageCircle, ChevronDown
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/api';
@@ -42,6 +42,11 @@ const AdminDashboard = () => {
   const { user } = useAuthStore();
   const [stats, setStats] = useState<Stats | null>(null);
   const [recentChats, setRecentChats] = useState<any[]>([]);
+  
+  // Analytics State
+  const [keywords, setKeywords] = useState<{ word: string; count: number }[]>([]);
+  const [businessCategory, setBusinessCategory] = useState('general');
+  const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
 
   // WhatsApp Connection State
   const sessionId = user?.session_id || '';
@@ -73,6 +78,32 @@ const AdminDashboard = () => {
       console.error('Failed to fetch recent chats:', error);
     }
   }, []);
+
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const res = await api.get('/analytics/keywords?limit=1000');
+      if (res.data.status === 'success') {
+        setKeywords(res.data.data.keywords || []);
+        setBusinessCategory(res.data.data.category || 'general');
+      }
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+    }
+  }, []);
+
+  const updateCategory = async (newCategory: string) => {
+    setIsUpdatingCategory(true);
+    try {
+      await api.put('/analytics/category', { category: newCategory });
+      setBusinessCategory(newCategory);
+      toast.success('Kategori bisnis diperbarui');
+    } catch (error) {
+      console.error('Failed to update category:', error);
+      toast.error('Gagal memperbarui kategori');
+    } finally {
+      setIsUpdatingCategory(false);
+    }
+  };
 
   const fetchSessionStatus = useCallback(async () => {
     if (!sessionId) {
@@ -192,10 +223,11 @@ const AdminDashboard = () => {
     const runInitialFetch = () => {
       void fetchStats();
       void fetchRecentChats();
+      void fetchAnalytics();
       void fetchSessionStatus();
     };
     runInitialFetch();
-  }, [fetchStats, fetchRecentChats, fetchSessionStatus]);
+  }, [fetchStats, fetchRecentChats, fetchAnalytics, fetchSessionStatus]);
 
   const quickStats = [
     {
@@ -308,8 +340,9 @@ const AdminDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Content Area: Recent Chats */}
+        {/* Main Content Area: Recent Chats & Analytics */}
         <div className="lg:col-span-2 space-y-8">
+          {/* Recent Chats */}
           <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">Aktivitas Percakapan Terbaru</h3>
@@ -364,6 +397,81 @@ const AdminDashboard = () => {
                   </p>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Analytics Card */}
+          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <MessageCircle size={24} className="text-purple-600" />
+                  Analisis Topik Percakapan
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Kata kunci yang paling sering muncul dari pelanggan
+                </p>
+              </div>
+              <div className="relative">
+                <select
+                  value={businessCategory}
+                  onChange={(e) => updateCategory(e.target.value)}
+                  disabled={isUpdatingCategory}
+                  className="appearance-none pl-4 pr-10 py-2.5 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl text-sm font-bold text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer disabled:opacity-50"
+                >
+                  <option value="general">Umum / Lainnya</option>
+                  <option value="fnb">Kuliner (F&B)</option>
+                  <option value="retail">Retail / Toko Online</option>
+                  <option value="health">Kesehatan / Klinik</option>
+                  <option value="services">Jasa / Service</option>
+                  <option value="property">Properti</option>
+                  <option value="automotive">Otomotif</option>
+                </select>
+                <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {keywords.length > 0 ? (
+                keywords.slice(0, 8).map((k, idx) => {
+                  const maxCount = keywords[0].count;
+                  const percentage = Math.round((k.count / maxCount) * 100);
+                  
+                  return (
+                    <div key={idx} className="group">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="font-bold text-gray-700 dark:text-gray-200 capitalize">{k.word}</span>
+                        <span className="text-gray-500 dark:text-gray-400 font-medium">{k.count} kali</span>
+                      </div>
+                      <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                        <div 
+                          className="bg-purple-600 h-2.5 rounded-full transition-all duration-500 group-hover:bg-purple-500" 
+                          style={{ width: `${percentage}%` }} 
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-12 border-2 border-dashed border-gray-100 dark:border-slate-700 rounded-2xl">
+                  <p className="text-gray-500 dark:text-gray-400 font-medium">Belum ada data analisis</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Analisis akan muncul setelah ada percakapan dengan pelanggan
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-6 pt-6 border-t border-gray-50 dark:border-slate-700 flex items-start gap-3">
+              <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg shrink-0">
+                <Settings size={16} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-900 dark:text-white">Tip Optimasi:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                  Pilih kategori bisnis yang sesuai agar sistem dapat mempelajari pola percakapan dan memberikan insight yang lebih akurat di masa mendatang.
+                </p>
+              </div>
             </div>
           </div>
         </div>

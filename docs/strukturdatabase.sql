@@ -21,6 +21,7 @@ CREATE TABLE "public"."campaign_messages" (
   "sent_at" TIMESTAMP WITH TIME ZONE NULL,
   "wa_message_id" TEXT NULL,
   "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  "updated_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
   CONSTRAINT "campaign_messages_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "public"."campaigns" ( 
@@ -35,6 +36,7 @@ CREATE TABLE "public"."campaigns" (
   "total_targets" INTEGER NULL DEFAULT 0 ,
   "success_count" INTEGER NULL DEFAULT 0 ,
   "failed_count" INTEGER NULL DEFAULT 0 ,
+  "updated_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
   CONSTRAINT "campaigns_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "public"."chats" ( 
@@ -65,6 +67,7 @@ CREATE TABLE "public"."contact_groups" (
   "name" TEXT NOT NULL,
   "description" TEXT NULL,
   "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  "updated_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
   CONSTRAINT "contact_groups_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "contact_groups_tenant_id_name_key" UNIQUE ("tenant_id", "name")
 );
@@ -145,6 +148,8 @@ CREATE TABLE "public"."tenants" (
   "meta_phone_id" TEXT NULL,
   "meta_waba_id" TEXT NULL,
   "meta_token" TEXT NULL,
+  "webhook_events" JSONB NULL DEFAULT '{"self": false, "groups": true, "private": true}'::jsonb ,
+  "analysis_webhook_url" TEXT NULL,
   CONSTRAINT "tenants_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "tenants_session_id_key" UNIQUE ("session_id"),
   CONSTRAINT "tenants_api_key_key" UNIQUE ("api_key")
@@ -309,15 +314,45 @@ ON "public"."audit_logs" (
   "actor_user_id" ASC,
   "created_at" DESC
 );
+CREATE INDEX "idx_campaign_messages_contact" 
+ON "public"."campaign_messages" (
+  "contact_id" ASC
+);
+CREATE INDEX "idx_campaign_messages_queue" 
+ON "public"."campaign_messages" (
+  "campaign_id" ASC,
+  "status" ASC
+);
 CREATE INDEX "idx_campaign_queue" 
 ON "public"."campaign_messages" (
   "campaign_id" ASC,
   "status" ASC
 );
+CREATE INDEX "idx_campaign_messages_sent" 
+ON "public"."campaign_messages" (
+  "sent_at" ASC
+);
+CREATE INDEX "idx_campaigns_tenant_status" 
+ON "public"."campaigns" (
+  "tenant_id" ASC,
+  "status" ASC
+);
+CREATE INDEX "idx_campaigns_scheduled" 
+ON "public"."campaigns" (
+  "scheduled_at" ASC
+);
 CREATE INDEX "idx_chats_tenant_updated" 
 ON "public"."chats" (
   "tenant_id" ASC,
   "updated_at" DESC
+);
+CREATE INDEX "idx_group_members_group" 
+ON "public"."contact_group_members" (
+  "group_id" ASC
+);
+CREATE INDEX "idx_contact_groups_tenant" 
+ON "public"."contact_groups" (
+  "tenant_id" ASC
 );
 CREATE INDEX "idx_contacts_tenant_jid" 
 ON "public"."contacts" (
@@ -327,6 +362,10 @@ ON "public"."contacts" (
 CREATE INDEX "idx_attachments_message" 
 ON "public"."message_attachments" (
   "message_id" ASC
+);
+CREATE UNIQUE INDEX "messages_wa_message_id_key" 
+ON "public"."messages" (
+  "wa_message_id" ASC
 );
 CREATE INDEX "idx_messages_chat_time" 
 ON "public"."messages" (
@@ -349,6 +388,10 @@ CREATE INDEX "idx_tenants_meta_phone_id"
 ON "public"."tenants" (
   "meta_phone_id" ASC
 );
+CREATE UNIQUE INDEX "tenants_meta_phone_id_key" 
+ON "public"."tenants" (
+  "meta_phone_id" ASC
+);
 CREATE INDEX "user_invites_status_idx" 
 ON "public"."user_invites" (
   "status" ASC
@@ -368,10 +411,14 @@ ON "public"."users" (
   "status" ASC
 );
 ALTER TABLE "public"."campaign_messages" ADD CONSTRAINT "campaign_messages_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES "public"."campaigns" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."campaign_messages" ADD CONSTRAINT "campaign_messages_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."campaigns" ADD CONSTRAINT "campaigns_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."chats" ADD CONSTRAINT "chats_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."chats" ADD CONSTRAINT "chats_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."chats" ADD CONSTRAINT "chats_assigned_to_fkey" FOREIGN KEY ("assigned_to") REFERENCES "public"."users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE "public"."contact_group_members" ADD CONSTRAINT "contact_group_members_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "public"."contacts" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."contact_group_members" ADD CONSTRAINT "contact_group_members_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."contact_groups" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."contact_groups" ADD CONSTRAINT "contact_groups_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."contacts" ADD CONSTRAINT "contacts_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."messages" ADD CONSTRAINT "messages_chat_id_fkey" FOREIGN KEY ("chat_id") REFERENCES "public"."chats" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."tenant_webhooks" ADD CONSTRAINT "tenant_webhooks_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
@@ -571,12 +618,36 @@ $$
             END;
             
 $$;
+CREATE FUNCTION "public"."update_campaign_stats"() RETURNS TRIGGER LANGUAGE PLPGSQL
+AS
+$$
+
+BEGIN
+    UPDATE "public"."campaigns"
+    SET 
+        "success_count" = (
+            SELECT COUNT(*) 
+            FROM "public"."campaign_messages" 
+            WHERE "campaign_id" = NEW."campaign_id" AND "status" = 'sent'
+        ),
+        "failed_count" = (
+            SELECT COUNT(*) 
+            FROM "public"."campaign_messages" 
+            WHERE "campaign_id" = NEW."campaign_id" AND "status" = 'failed'
+        ),
+        "updated_at" = now()
+    WHERE "id" = NEW."campaign_id";
+    
+    RETURN NEW;
+END;
+
+$$;
 CREATE FUNCTION "public"."update_updated_at_column"() RETURNS TRIGGER LANGUAGE PLPGSQL
 AS
 $$
 
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
+    NEW."updated_at" = now();
     RETURN NEW;
 END;
 
