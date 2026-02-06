@@ -64,7 +64,13 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 - [x] **DB Schema Update:** Kolom `webhook_events` (JSONB) di tabel `tenants`.
 - [x] **UI Integration:** Checkbox konfigurasi di menu "Atur Session WA".
 
-### 10. Next Steps (Planned)
+### 10. Chat Analytics & Categorization (✅ Selesai)
+- [x] **Keyword Analysis:** Endpoint `/api/v1/analytics/keywords` untuk menghitung frekuensi kata.
+- [x] **Business Category:** Kolom `business_category` di tabel `tenants` (Food, Health, Retail, dll).
+- [x] **UI Widget:** Card "Analisis Topik" di Admin Dashboard dengan selector kategori.
+- [x] **Stopwords:** Filter kata umum bahasa Indonesia.
+
+### 11. Next Steps (Planned)
 - [ ] **24H Window Logic (Official API).**
 - [ ] **Broadcast/Campaign Feature.**
 
