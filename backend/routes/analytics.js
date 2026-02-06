@@ -29,14 +29,20 @@ function buildAnalyticsRouter(deps) {
 
             // Fetch last N messages from contacts for this tenant
             // We join with chats to filter by tenant_id
+            // UPDATED: Filter dilonggarkan untuk menangkap conversation dan extendedTextMessage
             const result = await db.query(`
                 SELECT m.body 
                 FROM messages m
                 JOIN chats c ON m.chat_id = c.id
                 WHERE c.tenant_id = $1 
                 AND m.sender_type = 'contact'
-                AND m.message_type = 'text'
+                AND (
+                    m.message_type = 'text' 
+                    OR m.message_type = 'conversation' 
+                    OR m.message_type = 'extendedTextMessage'
+                )
                 AND m.body IS NOT NULL
+                AND length(m.body) > 0
                 ORDER BY m.created_at DESC
                 LIMIT $2
             `, [ctx.tenantId, limit]);
