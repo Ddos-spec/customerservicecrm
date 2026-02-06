@@ -627,6 +627,7 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         const adminPassword = req.body?.admin_password || '';
         const sessionIdRaw = req.body?.session_id;
         const gatewayUrlRaw = req.body?.gateway_url;
+        const businessCategory = (req.body?.business_category || 'general').trim();
         const hasSessionId = typeof sessionIdRaw !== 'undefined';
         const hasGatewayUrl = typeof gatewayUrlRaw !== 'undefined';
         
@@ -683,10 +684,10 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         try {
             await client.query('BEGIN');
             const tenantResult = await client.query(
-                `INSERT INTO tenants (company_name, status, session_id, gateway_url, api_key)
-                 VALUES ($1, 'active', $2, $3, $4)
-                 RETURNING id, company_name, status, created_at, session_id, gateway_url, api_key`,
-                [companyName, normalizedSessionId, assignedGatewayUrl, apiKey]
+                `INSERT INTO tenants (company_name, status, session_id, gateway_url, api_key, business_category)
+                 VALUES ($1, 'active', $2, $3, $4, $5)
+                 RETURNING id, company_name, status, created_at, session_id, gateway_url, api_key, business_category`,
+                [companyName, normalizedSessionId, assignedGatewayUrl, apiKey, businessCategory]
             );
             const tenant = tenantResult.rows[0];
 
@@ -787,7 +788,8 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             meta_waba_id,
             meta_token,
             analysis_webhook_url,
-            webhook_events
+            webhook_events,
+            business_category
         } = req.body;
 
         const existingTenant = await db.getTenantById(id);
@@ -800,6 +802,11 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         // 0. Analysis Config
         if (analysis_webhook_url !== undefined) {
             updates.analysis_webhook_url = analysis_webhook_url ? analysis_webhook_url.trim() : null;
+        }
+        
+        // 0. Business Category
+        if (business_category !== undefined) {
+            updates.business_category = business_category;
         }
 
         // 0. Webhook Events
