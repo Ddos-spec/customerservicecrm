@@ -62,3 +62,11 @@ CREATE TABLE IF NOT EXISTS "public"."campaign_messages" (
 
 -- Index untuk mempercepat query antrian
 CREATE INDEX IF NOT EXISTS "idx_campaign_queue" ON "public"."campaign_messages" ("campaign_id", "status");
+
+-- ==========================================
+-- MIGRATION V7: ANALYTICS & CATEGORIZATION
+-- ==========================================
+
+-- 1. Add Business Category to Tenants
+ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "business_category" VARCHAR(50) DEFAULT 'general';
+
