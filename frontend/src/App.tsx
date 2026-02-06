@@ -19,6 +19,7 @@ import AgentDashboard from './pages/AgentDashboard';
 import CampaignList from './pages/marketing/CampaignList';
 import CreateCampaign from './pages/marketing/CreateCampaign';
 import ContactGroups from './pages/marketing/ContactGroups';
+import DebugAnalytics from './pages/DebugAnalytics'; // TEMP DEBUG
 import { Toaster } from 'sonner';
 import { useThemeStore } from './store/useThemeStore';
 
@@ -77,6 +78,9 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/invite/:token" element={<InviteAccept />} />
           
+          {/* Debug Route (Remove later) */}
+          <Route path="/debug-analytics" element={<DebugAnalytics />} />
+
           {/* Super Admin Routes */}
           <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
             <Route path="/super-admin" element={<MainLayout />}>
