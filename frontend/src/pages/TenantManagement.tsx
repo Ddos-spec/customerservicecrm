@@ -82,12 +82,6 @@ const TenantManagement = () => {
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isFixingContacts, setIsFixingContacts] = useState(false);
   
-  // Analysis State
-  const [analysisWebhookUrl, setAnalysisWebhookUrl] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
-  const [isAnalysisResultOpen, setIsAnalysisResultOpen] = useState(false);
-
   // Admin Management State
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
@@ -374,7 +368,6 @@ const TenantManagement = () => {
     setMetaPhoneId(tenant.meta_phone_id || '');
     setMetaWabaId(tenant.meta_waba_id || '');
     setMetaToken(tenant.meta_token || '');
-    setAnalysisWebhookUrl(tenant.analysis_webhook_url || '');
     setBusinessCategory(tenant.business_category || 'general');
     setWebhookEvents(tenant.webhook_events || {
         groups: true,
@@ -402,7 +395,6 @@ const TenantManagement = () => {
     setMetaPhoneId('');
     setMetaWabaId('');
     setMetaToken('');
-    setAnalysisWebhookUrl('');
     
     setTenantApiKey(null);
     setShowTenantApiKey(false);
@@ -433,7 +425,6 @@ const TenantManagement = () => {
     try {
       const payload: any = {
         wa_provider: waProvider,
-        analysis_webhook_url: analysisWebhookUrl.trim(),
         business_category: businessCategory,
         webhook_events: webhookEvents,
         api_key: tenantApiKey ? tenantApiKey.trim() : undefined
@@ -462,7 +453,6 @@ const TenantManagement = () => {
               meta_waba_id: updated.meta_waba_id,
               meta_token: updated.meta_token,
               api_key: updated.api_key,
-              analysis_webhook_url: updated.analysis_webhook_url,
               business_category: updated.business_category,
               webhook_events: updated.webhook_events
           } : t
@@ -569,47 +559,6 @@ const TenantManagement = () => {
     }
   };
 
-  const handleAnalyzeTenant = async (tenant: Tenant) => {
-    setActiveDropdown(null);
-    
-    if (!tenant.analysis_webhook_url) {
-        toast.error('Webhook Analisis belum disetting. Silakan setting di menu "Atur Session WA & Integrasi".');
-        return;
-    }
-
-    setIsAnalyzing(true);
-    // Tutup modal analisis sebelumnya jika ada (reset)
-    setAnalysisResult(null);
-    
-    // Show loading toast that persists until manually dismissed or replaced
-    const toastId = toast.loading('Sedang menganalisis performa tenant...', {
-        description: 'Menunggu respon dari AI Agent (bisa memakan waktu hingga 1 menit).'
-    });
-
-    try {
-        const res = await api.post(`/admin/tenants/${tenant.id}/analyze`);
-        
-        toast.dismiss(toastId); // Hapus loading toast
-
-        if (res.data.success) {
-            // Jika data berupa object, stringify biar bisa dibaca
-            const resultData = typeof res.data.data === 'object' 
-                ? JSON.stringify(res.data.data, null, 2) 
-                : String(res.data.data);
-            
-            setAnalysisResult(resultData);
-            setIsAnalysisResultOpen(true);
-            toast.success('Analisis Selesai!');
-        }
-    } catch (error: any) {
-        toast.dismiss(toastId);
-        console.error('Analysis failed:', error);
-        toast.error(error.response?.data?.error || 'Gagal melakukan analisis. Pastikan AI Agent aktif.');
-    } finally {
-        setIsAnalyzing(false);
-    }
-  };
-
   return (
     <div className="animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
@@ -696,10 +645,7 @@ const TenantManagement = () => {
                         </button>
                         {activeDropdown === tenant.id && (
                           <div className="absolute right-12 top-16 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-700 z-50 overflow-hidden text-left ring-1 ring-black/5">
-                            <button onClick={() => handleAnalyzeTenant(tenant)} disabled={isAnalyzing} className="w-full px-5 py-3 text-xs text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-bold uppercase tracking-wider block border-b border-gray-50 dark:border-slate-700">
-                              {isAnalyzing ? 'Menganalisis...' : 'Analisis Tenant'}
-                            </button>
-                            <button onClick={() => openAdminModal(tenant)} className="w-full px-5 py-3 text-xs text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-bold uppercase tracking-wider block">
+                            <button onClick={() => openAdminModal(tenant)} className="w-full px-5 py-3 text-xs text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-bold uppercase tracking-wider block border-b border-gray-50 dark:border-slate-700">
                               Kelola Owner
                             </button>
                             <button onClick={() => handleImpersonate(tenant)} className="w-full px-5 py-3 text-xs text-amber-600 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 font-bold uppercase tracking-wider block">
@@ -750,9 +696,6 @@ const TenantManagement = () => {
                      <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2 break-all">Gateway: {tenant.gateway_url || '-'}</div>
                      {activeDropdown === tenant.id && (
                         <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-2 mb-4 animate-in fade-in zoom-in-95">
-                           <button onClick={() => handleAnalyzeTenant(tenant)} disabled={isAnalyzing} className="w-full p-3 text-center text-xs font-bold text-blue-600 dark:text-blue-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
-                             {isAnalyzing ? 'Menganalisis...' : 'Analisis Tenant'}
-                           </button>
                            <button onClick={() => openAdminModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-purple-600 dark:text-purple-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
                              Kelola Owner
                            </button>
@@ -1145,18 +1088,6 @@ const TenantManagement = () => {
                         <option value="automotive">Otomotif</option>
                     </select>
                 </div>
-                <div>
-                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Webhook URL (n8n)</label>
-                    <input
-                        placeholder="https://n8n.example.com/webhook/analyze-tenant"
-                        value={analysisWebhookUrl}
-                        onChange={(e) => setAnalysisWebhookUrl(e.target.value)}
-                        className="w-full p-3 bg-white dark:bg-slate-900 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-blue-200 dark:border-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    />
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-                        Sistem akan mengirim POST request dengan payload <code>{`{ tenant_id, company_name }`}</code> ke URL ini.
-                    </p>
-                </div>
               </div>
 
               <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4 space-y-3">
@@ -1330,36 +1261,6 @@ const TenantManagement = () => {
       )}
 
       {/* MODAL: Analysis Result */}
-      {isAnalysisResultOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl p-8 max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
-                    <span>✨ Hasil Analisis AI</span>
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Rekomendasi & Insight Performa Tenant</p>
-              </div>
-              <button onClick={() => setIsAnalysisResultOpen(false)}><X className="text-gray-400 dark:text-gray-500" /></button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-slate-800 rounded-2xl p-6 border border-gray-100 dark:border-slate-700">
-                <div className="prose dark:prose-invert max-w-none text-sm whitespace-pre-wrap font-sans leading-relaxed text-gray-700 dark:text-gray-300">
-                    {analysisResult || 'Tidak ada data.'}
-                </div>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-                <button 
-                    onClick={() => setIsAnalysisResultOpen(false)}
-                    className="px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-800 dark:hover:bg-gray-100 transition-all"
-                >
-                    Tutup
-                </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
