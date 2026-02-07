@@ -36,7 +36,8 @@ const DebugAnalytics = () => {
           <tbody>
             {data.debug_info.summary_stats.map((stat: any, idx: number) => {
                 // Logika Filter Analitik Kita
-                const isAnalyzed = stat.sender_type === 'contact' && stat.message_type === 'text';
+                const isAnalyzed = stat.sender_type === 'contact'
+                  && ['text', 'conversation', 'extendedTextMessage'].includes(stat.message_type);
                 
                 return (
                     <tr key={idx} className="border-b hover:bg-gray-50">
@@ -59,7 +60,8 @@ const DebugAnalytics = () => {
         <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
             <strong>Analisa Masalah:</strong><br/>
             Jika kolom "Status Analisis" semuanya ❌, maka itulah penyebab grafik Anda kosong.<br/>
-            Fitur Analitik HANYA menghitung baris yang <strong>sender_type='contact'</strong> DAN <strong>message_type='text'</strong>.
+            Fitur Analitik menghitung baris <strong>sender_type='contact'</strong> dengan tipe
+            <strong> text/conversation/extendedTextMessage</strong>.
         </div>
       </div>
 

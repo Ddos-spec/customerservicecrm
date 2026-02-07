@@ -316,7 +316,28 @@ async function markChatAsRead(chatId) {
     return result.rows[0];
 }
 
-async function getDashboardStats(tenantId) {
+function buildChatRangeCondition(range) {
+    switch (range) {
+        case 'today':
+            return 'created_at::date = CURRENT_DATE';
+        case '7days':
+            return 'created_at >= now() - interval \'7 days\'';
+        case '30days':
+            return 'created_at >= now() - interval \'30 days\'';
+        case '90days':
+            return 'created_at >= now() - interval \'90 days\'';
+        default:
+            return null;
+    }
+}
+
+async function getDashboardStats(tenantId, range = null) {
+    const chatWhereClauses = ['tenant_id = $1'];
+    const rangeCondition = buildChatRangeCondition(range);
+    if (rangeCondition) {
+        chatWhereClauses.push(rangeCondition);
+    }
+
     const [chatStats, userStats] = await Promise.all([
         query(`
             SELECT
@@ -328,7 +349,7 @@ async function getDashboardStats(tenantId) {
                 COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'escalated') as escalated_chats,
                 COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) as today_chats
             FROM chats
-            WHERE tenant_id = $1
+            WHERE ${chatWhereClauses.join(' AND ')}
         `, [tenantId]),
         query(`
             SELECT
@@ -345,7 +366,10 @@ async function getDashboardStats(tenantId) {
     };
 }
 
-async function getSuperAdminStats() {
+async function getSuperAdminStats(range = null) {
+    const rangeCondition = buildChatRangeCondition(range);
+    const chatWhere = rangeCondition ? `WHERE ${rangeCondition}` : '';
+
     const [tenantStats, userStats, chatStats] = await Promise.all([
         query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'active') as active FROM tenants"),
         query(`
@@ -365,6 +389,7 @@ async function getSuperAdminStats() {
                 COUNT(*) FILTER (WHERE COALESCE(status, 'open') = 'escalated') as escalated_chats,
                 COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) as today_chats
             FROM chats
+            ${chatWhere}
         `)
     ]);
     return {
@@ -437,6 +462,10 @@ module.exports = {
     ensureTenantSessionColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_id TEXT UNIQUE'),
     ensureTenantGatewayColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS gateway_url TEXT'),
     ensureTenantWebhookEventsColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS webhook_events JSONB DEFAULT \'{\"groups\": true, \"private\": true, \"self\": false}\'::jsonb'),
+    ensureTenantAnalyticsColumns: async () => {
+        await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS analysis_webhook_url TEXT');
+        await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS business_category VARCHAR(50) DEFAULT \'general\'');
+    },
     ensureUserInvitesTable: async () => query('CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT \'pending\', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())'),
     ensureInviteErrorColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS last_error TEXT'),
     ensureSystemSettingsTable: async () => query('CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),

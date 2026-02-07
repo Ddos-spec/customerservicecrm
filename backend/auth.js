@@ -1736,12 +1736,15 @@ router.delete('/users/:id', requireRole('super_admin', 'admin_agent'), async (re
 router.get('/stats', requireAuth, async (req, res) => {
     try {
         const user = req.session.user;
+        const rawRange = req.query.range ? req.query.range.toString().trim() : null;
+        const allowedRanges = new Set(['today', '7days', '30days', '90days']);
+        const range = rawRange && allowedRanges.has(rawRange) ? rawRange : null;
 
         if (user.role === 'super_admin') {
-            const stats = await db.getSuperAdminStats();
+            const stats = await db.getSuperAdminStats(range);
             res.json({ success: true, stats });
         } else {
-            const stats = await db.getDashboardStats(user.tenant_id);
+            const stats = await db.getDashboardStats(user.tenant_id, range);
             res.json({ success: true, stats });
         }
     } catch (error) {
