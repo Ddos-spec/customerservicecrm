@@ -26,9 +26,9 @@ Tenant: ${tenant.company_name} (${tenant.id})`);
             JOIN chats c ON m.chat_id = c.id 
             WHERE c.tenant_id = $1 
             AND m.sender_type = 'contact'
-            AND m.message_type = 'text'
+            AND m.message_type IN ('text', 'conversation', 'extendedTextMessage')
         `, [tenant.id]);
-        console.log(`- Pesan Valid (Incoming Text): ${validMsg.rows[0].count}`);
+        console.log(`- Pesan Valid (Incoming Text/Conversation): ${validMsg.rows[0].count}`);
 
         if (parseInt(validMsg.rows[0].count) > 0) {
             // Sample pesan
@@ -38,7 +38,7 @@ Tenant: ${tenant.company_name} (${tenant.id})`);
                 JOIN chats c ON m.chat_id = c.id 
                 WHERE c.tenant_id = $1 
                 AND m.sender_type = 'contact'
-                AND m.message_type = 'text'
+                AND m.message_type IN ('text', 'conversation', 'extendedTextMessage')
                 LIMIT 3
             `, [tenant.id]);
             console.log('- Sample Pesan:');

@@ -28,6 +28,55 @@ const AdminReports = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [dateRange, setDateRange] = useState('7days');
 
+  const toNumber = (value?: number | string) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const handleExport = () => {
+    if (!stats) return;
+
+    const rangeLabelMap: Record<string, string> = {
+      today: 'Today',
+      '7days': 'Last 7 Days',
+      '30days': 'Last 30 Days',
+      '90days': 'Last 90 Days'
+    };
+
+    const rows: string[][] = [
+      ['Metric', 'Value'],
+      ['Range', rangeLabelMap[dateRange] || dateRange],
+      ['Tenant', user?.tenant_name || '-'],
+      ['Total Chats', String(toNumber(stats.chats?.total_chats))],
+      ['Unread Chats', String(toNumber(stats.chats?.total_unread))],
+      ['Open Chats', String(toNumber(stats.chats?.open_chats))],
+      ['Pending Chats', String(toNumber(stats.chats?.pending_chats))],
+      ['Closed Chats', String(toNumber(stats.chats?.closed_chats))],
+      ['Escalated Chats', String(toNumber(stats.chats?.escalated_chats))],
+      ['Today Chats', String(toNumber(stats.chats?.today_chats))],
+      ['Owners', String(toNumber(stats.users?.admin_count))],
+      ['Staff', String(toNumber(stats.users?.agent_count))],
+      ['Total Team Members', String(toNumber(stats.users?.total_users))]
+    ];
+
+    const csv = rows
+      .map((cols) => cols.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeTenant = (user?.tenant_name || 'tenant').replace(/[^a-z0-9-_]+/gi, '_');
+    const timestamp = new Date().toISOString().slice(0, 10);
+
+    link.href = url;
+    link.download = `report_${safeTenant}_${dateRange}_${timestamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const fetchStats = useCallback(async () => {
     try {
       const res = await api.get('/admin/stats', { params: { range: dateRange } });
@@ -150,7 +199,11 @@ const AdminReports = () => {
             <option value="30days">Last 30 Days</option>
             <option value="90days">Last 90 Days</option>
           </select>
-          <button className="flex items-center gap-2 px-4 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all">
+          <button
+            onClick={handleExport}
+            disabled={!stats}
+            className="flex items-center gap-2 px-4 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 disabled:bg-blue-400 transition-all"
+          >
             <Download size={18} />
             Export
           </button>

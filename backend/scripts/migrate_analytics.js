@@ -18,8 +18,14 @@ async function migrate() {
       ALTER TABLE tenants 
       ADD COLUMN IF NOT EXISTS business_category VARCHAR(50) DEFAULT 'general';
     `);
+
+    // Add tenant analysis webhook URL
+    await pool.query(`
+      ALTER TABLE tenants
+      ADD COLUMN IF NOT EXISTS analysis_webhook_url TEXT;
+    `);
     
-    console.log('Migration successful: Added business_category to tenants.');
+    console.log('Migration successful: Added business_category + analysis_webhook_url to tenants.');
   } catch (err) {
     console.error('Migration failed:', err);
   } finally {
