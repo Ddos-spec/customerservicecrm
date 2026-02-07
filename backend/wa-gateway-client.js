@@ -41,6 +41,9 @@ const gatewayClient = getGatewayClient(DEFAULT_GATEWAY_URL);
 // Session tokens cache (JID -> JWT token)
 const sessionTokens = new Map();
 
+// Collision Map (Normalized JID -> Original JID)
+const sessionJidMap = new Map();
+
 // Session -> gateway URL mapping (JID -> gateway URL)
 const sessionGatewayUrls = new Map();
 
@@ -132,7 +135,20 @@ function resolveGatewayUrl(jid) {
  * Set the JWT token for a session
  */
 function setSessionToken(jid, token) {
-    sessionTokens.set(normalizeJid(jid), token);
+    const cleanJid = normalizeJid(jid);
+    
+    // Collision Detection
+    if (sessionJidMap.has(cleanJid)) {
+        const existingJid = sessionJidMap.get(cleanJid);
+        if (existingJid !== jid) {
+            console.warn('[Gateway-Client] ⚠️ IDENTITY COLLISION DETECTED!');
+            console.warn(`[Gateway-Client] Normalized JID '${cleanJid}' is claimed by '${jid}' but was previously held by '${existingJid}'.`);
+            console.warn(`[Gateway-Client] This will cause messages from '${existingJid}' to be sent as '${jid}' (or vice versa).`);
+        }
+    }
+    
+    sessionJidMap.set(cleanJid, jid);
+    sessionTokens.set(cleanJid, token);
 }
 
 /**
@@ -205,6 +221,13 @@ function getAuthHeader(jid) {
     if (!token) {
         throw new Error(`No token found for session ${jid} (normalized: ${cleanJid})`);
     }
+    
+    // Debug Trace for Identity Swapping
+    const registeredOwner = sessionJidMap.get(cleanJid);
+    if (registeredOwner && registeredOwner !== jid) {
+        console.warn(`[Gateway-Client] ⚠️ Using token for '${cleanJid}' (owned by '${registeredOwner}') to authenticate request for '${jid}'. Possible Identity Swap.`);
+    }
+
     return { Authorization: `Bearer ${token}` };
 }
 
@@ -722,11 +745,26 @@ async function checkHealth(gatewayUrl = null) {
     }
 }
 
+/**
+ * Check for collision
+ */
+function checkCollision(jid) {
+    const cleanJid = normalizeJid(jid);
+    if (sessionJidMap.has(cleanJid)) {
+        const existingJid = sessionJidMap.get(cleanJid);
+        if (existingJid !== jid) {
+            return { collision: true, existingJid };
+        }
+    }
+    return { collision: false };
+}
+
 module.exports = {
     // Token management
     setSessionToken,
     getSessionToken,
     removeSessionToken,
+    checkCollision,
 
     // Gateway routing
     setSessionGatewayUrl,

@@ -33,6 +33,7 @@ const waGateway = require('./wa-gateway-client');
 const { createCompatSocket, enhanceSession } = require('./wa-socket-compat');
 const { getGatewayHealthSummary } = require('./utils/gateway-health');
 const { sendAlertWebhook, initAlertSystem } = require('./utils/alert-webhook');
+const { fixSessionCollisions } = require('./utils/collision-fixer');
 const marketingProcessor = require('./services/marketing/processor');
 
 const SESSION_STATUS_TTL_SEC = parseInt(process.env.SESSION_STATUS_TTL_SEC || `${7 * 24 * 60 * 60}`, 10);
@@ -855,6 +856,14 @@ function broadcastSessionUpdate() {
  */
 async function createSession(sessionId) {
     try {
+        // Pre-flight Collision Check
+        const collisionCheck = waGateway.checkCollision(sessionId);
+        if (collisionCheck.collision) {
+            const msg = `CRITICAL: Session Collision Detected! The number for '${sessionId}' resolves to the same identity as existing session '${collisionCheck.existingJid}'. Creation blocked to prevent identity swapping.`;
+            logger.error(msg);
+            throw new Error(msg);
+        }
+
         // Generate local token for API auth
         const token = crypto.randomBytes(32).toString('hex');
         sessionTokens.set(sessionId, token);
@@ -1347,6 +1356,10 @@ if (!isTest) {
         }
 
         await hydrateGatewayMappingsFromTenants();
+        
+        // Auto-fix collisions before loading sessions
+        await fixSessionCollisions();
+
         await loadTokens();
         await syncSessionsWithDatabase(); // <--- NEW CALL HERE
         await seedContactSyncQueue(true);
