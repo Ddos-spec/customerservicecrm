@@ -48,6 +48,8 @@ function buildMessagesRouter(deps) {
         // 1. Get Provider
         const provider = ProviderFactory.getProvider(tenant);
         
+        console.log(`[Messages] Sending via ${tenant.wa_provider || 'whatsmeow'} for Tenant ${tenant.company_name} (Session: ${tenant.session_id}) to ${to}`);
+        
         // 2. Determine Destination Format
         // Whatsmeow needs JID (6281...@s.whatsapp.net), Meta needs Phone (6281...)
         let destination = to;
