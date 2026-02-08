@@ -628,6 +628,8 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         const sessionIdRaw = req.body?.session_id;
         const gatewayUrlRaw = req.body?.gateway_url;
         const businessCategory = (req.body?.business_category || 'general').trim();
+        const apiKeyRaw = req.body?.api_key ? req.body.api_key.trim() : null;
+        
         const hasSessionId = typeof sessionIdRaw !== 'undefined';
         const hasGatewayUrl = typeof gatewayUrlRaw !== 'undefined';
         
@@ -680,7 +682,9 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         }
 
         const client = await db.getClient();
-        const apiKey = 'sk_' + crypto.randomBytes(24).toString('hex');
+        // Use provided API Key or generate one
+        const apiKey = apiKeyRaw || ('sk_' + crypto.randomBytes(24).toString('hex'));
+        
         try {
             await client.query('BEGIN');
             const tenantResult = await client.query(
@@ -732,8 +736,11 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
                 if (error.constraint === 'users_email_key') {
                     return res.status(409).json({ success: false, error: 'Email already exists' });
                 }
-                if (error.constraint === 'tenants_session_id_idx') {
+                if (error.constraint === 'tenants_session_id_idx' || error.constraint === 'tenants_session_id_key') {
                     return res.status(409).json({ success: false, error: 'Session ID already assigned to another tenant' });
+                }
+                if (error.constraint === 'tenants_api_key_key') {
+                    return res.status(409).json({ success: false, error: 'API Key already in use' });
                 }
                 return res.status(409).json({ success: false, error: 'Duplicate entry' });
             }
