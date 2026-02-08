@@ -14,12 +14,15 @@ const sendMessageLimiter = rateLimit({
 
 const externalApiLimiter = rateLimit({
     windowMs: 1 * 60 * 1000, // 1 minute
-    max: 60, // 60 requests per minute per API Key
-    message: { status: 'error', message: 'Rate limit exceeded. Max 60 RPM.' },
+    max: 120, // 120 requests per minute per API Key (increased for production)
+    message: { status: 'error', message: 'Rate limit exceeded. Max 120 RPM.' },
     keyGenerator: (req) => {
         const header = req.headers['x-tenant-key'];
+        // Use key or IP as fallback (but prefer key)
         return Array.isArray(header) ? header[0] : (header || req.ip);
-    }
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 
 function buildMessagesRouter(deps) {
@@ -135,14 +138,6 @@ function buildMessagesRouter(deps) {
                 return res.status(400).json({ status: 'error', message: 'phone and message are required' });
             }
 
-            // DEBUG TRACE
-            console.log(`[DEBUG-TRACE] External Send:
-              - API Key: ${sanitizedKey.substring(0, 10)}...
-              - Tenant: ${tenant.company_name} (Session: ${tenant.session_id})
-              - Target Phone: ${rawPhone}
-              - Msg: ${messageText.substring(0, 15)}...
-            `);
-
             // Send via Provider
             const result = await sendMessageViaProvider(tenant, rawPhone, messageText, false);
 
@@ -168,12 +163,12 @@ function buildMessagesRouter(deps) {
             });
 
         } catch (error) {
-            console.error('[External Message API]', error);
+            console.error('[External Message API] Error:', error.message);
             let message = error.message;
-            if (message.includes('status code 500')) {
-                message += '. Check if the WhatsApp session is connected and the Gateway is healthy.';
+            if (message.includes('status code 500') || message.includes('WhatsApp Offline')) {
+                message = 'WhatsApp Disconnected or Gateway Unreachable. Please check your connection status.';
             }
-            res.status(500).json({ status: 'error', message });
+            res.status(503).json({ status: 'error', message });
         }
     }
 

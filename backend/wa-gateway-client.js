@@ -137,13 +137,13 @@ function resolveGatewayUrl(jid) {
 function setSessionToken(jid, token) {
     const cleanJid = normalizeJid(jid);
     
-    // Collision Detection
+    // Collision Detection (Security Critical)
     if (sessionJidMap.has(cleanJid)) {
         const existingJid = sessionJidMap.get(cleanJid);
         if (existingJid !== jid) {
-            console.warn('[Gateway-Client] ⚠️ IDENTITY COLLISION DETECTED!');
-            console.warn(`[Gateway-Client] Normalized JID '${cleanJid}' is claimed by '${jid}' but was previously held by '${existingJid}'.`);
-            console.warn(`[Gateway-Client] This will cause messages from '${existingJid}' to be sent as '${jid}' (or vice versa).`);
+            const errorMsg = `[Gateway-Client] ⛔ SECURITY ALERT: IDENTITY COLLISION DETECTED! Normalized JID '${cleanJid}' is already owned by '${existingJid}' but '${jid}' is trying to claim it. This request is blocked to prevent Cross-Tenant Identity Swapping.`;
+            console.error(errorMsg);
+            throw new Error(errorMsg);
         }
     }
     
