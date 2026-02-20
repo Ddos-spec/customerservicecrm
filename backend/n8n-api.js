@@ -109,11 +109,36 @@ async function resolveTenantForSend(req, tenantIdInput) {
  * Set N8N_API_KEY in ENV
  */
 function validateN8nAuth(req, res, next) {
-    const apiKey = req.headers['x-api-key'] || req.query.api_key;
     const expectedKey = process.env.N8N_API_KEY;
+    const headerApiKey = readHeaderString(req, 'x-api-key');
+    const queryApiKeyRaw = req.query?.api_key;
+    const queryApiKey = Array.isArray(queryApiKeyRaw)
+        ? (queryApiKeyRaw[0] || '').toString().trim()
+        : (queryApiKeyRaw ? queryApiKeyRaw.toString().trim() : '');
+    const apiKey = headerApiKey || queryApiKey;
+    const tenantKey = readHeaderString(req, 'x-tenant-key');
+    const routeAllowsTenantKeyOnly = [
+        '/log-message',
+        '/log-message-bulk',
+        '/escalate',
+        '/escalation-queue',
+        '/send-message',
+        '/send-image',
+        '/conversation',
+        '/close-chat'
+    ].includes(req.path);
 
     // If N8N_API_KEY is set, validate it
-    if (expectedKey && apiKey !== expectedKey) {
+    if (expectedKey && apiKey === expectedKey) {
+        return next();
+    }
+
+    // Tenant-scoped endpoints may use tenant key only; tenant validity is checked in route handler.
+    if (routeAllowsTenantKeyOnly && tenantKey) {
+        return next();
+    }
+
+    if (expectedKey) {
         return res.status(401).json({ success: false, error: 'Invalid API key' });
     }
 
@@ -153,12 +178,21 @@ function initializeN8nApi(deps) {
             } = req.body;
 
             // Validation
-            if (!phone_number || !message_text || !sender_type || !tenant_id) {
+            if (!phone_number || !message_text || !sender_type) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields: phone_number, message_text, sender_type, tenant_id'
+                    error: 'Missing required fields: phone_number, message_text, sender_type'
                 });
             }
+
+            const tenantResult = await resolveTenantForSend(req, tenant_id);
+            if (!tenantResult.ok) {
+                return res.status(tenantResult.status).json({
+                    success: false,
+                    error: tenantResult.error
+                });
+            }
+            const tenant = tenantResult.tenant;
 
             // Normalize sender_type
             const normalizedSenderType = sender_type === 'me' ? 'agent' : sender_type;
@@ -167,7 +201,7 @@ function initializeN8nApi(deps) {
                 : 'customer';
 
             const { chat } = await resolveChatByPhone({
-                tenantId: tenant_id,
+                tenantId: tenant.id,
                 phoneNumber: phone_number,
                 customerName: customer_name,
                 createIfMissing: true
@@ -191,6 +225,7 @@ function initializeN8nApi(deps) {
                 success: true,
                 data: {
                     message_id: message.id,
+                    tenant_id: tenant.id,
                     chat_id: chat.id,
                     chat_status: chat.status,
                     sender_type: senderType
@@ -218,16 +253,40 @@ function initializeN8nApi(deps) {
                 });
             }
 
+            let defaultTenant = null;
+            if (messages.some((msg) => !msg?.tenant_id)) {
+                const tenantResult = await resolveTenantForSend(req, null);
+                if (!tenantResult.ok) {
+                    return res.status(tenantResult.status).json({
+                        success: false,
+                        error: tenantResult.error
+                    });
+                }
+                defaultTenant = tenantResult.tenant;
+            }
+
             const results = [];
             for (const msg of messages) {
                 try {
+                    if (!msg?.phone_number || !msg?.message_text || !msg?.sender_type) {
+                        throw new Error('Each message requires phone_number, message_text, sender_type');
+                    }
+
+                    const tenantResult = msg.tenant_id
+                        ? await resolveTenantForSend(req, msg.tenant_id)
+                        : { ok: true, tenant: defaultTenant };
+                    if (!tenantResult.ok || !tenantResult.tenant) {
+                        throw new Error(tenantResult.error || 'Tenant not found');
+                    }
+                    const tenant = tenantResult.tenant;
+
                     const normalizedSenderType = msg.sender_type === 'me' ? 'agent' : msg.sender_type;
                     const senderType = ['agent', 'customer', 'system'].includes(normalizedSenderType)
                         ? normalizedSenderType
                         : 'customer';
 
                     const { chat } = await resolveChatByPhone({
-                        tenantId: msg.tenant_id,
+                        tenantId: tenant.id,
                         phoneNumber: msg.phone_number,
                         customerName: msg.customer_name,
                         createIfMissing: true
@@ -246,7 +305,7 @@ function initializeN8nApi(deps) {
                         isFromMe: senderType !== 'customer'
                     });
 
-                    results.push({ success: true, message_id: message.id, chat_id: chat.id });
+                    results.push({ success: true, message_id: message.id, tenant_id: tenant.id, chat_id: chat.id });
                 } catch (err) {
                     results.push({ success: false, error: err.message, phone: msg.phone_number });
                 }
@@ -270,15 +329,24 @@ function initializeN8nApi(deps) {
         try {
             const { phone_number, tenant_id, reason, ai_summary } = req.body;
 
-            if (!phone_number || !tenant_id) {
+            if (!phone_number) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing required fields: phone_number, tenant_id'
+                    error: 'Missing required fields: phone_number'
                 });
             }
 
+            const tenantResult = await resolveTenantForSend(req, tenant_id);
+            if (!tenantResult.ok) {
+                return res.status(tenantResult.status).json({
+                    success: false,
+                    error: tenantResult.error
+                });
+            }
+            const tenant = tenantResult.tenant;
+
             const { chat } = await resolveChatByPhone({
-                tenantId: tenant_id,
+                tenantId: tenant.id,
                 phoneNumber: phone_number,
                 createIfMissing: false
             });
@@ -300,6 +368,7 @@ function initializeN8nApi(deps) {
                 success: true,
                 data: {
                     chat_id: updated?.id || chat.id,
+                    tenant_id: tenant.id,
                     status: updated?.status || 'escalated',
                     escalated: true,
                     note: reason || null,
@@ -370,12 +439,14 @@ function initializeN8nApi(deps) {
         try {
             const { tenant_id, limit = 20 } = req.query;
 
-            if (!tenant_id) {
-                return res.status(400).json({
+            const tenantResult = await resolveTenantForSend(req, tenant_id);
+            if (!tenantResult.ok) {
+                return res.status(tenantResult.status).json({
                     success: false,
-                    error: 'tenant_id is required'
+                    error: tenantResult.error
                 });
             }
+            const tenant = tenantResult.tenant;
 
             const result = await db.query(
                 `SELECT c.*,
@@ -388,11 +459,12 @@ function initializeN8nApi(deps) {
                  WHERE c.tenant_id = $1 AND COALESCE(c.status, 'open') = 'escalated'
                  ORDER BY c.updated_at DESC
                  LIMIT $2`,
-                [tenant_id, Number.parseInt(limit, 10)]
+                [tenant.id, Number.parseInt(limit, 10)]
             );
 
             res.json({
                 success: true,
+                tenant_id: tenant.id,
                 chats: result.rows,
                 count: result.rows.length
             });
@@ -603,15 +675,24 @@ function initializeN8nApi(deps) {
         try {
             const { phone_number, tenant_id, limit = 50 } = req.query;    
 
-            if (!phone_number || !tenant_id) {
+            if (!phone_number) {
                 return res.status(400).json({
                     success: false,
-                    error: 'phone_number and tenant_id are required'
+                    error: 'phone_number is required'
                 });
             }
 
+            const tenantResult = await resolveTenantForSend(req, tenant_id);
+            if (!tenantResult.ok) {
+                return res.status(tenantResult.status).json({
+                    success: false,
+                    error: tenantResult.error
+                });
+            }
+            const tenant = tenantResult.tenant;
+
             const { chat, recipient } = await resolveChatByPhone({
-                tenantId: tenant_id,
+                tenantId: tenant.id,
                 phoneNumber: phone_number,
                 createIfMissing: false
             });
@@ -634,6 +715,7 @@ function initializeN8nApi(deps) {
 
             res.json({
                 success: true,
+                tenant_id: tenant.id,
                 chat: {
                     id: chat.id,
                     status: chat.status,
@@ -659,23 +741,29 @@ function initializeN8nApi(deps) {
             const { phone_number, tenant_id } = req.body;
             const chatId = (req.body?.chat_id || req.body?.chatId || '').toString().trim();
 
+            const tenantResult = await resolveTenantForSend(req, tenant_id);
+            if (!tenantResult.ok) {
+                return res.status(tenantResult.status).json({
+                    success: false,
+                    error: tenantResult.error
+                });
+            }
+            const tenant = tenantResult.tenant;
+
             let chatToClose = null;
 
             if (chatId) {
-                const params = [chatId];
-                let sql = 'SELECT * FROM chats WHERE id = $1';
-                if (tenant_id) {
-                    sql += ' AND tenant_id = $2';
-                    params.push(tenant_id);
-                }
-                const chatRes = await db.query(sql, params);
+                const chatRes = await db.query(
+                    'SELECT * FROM chats WHERE id = $1 AND tenant_id = $2',
+                    [chatId, tenant.id]
+                );
                 chatToClose = chatRes.rows[0];
                 if (!chatToClose) {
                     return res.status(404).json({ success: false, error: 'Chat tidak ditemukan' });
                 }
-            } else if (phone_number && tenant_id) {
+            } else if (phone_number) {
                 const { chat } = await resolveChatByPhone({
-                    tenantId: tenant_id,
+                    tenantId: tenant.id,
                     phoneNumber: phone_number,
                     createIfMissing: false
                 });
@@ -686,7 +774,7 @@ function initializeN8nApi(deps) {
             } else {
                 return res.status(400).json({
                     success: false,
-                    error: 'chat_id or (phone_number + tenant_id) required'
+                    error: 'chat_id or phone_number required'
                 });
             }
 
@@ -698,6 +786,7 @@ function initializeN8nApi(deps) {
 
             res.json({
                 success: true,
+                tenant_id: tenant.id,
                 chat_id: updated?.id || chatToClose.id,
                 status: 'closed'
             });

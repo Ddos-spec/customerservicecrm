@@ -3,7 +3,6 @@ import { Copy, Terminal, ExternalLink, ShieldCheck, Zap, MessageSquare, AlertCir
 import { toast } from 'sonner';
 
 const SuperAdminApiDocs = () => {
-  const [apiKey] = useState(import.meta.env.VITE_N8N_API_KEY || 'N8N_API_KEY_ANDA');
   const [apiUrl] = useState(import.meta.env.VITE_API_URL || window.location.origin + '/api/v1');
 
   const copyToClipboard = (text: string) => {
@@ -26,13 +25,12 @@ const SuperAdminApiDocs = () => {
     },
     {
       title: 'Incoming Message Log',
-      description: 'Gunakan ini untuk mencatat pesan yang masuk dari customer ke database CRM.',
+      description: 'Catat pesan masuk dari customer (tenant auto-resolve dari X-Tenant-Key).',
       icon: <MessageSquare className="text-emerald-500" />,
       curl: `curl -X POST "${apiUrl}/n8n/log-message" \
   -H "Content-Type: application/json" \
-  -H "x-api-key: ${apiKey}" \
+  -H "X-Tenant-Key: TENANT_API_KEY" \
   -d '{ 
-    "tenant_id": 1,
     "phone_number": "628123456789",
     "message_text": "Halo, saya mau tanya...",
     "sender_type": "individual",
@@ -45,7 +43,6 @@ const SuperAdminApiDocs = () => {
       icon: <Zap className="text-amber-500" />,
       curl: `curl -X POST "${apiUrl}/n8n/send-message" \
   -H "Content-Type: application/json" \
-  -H "x-api-key: ${apiKey}" \
   -H "X-Tenant-Key: TENANT_API_KEY" \
   -d '{ 
     "phone_number": "628123456789",
@@ -58,7 +55,6 @@ const SuperAdminApiDocs = () => {
       icon: <Terminal className="text-sky-500" />,
       curl: `curl -X POST "${apiUrl}/n8n/send-image" \
   -H "Content-Type: application/json" \
-  -H "x-api-key: ${apiKey}" \
   -H "X-Tenant-Key: TENANT_API_KEY" \
   -d '{ 
     "phone_number": "628123456789",
@@ -69,13 +65,12 @@ const SuperAdminApiDocs = () => {
     },
     {
       title: 'Escalate to Human',
-      description: 'Pindahkan percakapan dari AI ke Antrian Staff Manusia.',
+      description: 'Pindahkan percakapan dari AI ke antrian staff manusia.',
       icon: <AlertCircle className="text-rose-500" />,
       curl: `curl -X POST "${apiUrl}/n8n/escalate" \
   -H "Content-Type: application/json" \
-  -H "x-api-key: ${apiKey}" \
+  -H "X-Tenant-Key: TENANT_API_KEY" \
   -d '{ 
-    "tenant_id": 1,
     "phone_number": "628123456789",
     "reason": "Customer minta bicara dengan manusia",
     "ai_summary": "Tanya soal refund tapi AI tidak paham."
@@ -85,8 +80,8 @@ const SuperAdminApiDocs = () => {
       title: 'Get Chat History',
       description: 'Ambil riwayat percakapan terakhir untuk memberikan konteks pada AI.',
       icon: <Terminal className="text-emerald-500" />,
-      curl: `curl -X GET "${apiUrl}/n8n/conversation?tenant_id=1&phone_number=628123456789&limit=10" \
-  -H "x-api-key: ${apiKey}"`
+      curl: `curl -X GET "${apiUrl}/n8n/conversation?phone_number=628123456789&limit=10" \
+  -H "X-Tenant-Key: TENANT_API_KEY"`
     }
   ];
 
@@ -106,9 +101,9 @@ const SuperAdminApiDocs = () => {
             <div>
               <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">Security Note</h3>
               <p className="text-emerald-700/80 dark:text-emerald-300/80 text-sm mt-1 leading-relaxed">
-                Endpoint <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n</code> pakai header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code> (isi dari <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">N8N_API_KEY</code>).
-                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n/send-message</code> dan <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n/send-image</code>, lu bisa kirim header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code> biar gak perlu isi <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">tenant_id</code>.
-                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages/external</code> gunakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code> (API key per tenant).
+                Endpoint tenant-scoped di <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n</code> (log-message, escalate, conversation, send-message, send-image, close-chat, escalation-queue) bisa pakai <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code> tanpa <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">tenant_id</code>.
+                Endpoint non-tenant (contoh: <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n/check-escalation</code>) tetap pakai <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code> / query <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">api_key</code>.
+                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages/external</code>, tetap gunakan <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code>.
               </p>
             </div>
           </div>
