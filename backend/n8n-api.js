@@ -69,6 +69,39 @@ function parseBooleanFlag(value, defaultValue = false) {
     return defaultValue;
 }
 
+function readHeaderString(req, name) {
+    const value = req.headers?.[name];
+    if (Array.isArray(value)) return (value[0] || '').toString().trim();
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+async function resolveTenantForSend(req, tenantIdInput) {
+    const tenantId = tenantIdInput ? tenantIdInput.toString().trim() : '';
+    if (tenantId) {
+        const tenant = await db.getTenantById(tenantId);
+        if (!tenant) {
+            return { ok: false, status: 404, error: 'Tenant not found' };
+        }
+        return { ok: true, tenant };
+    }
+
+    const tenantKey = readHeaderString(req, 'x-tenant-key');
+    if (!tenantKey) {
+        return {
+            ok: false,
+            status: 400,
+            error: 'Tenant context required: provide tenant_id or X-Tenant-Key header'
+        };
+    }
+
+    const tenant = await db.getTenantByApiKey(tenantKey);
+    if (!tenant) {
+        return { ok: false, status: 401, error: 'Invalid X-Tenant-Key header' };
+    }
+
+    return { ok: true, tenant };
+}
+
 // ===== WEBHOOK AUTH (Simple API Key) =====
 
 /**
@@ -374,11 +407,12 @@ function initializeN8nApi(deps) {
 
     /**
      * POST /api/v1/n8n/send-message
-     * Send a WhatsApp message via Gateway and log it
+     * Send a WhatsApp message via Gateway and log it.
+     * Tenant can be resolved by body tenant_id OR header X-Tenant-Key.
      *
      * Body:
      * {
-     *   "tenant_id": 1,
+     *   "tenant_id": "optional-tenant-uuid",
      *   "phone_number": "628123456789",
      *   "message_text": "Hello world"
      * }
@@ -387,16 +421,24 @@ function initializeN8nApi(deps) {
         try {
             const { tenant_id, phone_number, message_text } = req.body;   
 
-            if (!tenant_id || !phone_number || !message_text) {
+            if (!phone_number || !message_text) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing fields: tenant_id, phone_number, message_text'
+                    error: 'Missing fields: phone_number, message_text'
+                });
+            }
+
+            const tenantResult = await resolveTenantForSend(req, tenant_id);
+            if (!tenantResult.ok) {
+                return res.status(tenantResult.status).json({
+                    success: false,
+                    error: tenantResult.error
                 });
             }
 
             // 1. Get Tenant Session ID
-            const tenant = await db.getTenantById(tenant_id);
-            if (!tenant || !tenant.session_id) {
+            const tenant = tenantResult.tenant;
+            if (!tenant?.session_id) {
                 return res.status(400).json({
                     success: false,
                     error: 'Tenant not found or has no active WhatsApp session'
@@ -406,7 +448,7 @@ function initializeN8nApi(deps) {
             const sessionId = tenant.session_id;
 
             const { chat, recipient } = await resolveChatByPhone({
-                tenantId: tenant_id,
+                tenantId: tenant.id,
                 phoneNumber: phone_number,
                 customerName: phone_number,
                 createIfMissing: true
@@ -445,6 +487,7 @@ function initializeN8nApi(deps) {
             res.json({
                 success: true,
                 message_id: message.id,
+                tenant_id: tenant.id,
                 chat_id: chat.id,
                 gateway_response: result.data
             });
@@ -457,11 +500,12 @@ function initializeN8nApi(deps) {
 
     /**
      * POST /api/v1/n8n/send-image
-     * Send an image via WhatsApp Gateway and log it
+     * Send an image via WhatsApp Gateway and log it.
+     * Tenant can be resolved by body tenant_id OR header X-Tenant-Key.
      *
      * Body:
      * {
-     *   "tenant_id": 1,
+     *   "tenant_id": "optional-tenant-uuid",
      *   "phone_number": "628123456789",
      *   "image_url": "https://example.com/image.jpg",
      *   "caption": "Optional caption",
@@ -476,15 +520,23 @@ function initializeN8nApi(deps) {
             const viewOnceInput = typeof req.body?.view_once !== 'undefined' ? req.body.view_once : req.body?.viewonce;
             const viewOnce = parseBooleanFlag(viewOnceInput, false);
 
-            if (!tenant_id || !phone_number || !imageSource) {
+            if (!phone_number || !imageSource) {
                 return res.status(400).json({
                     success: false,
-                    error: 'Missing fields: tenant_id, phone_number, image_url'
+                    error: 'Missing fields: phone_number, image_url'
                 });
             }
 
-            const tenant = await db.getTenantById(tenant_id);
-            if (!tenant || !tenant.session_id) {
+            const tenantResult = await resolveTenantForSend(req, tenant_id);
+            if (!tenantResult.ok) {
+                return res.status(tenantResult.status).json({
+                    success: false,
+                    error: tenantResult.error
+                });
+            }
+
+            const tenant = tenantResult.tenant;
+            if (!tenant?.session_id) {
                 return res.status(400).json({
                     success: false,
                     error: 'Tenant not found or has no active WhatsApp session'
@@ -494,7 +546,7 @@ function initializeN8nApi(deps) {
             const sessionId = tenant.session_id;
 
             const { chat, recipient } = await resolveChatByPhone({
-                tenantId: tenant_id,
+                tenantId: tenant.id,
                 phoneNumber: phone_number,
                 customerName: phone_number,
                 createIfMissing: true
@@ -531,6 +583,7 @@ function initializeN8nApi(deps) {
             res.json({
                 success: true,
                 message_id: message.id,
+                tenant_id: tenant.id,
                 chat_id: chat.id,
                 media_url: imageSource,
                 gateway_response: result.data

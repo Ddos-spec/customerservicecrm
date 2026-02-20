@@ -41,26 +41,26 @@ const SuperAdminApiDocs = () => {
     },
     {
       title: 'Send Message (WhatsApp)',
-      description: 'Kirim pesan WhatsApp langsung dari n8n melalui gateway CRM.',
+      description: 'Kirim pesan WhatsApp dari n8n tanpa tenant_id (tenant auto-resolve dari X-Tenant-Key).',
       icon: <Zap className="text-amber-500" />,
       curl: `curl -X POST "${apiUrl}/n8n/send-message" \
   -H "Content-Type: application/json" \
   -H "x-api-key: ${apiKey}" \
+  -H "X-Tenant-Key: TENANT_API_KEY" \
   -d '{ 
-    "tenant_id": 1,
     "phone_number": "628123456789",
     "message_text": "Ini jawaban otomatis dari AI: ..."
   }'`
     },
     {
       title: 'Send Image (WhatsApp)',
-      description: 'Kirim gambar WhatsApp dari n8n via URL/base64/path yang bisa diakses server.',
+      description: 'Kirim gambar WhatsApp tanpa tenant_id (pakai X-Tenant-Key tenant).',
       icon: <Terminal className="text-sky-500" />,
       curl: `curl -X POST "${apiUrl}/n8n/send-image" \
   -H "Content-Type: application/json" \
   -H "x-api-key: ${apiKey}" \
+  -H "X-Tenant-Key: TENANT_API_KEY" \
   -d '{ 
-    "tenant_id": 1,
     "phone_number": "628123456789",
     "image_url": "https://example.com/sample.jpg",
     "caption": "Ini katalog terbaru ya",
@@ -107,6 +107,7 @@ const SuperAdminApiDocs = () => {
               <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">Security Note</h3>
               <p className="text-emerald-700/80 dark:text-emerald-300/80 text-sm mt-1 leading-relaxed">
                 Endpoint <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n</code> pakai header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code> (isi dari <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">N8N_API_KEY</code>).
+                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n/send-message</code> dan <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n/send-image</code>, lu bisa kirim header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code> biar gak perlu isi <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">tenant_id</code>.
                 Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages/external</code> gunakan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code> (API key per tenant).
               </p>
             </div>
