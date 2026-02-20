@@ -58,6 +58,17 @@ async function resolveChatByPhone({ tenantId, phoneNumber, customerName, createI
     return { chat: chatRes.rows[0] || null, recipient };
 }
 
+function parseBooleanFlag(value, defaultValue = false) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+        if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
+    }
+    return defaultValue;
+}
+
 // ===== WEBHOOK AUTH (Simple API Key) =====
 
 /**
@@ -440,6 +451,93 @@ function initializeN8nApi(deps) {
 
         } catch (error) {
             console.error('n8n send-message error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    /**
+     * POST /api/v1/n8n/send-image
+     * Send an image via WhatsApp Gateway and log it
+     *
+     * Body:
+     * {
+     *   "tenant_id": 1,
+     *   "phone_number": "628123456789",
+     *   "image_url": "https://example.com/image.jpg",
+     *   "caption": "Optional caption",
+     *   "view_once": false
+     * }
+     */
+    router.post('/send-image', async (req, res) => {
+        try {
+            const { tenant_id, phone_number } = req.body;
+            const imageSource = (req.body?.image_url || req.body?.image || '').toString().trim();
+            const caption = (req.body?.caption || '').toString();
+            const viewOnceInput = typeof req.body?.view_once !== 'undefined' ? req.body.view_once : req.body?.viewonce;
+            const viewOnce = parseBooleanFlag(viewOnceInput, false);
+
+            if (!tenant_id || !phone_number || !imageSource) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Missing fields: tenant_id, phone_number, image_url'
+                });
+            }
+
+            const tenant = await db.getTenantById(tenant_id);
+            if (!tenant || !tenant.session_id) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Tenant not found or has no active WhatsApp session'
+                });
+            }
+
+            const sessionId = tenant.session_id;
+
+            const { chat, recipient } = await resolveChatByPhone({
+                tenantId: tenant_id,
+                phoneNumber: phone_number,
+                customerName: phone_number,
+                createIfMissing: true
+            });
+
+            if (!chat) {
+                return res.status(404).json({ success: false, error: 'Chat tidak ditemukan' });
+            }
+
+            const destination = recipient.raw.includes('@') ? recipient.raw : recipient.normalizedPhone;
+
+            if (!scheduleMessageSend || !waGateway) {
+                return res.status(503).json({ success: false, error: 'Gateway service not initialized' });
+            }
+
+            const result = await scheduleMessageSend(sessionId, async () => {
+                const response = await waGateway.sendImage(sessionId, destination, imageSource, caption, viewOnce);
+                if (!(response?.status === true || response?.status === 'success')) {
+                    throw new Error(response?.message || 'Gateway failed to send image');
+                }
+                return response;
+            });
+
+            const message = await db.logMessage({
+                chatId: chat.id,
+                senderType: 'agent',
+                messageType: 'image',
+                body: caption || '[Image]',
+                mediaUrl: imageSource,
+                waMessageId: result.data?.msgid || null,
+                isFromMe: true
+            });
+
+            res.json({
+                success: true,
+                message_id: message.id,
+                chat_id: chat.id,
+                media_url: imageSource,
+                gateway_response: result.data
+            });
+
+        } catch (error) {
+            console.error('n8n send-image error:', error);
             res.status(500).json({ success: false, error: error.message });
         }
     });
