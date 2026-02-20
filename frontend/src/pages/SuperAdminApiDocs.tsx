@@ -101,9 +101,7 @@ const SuperAdminApiDocs = () => {
             <div>
               <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">Security Note</h3>
               <p className="text-emerald-700/80 dark:text-emerald-300/80 text-sm mt-1 leading-relaxed">
-                Endpoint tenant-scoped di <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n</code> (log-message, escalate, conversation, send-message, send-image, close-chat, escalation-queue) bisa pakai <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code> tanpa <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">tenant_id</code>.
-                Endpoint non-tenant (contoh: <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/n8n/check-escalation</code>) tetap pakai <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">x-api-key</code> / query <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">api_key</code>.
-                Untuk <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">/messages/external</code>, tetap gunakan <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code>.
+                Semua endpoint yang ditampilkan di halaman ini bisa dipakai cukup dengan header <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">X-Tenant-Key</code> (tanpa isi <code className="bg-emerald-100 dark:bg-emerald-800 px-1.5 py-0.5 rounded font-bold">tenant_id</code> dan tanpa header tambahan lain).
               </p>
             </div>
           </div>

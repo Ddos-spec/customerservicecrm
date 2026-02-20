@@ -212,6 +212,36 @@ function handleGatewayError(jid, error, response = null) {
     }
 }
 
+function getGatewayErrorMessage(error) {
+    const responseData = error?.response?.data;
+    if (typeof responseData?.message === 'string' && responseData.message.trim()) {
+        return responseData.message.trim();
+    }
+    if (typeof responseData?.error === 'string' && responseData.error.trim()) {
+        return responseData.error.trim();
+    }
+    return error?.message || 'Unknown gateway error';
+}
+
+async function reauthAndReconnect(jid) {
+    const password = process.env.WA_GATEWAY_PASSWORD;
+    if (!password) return false;
+
+    const auth = await authenticate(jid, password);
+    if (!auth?.data?.token) return false;
+
+    setSessionToken(jid, auth.data.token);
+
+    // Best-effort self-healing: ensure gateway has an initialized/reconnected client.
+    try {
+        await login(jid);
+    } catch (loginErr) {
+        console.warn(`[Gateway-Retry] Reconnect attempt for ${jid} returned: ${loginErr.message}`);
+    }
+
+    return true;
+}
+
 /**
  * Get authorization header for a session
  */
@@ -416,17 +446,11 @@ async function sendText(jid, to, message) {
         if (error?.response?.status === 500 || error?.response?.status === 401) {
             console.warn(`[Gateway-Retry] Send failed (${error.response.status}). Attempting re-auth for ${jid}...`);
             try {
-                // Try to re-authenticate
-                const password = process.env.WA_GATEWAY_PASSWORD;
-                if (password) {
-                    const auth = await authenticate(jid, password);
-                    if (auth?.data?.token) {
-                        setSessionToken(jid, auth.data.token);
-                        console.log(`[Gateway-Retry] Re-auth successful for ${jid}. Retrying send...`);
-                        // Retry the request with new token
-                        const form = buildUrlEncoded({ msisdn: to, message });
-                        return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
-                    }
+                const recovered = await reauthAndReconnect(jid);
+                if (recovered) {
+                    console.log(`[Gateway-Retry] Recovery successful for ${jid}. Retrying send...`);
+                    const form = buildUrlEncoded({ msisdn: to, message });
+                    return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
                 }
             } catch (retryErr) {
                 console.error(`[Gateway-Retry] Retry failed for ${jid}: ${retryErr.message}`);
@@ -434,7 +458,7 @@ async function sendText(jid, to, message) {
         }
         
         handleGatewayError(jid, error, error?.response);
-        throw new Error(`Send text failed: ${error.message}`);
+        throw new Error(`Send text failed: ${getGatewayErrorMessage(error)}`);
     }
 }
 
@@ -458,8 +482,29 @@ async function sendImage(jid, to, image, caption = '', viewOnce = false) {
 
         return await postFormData('/send/image', formData, getAuthHeader(jid), jid);
     } catch (error) {
+        if (error?.response?.status === 500 || error?.response?.status === 401) {
+            console.warn(`[Gateway-Retry] Send image failed (${error.response.status}). Attempting recovery for ${jid}...`);
+            try {
+                const recovered = await reauthAndReconnect(jid);
+                if (recovered) {
+                    const retryFormData = new FormData();
+                    retryFormData.append('msisdn', to);
+                    if (caption) retryFormData.append('caption', caption);
+                    retryFormData.append('viewonce', String(Boolean(viewOnce)));
+
+                    const { file, filename } = await resolveFileSource(image, 'image');
+                    retryFormData.append('image', file, filename);
+
+                    console.log(`[Gateway-Retry] Recovery successful for ${jid}. Retrying send image...`);
+                    return await postFormData('/send/image', retryFormData, getAuthHeader(jid), jid);
+                }
+            } catch (retryErr) {
+                console.error(`[Gateway-Retry] Send image retry failed for ${jid}: ${retryErr.message}`);
+            }
+        }
+
         handleGatewayError(jid, error, error?.response);
-        throw new Error(`Send image failed: ${error.message}`);
+        throw new Error(`Send image failed: ${getGatewayErrorMessage(error)}`);
     }
 }
 

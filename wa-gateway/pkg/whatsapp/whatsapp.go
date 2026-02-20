@@ -398,12 +398,27 @@ func WhatsAppComposeJID(id string) types.JID {
 }
 
 func WhatsAppDecomposeJID(id string) string {
+	if len(id) == 0 {
+		return ""
+	}
+
 	// Check if WhatsApp ID Contains '@' Symbol
 	if strings.ContainsRune(id, '@') {
 		// Split WhatsApp ID Based on '@' Symbol
 		// and Get Only The First Section Before The Symbol
 		buffers := strings.Split(id, "@")
 		id = buffers[0]
+	}
+
+	// Some device IDs may include companion suffix (e.g. 628xxx:74).
+	// Normalize to base session ID so lookups are stable across restarts.
+	if strings.ContainsRune(id, ':') {
+		buffers := strings.Split(id, ":")
+		id = buffers[0]
+	}
+
+	if len(id) == 0 {
+		return ""
 	}
 
 	// Check if WhatsApp ID First Character is '+' Symbol
