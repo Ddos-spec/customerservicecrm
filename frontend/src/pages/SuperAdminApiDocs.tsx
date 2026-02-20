@@ -53,6 +53,21 @@ const SuperAdminApiDocs = () => {
   }'`
     },
     {
+      title: 'Send Image (WhatsApp)',
+      description: 'Kirim gambar WhatsApp dari n8n via URL/base64/path yang bisa diakses server.',
+      icon: <Terminal className="text-sky-500" />,
+      curl: `curl -X POST "${apiUrl}/n8n/send-image" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: ${apiKey}" \
+  -d '{ 
+    "tenant_id": 1,
+    "phone_number": "628123456789",
+    "image_url": "https://example.com/sample.jpg",
+    "caption": "Ini katalog terbaru ya",
+    "view_once": false
+  }'`
+    },
+    {
       title: 'Escalate to Human',
       description: 'Pindahkan percakapan dari AI ke Antrian Staff Manusia.',
       icon: <AlertCircle className="text-rose-500" />,
