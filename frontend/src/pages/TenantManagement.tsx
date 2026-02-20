@@ -1145,7 +1145,7 @@ const TenantManagement = () => {
                   <p className="text-[11px] text-blue-600 dark:text-blue-300">Hubungkan dengan n8n untuk analisis performa tenant.</p>
                 </div>
                 <div>
-                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Analysis Webhook URL</label>
+                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">URL Webhook Analisis</label>
                     <input
                         type="url"
                         placeholder="https://n8n.example.com/webhook/tenant-analysis"
