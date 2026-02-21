@@ -24,6 +24,10 @@ interface Tenant {
     groups: boolean;
     private: boolean;
     self: boolean;
+    image: boolean;
+    video: boolean;
+    audio: boolean;
+    document: boolean;
   } | null;
 }
 
@@ -40,6 +44,36 @@ interface TenantWebhook {
   url: string;
   created_at?: string;
 }
+
+type WebhookEventsConfig = {
+  groups: boolean;
+  private: boolean;
+  self: boolean;
+  image: boolean;
+  video: boolean;
+  audio: boolean;
+  document: boolean;
+};
+
+const DEFAULT_WEBHOOK_EVENTS: WebhookEventsConfig = {
+  groups: true,
+  private: true,
+  self: false,
+  image: true,
+  video: true,
+  audio: true,
+  document: true
+};
+
+const normalizeWebhookEvents = (raw?: Partial<WebhookEventsConfig> | null): WebhookEventsConfig => ({
+  groups: typeof raw?.groups === 'boolean' ? raw.groups : DEFAULT_WEBHOOK_EVENTS.groups,
+  private: typeof raw?.private === 'boolean' ? raw.private : DEFAULT_WEBHOOK_EVENTS.private,
+  self: typeof raw?.self === 'boolean' ? raw.self : DEFAULT_WEBHOOK_EVENTS.self,
+  image: typeof raw?.image === 'boolean' ? raw.image : DEFAULT_WEBHOOK_EVENTS.image,
+  video: typeof raw?.video === 'boolean' ? raw.video : DEFAULT_WEBHOOK_EVENTS.video,
+  audio: typeof raw?.audio === 'boolean' ? raw.audio : DEFAULT_WEBHOOK_EVENTS.audio,
+  document: typeof raw?.document === 'boolean' ? raw.document : DEFAULT_WEBHOOK_EVENTS.document
+});
 
 const TenantManagement = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -63,11 +97,7 @@ const TenantManagement = () => {
   const [metaWabaId, setMetaWabaId] = useState('');
   const [metaToken, setMetaToken] = useState('');
   const [businessCategory, setBusinessCategory] = useState('general');
-  const [webhookEvents, setWebhookEvents] = useState({
-    groups: true,
-    private: true,
-    self: false
-  });
+  const [webhookEvents, setWebhookEvents] = useState<WebhookEventsConfig>({ ...DEFAULT_WEBHOOK_EVENTS });
   const [isSessionSaving, setIsSessionSaving] = useState(false);
   
   // Advanced Tools State
@@ -375,11 +405,7 @@ const TenantManagement = () => {
     setMetaToken(tenant.meta_token || '');
     setBusinessCategory(tenant.business_category || 'general');
     setAnalysisWebhookUrl(tenant.analysis_webhook_url || '');
-    setWebhookEvents(tenant.webhook_events || {
-        groups: true,
-        private: true,
-        self: false
-    });
+    setWebhookEvents(normalizeWebhookEvents(tenant.webhook_events || undefined));
     
     setTenantApiKey(tenant.api_key || null);
     setShowTenantApiKey(false);
@@ -406,6 +432,7 @@ const TenantManagement = () => {
     setMetaWabaId('');
     setMetaToken('');
     setAnalysisWebhookUrl('');
+    setWebhookEvents({ ...DEFAULT_WEBHOOK_EVENTS });
     
     setTenantApiKey(null);
     setShowTenantApiKey(false);
@@ -477,7 +504,7 @@ const TenantManagement = () => {
               api_key: updated.api_key,
               business_category: updated.business_category,
               analysis_webhook_url: updated.analysis_webhook_url,
-              webhook_events: updated.webhook_events
+              webhook_events: normalizeWebhookEvents(updated.webhook_events)
           } : t
         )));
         toast.success('Konfigurasi WA tersimpan');
@@ -1106,36 +1133,104 @@ const TenantManagement = () => {
               <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
                 <div>
                   <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Event Webhook</p>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Pilih jenis pesan yang diforward ke webhook.</p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Atur pesan mana saja yang boleh diteruskan ke webhook tenant.</p>
                 </div>
-                <div className="flex flex-col gap-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={webhookEvents.private}
-                            onChange={(e) => setWebhookEvents({ ...webhookEvents, private: e.target.checked })}
-                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Pribadi (Direct Message)</span>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 space-y-2">
+                    <p className="text-[10px] font-black text-gray-500 dark:text-gray-300 uppercase tracking-widest">Scope Chat</p>
+
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Pribadi</span>
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.private}
+                        onChange={(e) => setWebhookEvents({ ...webhookEvents, private: e.target.checked })}
+                        className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                      />
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={webhookEvents.groups}
-                            onChange={(e) => setWebhookEvents({ ...webhookEvents, groups: e.target.checked })}
-                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Grup (Group Message)</span>
+
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Grup</span>
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.groups}
+                        onChange={(e) => setWebhookEvents({ ...webhookEvents, groups: e.target.checked })}
+                        className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                      />
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={webhookEvents.self}
-                            onChange={(e) => setWebhookEvents({ ...webhookEvents, self: e.target.checked })}
-                            className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Saya (Outgoing/Sync)</span>
+
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Pesan Saya (Outgoing)</span>
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.self}
+                        onChange={(e) => setWebhookEvents({ ...webhookEvents, self: e.target.checked })}
+                        className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                      />
                     </label>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60 p-3 space-y-2">
+                    <p className="text-[10px] font-black text-gray-500 dark:text-gray-300 uppercase tracking-widest">Filter Media</p>
+
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Gambar</span>
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.image}
+                        onChange={(e) => setWebhookEvents({ ...webhookEvents, image: e.target.checked })}
+                        className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Video</span>
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.video}
+                        onChange={(e) => setWebhookEvents({ ...webhookEvents, video: e.target.checked })}
+                        className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Audio</span>
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.audio}
+                        onChange={(e) => setWebhookEvents({ ...webhookEvents, audio: e.target.checked })}
+                        className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Dokumen</span>
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.document}
+                        onChange={(e) => setWebhookEvents({ ...webhookEvents, document: e.target.checked })}
+                        className="rounded border-gray-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setWebhookEvents({ ...webhookEvents, image: true, video: true, audio: true, document: true })}
+                    className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-emerald-400 transition-colors"
+                  >
+                    Aktifkan Semua Media
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWebhookEvents({ ...webhookEvents, image: false, video: false, audio: false, document: false })}
+                    className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 hover:border-rose-400 transition-colors"
+                  >
+                    Matikan Semua Media
+                  </button>
                 </div>
               </div>
 

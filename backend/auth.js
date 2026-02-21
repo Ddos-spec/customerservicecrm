@@ -18,6 +18,28 @@ const MAX_GATEWAY_SESSIONS_RAW = Number.parseInt(process.env.GATEWAY_MAX_SESSION
 const MAX_GATEWAY_SESSIONS = Number.isFinite(MAX_GATEWAY_SESSIONS_RAW) && MAX_GATEWAY_SESSIONS_RAW > 0
     ? MAX_GATEWAY_SESSIONS_RAW
     : 0;
+const DEFAULT_WEBHOOK_EVENTS = {
+    groups: true,
+    private: true,
+    self: false,
+    image: true,
+    video: true,
+    audio: true,
+    document: true
+};
+
+function normalizeWebhookEventsConfig(rawConfig) {
+    const source = (rawConfig && typeof rawConfig === 'object') ? rawConfig : {};
+    return {
+        groups: typeof source.groups === 'boolean' ? source.groups : DEFAULT_WEBHOOK_EVENTS.groups,
+        private: typeof source.private === 'boolean' ? source.private : DEFAULT_WEBHOOK_EVENTS.private,
+        self: typeof source.self === 'boolean' ? source.self : DEFAULT_WEBHOOK_EVENTS.self,
+        image: typeof source.image === 'boolean' ? source.image : DEFAULT_WEBHOOK_EVENTS.image,
+        video: typeof source.video === 'boolean' ? source.video : DEFAULT_WEBHOOK_EVENTS.video,
+        audio: typeof source.audio === 'boolean' ? source.audio : DEFAULT_WEBHOOK_EVENTS.audio,
+        document: typeof source.document === 'boolean' ? source.document : DEFAULT_WEBHOOK_EVENTS.document,
+    };
+}
 
 function resolveGatewayUrl(rawUrl) {
     return waGateway.normalizeGatewayUrl(rawUrl || DEFAULT_GATEWAY_URL);
@@ -824,7 +846,7 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
 
         // 0. Webhook Events
         if (webhook_events !== undefined) {
-             updates.webhook_events = webhook_events;
+            updates.webhook_events = normalizeWebhookEventsConfig(webhook_events);
         }
 
         // 1. Provider Type

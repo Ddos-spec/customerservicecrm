@@ -17,6 +17,37 @@ const eventHandlers = new Map();
 
 // WebSocket server reference (will be set by index.js)
 let wss = null;
+const DEFAULT_WEBHOOK_EVENTS = {
+    groups: true,
+    private: true,
+    self: false,
+    image: true,
+    video: true,
+    audio: true,
+    document: true
+};
+
+function normalizeWebhookEvents(rawConfig) {
+    const source = (rawConfig && typeof rawConfig === 'object') ? rawConfig : {};
+    return {
+        groups: typeof source.groups === 'boolean' ? source.groups : DEFAULT_WEBHOOK_EVENTS.groups,
+        private: typeof source.private === 'boolean' ? source.private : DEFAULT_WEBHOOK_EVENTS.private,
+        self: typeof source.self === 'boolean' ? source.self : DEFAULT_WEBHOOK_EVENTS.self,
+        image: typeof source.image === 'boolean' ? source.image : DEFAULT_WEBHOOK_EVENTS.image,
+        video: typeof source.video === 'boolean' ? source.video : DEFAULT_WEBHOOK_EVENTS.video,
+        audio: typeof source.audio === 'boolean' ? source.audio : DEFAULT_WEBHOOK_EVENTS.audio,
+        document: typeof source.document === 'boolean' ? source.document : DEFAULT_WEBHOOK_EVENTS.document,
+    };
+}
+
+function isMessageTypeAllowed(messageType, webhookEvents) {
+    const normalizedType = (messageType || '').toString().toLowerCase();
+    if (normalizedType === 'image') return webhookEvents.image;
+    if (normalizedType === 'video') return webhookEvents.video;
+    if (normalizedType === 'audio') return webhookEvents.audio;
+    if (normalizedType === 'document') return webhookEvents.document;
+    return true;
+}
 
 /**
  * Set the WebSocket server for broadcasting
@@ -238,11 +269,16 @@ async function handleMessage(sessionId, data) {
         });
 
         // 5. Forward to external webhooks
-        const webhookEvents = tenant.webhook_events || { groups: true, private: true, self: false };
+        const webhookEvents = normalizeWebhookEvents(tenant.webhook_events);
         const shouldForward = (() => {
-            if (message.isFromMe) return webhookEvents.self;
-            if (isGroup) return webhookEvents.groups;
-            return webhookEvents.private;
+            const scopeAllowed = (() => {
+                if (message.isFromMe) return webhookEvents.self;
+                if (isGroup) return webhookEvents.groups;
+                return webhookEvents.private;
+            })();
+            if (!scopeAllowed) return false;
+
+            return isMessageTypeAllowed(message.type, webhookEvents);
         })();
 
         if (shouldForward) {
