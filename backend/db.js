@@ -445,7 +445,6 @@ module.exports = {
         if (config.meta_phone_id !== undefined) { fields.push(`meta_phone_id = $${idx++}`); values.push(config.meta_phone_id); }
         if (config.meta_waba_id !== undefined) { fields.push(`meta_waba_id = $${idx++}`); values.push(config.meta_waba_id); }
         if (config.meta_token !== undefined) { fields.push(`meta_token = $${idx++}`); values.push(config.meta_token); }
-        if (config.analysis_webhook_url !== undefined) { fields.push(`analysis_webhook_url = $${idx++}`); values.push(config.analysis_webhook_url); }
         if (config.webhook_events !== undefined) { fields.push(`webhook_events = $${idx++}`); values.push(config.webhook_events); }
         if (config.business_category !== undefined) { fields.push(`business_category = $${idx++}`); values.push(config.business_category); }
         if (config.api_key !== undefined) { fields.push(`api_key = $${idx++}`); values.push(config.api_key); }
@@ -480,7 +479,7 @@ module.exports = {
         `);
     },
     ensureTenantAnalyticsColumns: async () => {
-        await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS analysis_webhook_url TEXT');
+        await query('ALTER TABLE tenants DROP COLUMN IF EXISTS analysis_webhook_url');
         await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS business_category VARCHAR(50) DEFAULT \'general\'');
     },
     ensureUserInvitesTable: async () => query('CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT \'pending\', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())'),

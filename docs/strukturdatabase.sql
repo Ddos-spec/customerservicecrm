@@ -149,7 +149,6 @@ CREATE TABLE "public"."tenants" (
   "meta_waba_id" TEXT NULL,
   "meta_token" TEXT NULL,
   "webhook_events" JSONB NULL DEFAULT '{"self": false, "groups": true, "private": true}'::jsonb ,
-  "analysis_webhook_url" TEXT NULL,
   "business_category" VARCHAR(50) NULL DEFAULT 'general'::character varying ,
   CONSTRAINT "tenants_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "tenants_session_id_key" UNIQUE ("session_id"),
