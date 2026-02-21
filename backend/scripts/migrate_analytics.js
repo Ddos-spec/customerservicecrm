@@ -19,13 +19,13 @@ async function migrate() {
       ADD COLUMN IF NOT EXISTS business_category VARCHAR(50) DEFAULT 'general';
     `);
 
-    // Add tenant analysis webhook URL
+    // Drop deprecated tenant analysis webhook column
     await pool.query(`
       ALTER TABLE tenants
-      ADD COLUMN IF NOT EXISTS analysis_webhook_url TEXT;
+      DROP COLUMN IF EXISTS analysis_webhook_url;
     `);
     
-    console.log('Migration successful: Added business_category + analysis_webhook_url to tenants.');
+    console.log('Migration successful: ensured business_category and removed analysis_webhook_url on tenants.');
   } catch (err) {
     console.error('Migration failed:', err);
   } finally {

@@ -18,7 +18,6 @@ interface Tenant {
   meta_phone_id?: string | null;
   meta_waba_id?: string | null;
   meta_token?: string | null;
-  analysis_webhook_url?: string | null;
   business_category?: string | null;
   webhook_events?: {
     groups: boolean;
@@ -111,11 +110,6 @@ const TenantManagement = () => {
   const [tenantWebhookDeletingId, setTenantWebhookDeletingId] = useState<string | null>(null);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isFixingContacts, setIsFixingContacts] = useState(false);
-  const [analysisWebhookUrl, setAnalysisWebhookUrl] = useState('');
-  const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
-  const [isAnalysisResultOpen, setIsAnalysisResultOpen] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<unknown>(null);
-  const [analysisError, setAnalysisError] = useState('');
   
   // Admin Management State
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
@@ -404,7 +398,6 @@ const TenantManagement = () => {
     setMetaWabaId(tenant.meta_waba_id || '');
     setMetaToken(tenant.meta_token || '');
     setBusinessCategory(tenant.business_category || 'general');
-    setAnalysisWebhookUrl(tenant.analysis_webhook_url || '');
     setWebhookEvents(normalizeWebhookEvents(tenant.webhook_events || undefined));
     
     setTenantApiKey(tenant.api_key || null);
@@ -414,10 +407,6 @@ const TenantManagement = () => {
     setIsTenantWebhookLoading(false);
     setIsTenantWebhookSaving(false);
     setTenantWebhookDeletingId(null);
-    setIsAnalysisRunning(false);
-    setIsAnalysisResultOpen(false);
-    setAnalysisResult(null);
-    setAnalysisError('');
     setIsSessionModalOpen(true);
     void fetchTenantWebhooks(tenant.id);
   };
@@ -431,7 +420,6 @@ const TenantManagement = () => {
     setMetaPhoneId('');
     setMetaWabaId('');
     setMetaToken('');
-    setAnalysisWebhookUrl('');
     setWebhookEvents({ ...DEFAULT_WEBHOOK_EVENTS });
     
     setTenantApiKey(null);
@@ -441,10 +429,6 @@ const TenantManagement = () => {
     setIsTenantWebhookLoading(false);
     setIsTenantWebhookSaving(false);
     setTenantWebhookDeletingId(null);
-    setIsAnalysisRunning(false);
-    setIsAnalysisResultOpen(false);
-    setAnalysisResult(null);
-    setAnalysisError('');
   };
 
   const handleSaveSessionId = async (e: React.FormEvent) => {
@@ -463,20 +447,13 @@ const TenantManagement = () => {
         }
     }
 
-    const webhookUrlTrimmed = analysisWebhookUrl.trim();
-    if (webhookUrlTrimmed && !/^https?:\/\//i.test(webhookUrlTrimmed)) {
-      toast.error('Webhook analisis harus diawali http:// atau https://');
-      return;
-    }
-
     setIsSessionSaving(true);
     try {
       const payload: any = {
         wa_provider: waProvider,
         business_category: businessCategory,
         webhook_events: webhookEvents,
-        api_key: tenantApiKey ? tenantApiKey.trim() : undefined,
-        analysis_webhook_url: webhookUrlTrimmed || null
+        api_key: tenantApiKey ? tenantApiKey.trim() : undefined
       };
 
       if (waProvider === 'whatsmeow') {
@@ -503,7 +480,6 @@ const TenantManagement = () => {
               meta_token: updated.meta_token,
               api_key: updated.api_key,
               business_category: updated.business_category,
-              analysis_webhook_url: updated.analysis_webhook_url,
               webhook_events: normalizeWebhookEvents(updated.webhook_events)
           } : t
         )));
@@ -515,55 +491,6 @@ const TenantManagement = () => {
       toast.error(error.response?.data?.error || 'Gagal menyimpan session');
     } finally {
       setIsSessionSaving(false);
-    }
-  };
-
-  const handleRunTenantAnalysis = async () => {
-    if (!sessionTenant) return;
-
-    const persistedWebhook = (sessionTenant.analysis_webhook_url || '').trim();
-    const currentWebhook = analysisWebhookUrl.trim();
-
-    if (!persistedWebhook) {
-      toast.error('Webhook analisis belum disimpan untuk tenant ini');
-      return;
-    }
-
-    if (currentWebhook !== persistedWebhook) {
-      toast.error('Simpan konfigurasi dulu sebelum menjalankan analisis');
-      return;
-    }
-
-    setIsAnalysisRunning(true);
-    setAnalysisResult(null);
-    setAnalysisError('');
-
-    try {
-      const res = await api.post(
-        `/admin/tenants/${sessionTenant.id}/analyze`,
-        {},
-        { timeout: 65000 }
-      );
-
-      if (res.data?.success) {
-        setAnalysisResult(res.data.data ?? null);
-        setAnalysisError('');
-        setIsAnalysisResultOpen(true);
-        toast.success('Analisis tenant berhasil dijalankan');
-      } else {
-        const message = res.data?.error || 'Gagal menjalankan analisis tenant';
-        setAnalysisError(message);
-        setIsAnalysisResultOpen(true);
-        toast.error(message);
-      }
-    } catch (error: any) {
-      const message = error.response?.data?.error || 'Gagal menjalankan analisis tenant';
-      console.error('Failed to run tenant analysis:', error);
-      setAnalysisError(message);
-      setIsAnalysisResultOpen(true);
-      toast.error(message);
-    } finally {
-      setIsAnalysisRunning(false);
     }
   };
 
@@ -1236,46 +1163,25 @@ const TenantManagement = () => {
 
               <div className="rounded-2xl border border-blue-100 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-900/20 p-4 space-y-3">
                 <div>
-                  <p className="text-xs font-black text-blue-800 dark:text-blue-100 uppercase tracking-widest">Konfigurasi Analisis Tenant (AI)</p>
-                  <p className="text-[11px] text-blue-600 dark:text-blue-300">Hubungkan dengan n8n untuk analisis performa tenant.</p>
+                  <p className="text-xs font-black text-blue-800 dark:text-blue-100 uppercase tracking-widest">Kategori Bisnis Tenant</p>
+                  <p className="text-[11px] text-blue-600 dark:text-blue-300">Digunakan untuk segmentasi dan reporting tenant.</p>
                 </div>
                 <div>
-                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">URL Webhook Analisis</label>
-                    <input
-                        type="url"
-                        placeholder="https://n8n.example.com/webhook/tenant-analysis"
-                        value={analysisWebhookUrl}
-                        onChange={(e) => setAnalysisWebhookUrl(e.target.value)}
-                        className="w-full p-3 bg-white dark:bg-slate-900 rounded-xl font-mono text-xs text-gray-800 dark:text-gray-200 border border-blue-200 dark:border-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    />
-                    <p className="text-[11px] text-blue-600 dark:text-blue-300 mt-2">
-                      Simpan konfigurasi dulu sebelum menekan tombol analisis.
-                    </p>
+                  <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Kategori Bisnis</label>
+                  <select
+                    value={businessCategory}
+                    onChange={(e) => setBusinessCategory(e.target.value)}
+                    className="w-full p-3 bg-white dark:bg-slate-900 rounded-xl font-bold text-xs text-gray-800 dark:text-gray-200 border border-blue-200 dark:border-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  >
+                    <option value="general">Umum / Lainnya</option>
+                    <option value="fnb">Kuliner (F&B)</option>
+                    <option value="retail">Retail / Toko Online</option>
+                    <option value="health">Kesehatan / Klinik</option>
+                    <option value="services">Jasa / Service</option>
+                    <option value="property">Properti</option>
+                    <option value="automotive">Otomotif</option>
+                  </select>
                 </div>
-                <div>
-                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Kategori Bisnis</label>
-                    <select
-                        value={businessCategory}
-                        onChange={(e) => setBusinessCategory(e.target.value)}
-                        className="w-full p-3 bg-white dark:bg-slate-900 rounded-xl font-bold text-xs text-gray-800 dark:text-gray-200 border border-blue-200 dark:border-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    >
-                        <option value="general">Umum / Lainnya</option>
-                        <option value="fnb">Kuliner (F&B)</option>
-                        <option value="retail">Retail / Toko Online</option>
-                        <option value="health">Kesehatan / Klinik</option>
-                        <option value="services">Jasa / Service</option>
-                        <option value="property">Properti</option>
-                        <option value="automotive">Otomotif</option>
-                    </select>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRunTenantAnalysis}
-                  disabled={isAnalysisRunning}
-                  className="w-full py-3 text-[11px] font-black uppercase tracking-widest rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 transition-colors"
-                >
-                  {isAnalysisRunning ? 'Running Analysis...' : 'Jalankan Analisis AI'}
-                </button>
               </div>
 
               <div className="rounded-2xl border border-gray-100 dark:border-slate-800 bg-gray-50/60 dark:bg-slate-800/40 p-4 space-y-3">
@@ -1443,39 +1349,6 @@ const TenantManagement = () => {
                     <span>{isAdminSubmitting ? 'Simpan Perubahan' : 'Simpan Perubahan'}</span>
                   </button>
                 </form>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Analysis Result */}
-      {isAnalysisResultOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-3xl rounded-3xl shadow-2xl p-6 max-h-[85vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h2 className="text-xl font-black text-gray-900 dark:text-white">Hasil Analisis Tenant</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {sessionTenant?.company_name || '-'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAnalysisResultOpen(false)}
-                className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-800"
-              >
-                <X className="text-gray-400 dark:text-gray-500" />
-              </button>
-            </div>
-
-            {analysisError ? (
-              <div className="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 p-4 text-sm font-semibold">
-                {analysisError}
-              </div>
-            ) : (
-              <pre className="bg-slate-900 text-slate-200 p-4 rounded-xl overflow-x-auto text-xs leading-relaxed border border-slate-800">
-{JSON.stringify(analysisResult, null, 2)}
-              </pre>
             )}
           </div>
         </div>
