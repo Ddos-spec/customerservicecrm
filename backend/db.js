@@ -461,7 +461,24 @@ module.exports = {
     ensureTenantWebhooksTable: async () => query('CREATE TABLE IF NOT EXISTS tenant_webhooks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, url TEXT NOT NULL, created_at TIMESTAMP DEFAULT now(), UNIQUE(tenant_id, url))'),
     ensureTenantSessionColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_id TEXT UNIQUE'),
     ensureTenantGatewayColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS gateway_url TEXT'),
-    ensureTenantWebhookEventsColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS webhook_events JSONB DEFAULT \'{\"groups\": true, \"private\": true, \"self\": false}\'::jsonb'),
+    ensureTenantWebhookEventsColumn: async () => {
+        await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS webhook_events JSONB');
+        await query('ALTER TABLE tenants ALTER COLUMN webhook_events SET DEFAULT \'{\"groups\": true, \"private\": true, \"self\": false, \"image\": true, \"video\": true, \"audio\": true, \"document\": true}\'::jsonb');
+        await query(`
+            UPDATE tenants
+            SET webhook_events = '{"groups": true, "private": true, "self": false, "image": true, "video": true, "audio": true, "document": true}'::jsonb
+                || COALESCE(webhook_events, '{}'::jsonb)
+            WHERE webhook_events IS NULL
+               OR webhook_events = '{}'::jsonb
+               OR NOT (webhook_events ? 'groups')
+               OR NOT (webhook_events ? 'private')
+               OR NOT (webhook_events ? 'self')
+               OR NOT (webhook_events ? 'image')
+               OR NOT (webhook_events ? 'video')
+               OR NOT (webhook_events ? 'audio')
+               OR NOT (webhook_events ? 'document')
+        `);
+    },
     ensureTenantAnalyticsColumns: async () => {
         await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS analysis_webhook_url TEXT');
         await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS business_category VARCHAR(50) DEFAULT \'general\'');
