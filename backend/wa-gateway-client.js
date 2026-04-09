@@ -1,4 +1,4 @@
-/**
+﻿/**
  * WhatsApp Gateway Client
  *
  * This module handles communication with the Go WhatsApp Gateway service.
@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_GATEWAY_URL = process.env.WA_GATEWAY_URL || 'http://localhost:3001/api/v1/whatsapp';
-const GATEWAY_TIMEOUT = parseInt(process.env.WA_GATEWAY_TIMEOUT || '30000', 10);
+const GATEWAY_TIMEOUT = parseInt(process.env.WA_GATEWAY_TIMEOUT || '60000', 10);
 
 const gatewayClients = new Map();
 
@@ -141,7 +141,7 @@ function setSessionToken(jid, token) {
     if (sessionJidMap.has(cleanJid)) {
         const existingJid = sessionJidMap.get(cleanJid);
         if (existingJid !== jid) {
-            const errorMsg = `[Gateway-Client] ⛔ SECURITY ALERT: IDENTITY COLLISION DETECTED! Normalized JID '${cleanJid}' is already owned by '${existingJid}' but '${jid}' is trying to claim it. This request is blocked to prevent Cross-Tenant Identity Swapping.`;
+            const errorMsg = `[Gateway-Client] â›” SECURITY ALERT: IDENTITY COLLISION DETECTED! Normalized JID '${cleanJid}' is already owned by '${existingJid}' but '${jid}' is trying to claim it. This request is blocked to prevent Cross-Tenant Identity Swapping.`;
             console.error(errorMsg);
             throw new Error(errorMsg);
         }
@@ -255,7 +255,7 @@ function getAuthHeader(jid) {
     // Debug Trace for Identity Swapping
     const registeredOwner = sessionJidMap.get(cleanJid);
     if (registeredOwner && registeredOwner !== jid) {
-        console.warn(`[Gateway-Client] ⚠️ Using token for '${cleanJid}' (owned by '${registeredOwner}') to authenticate request for '${jid}'. Possible Identity Swap.`);
+        console.warn(`[Gateway-Client] âš ï¸ Using token for '${cleanJid}' (owned by '${registeredOwner}') to authenticate request for '${jid}'. Possible Identity Swap.`);
     }
 
     return { Authorization: `Bearer ${token}` };
