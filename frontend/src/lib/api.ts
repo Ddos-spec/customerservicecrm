@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
 // Gunakan Environment Variable jika ada (Production), jika tidak pakai relative (Local Proxy)
 // VITE_API_URL should be the backend URL, e.g., https://backend.example.com/api/v1
@@ -10,7 +10,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 second timeout
+  timeout: 60000, // 10 second timeout
 });
 
 api.interceptors.response.use(
