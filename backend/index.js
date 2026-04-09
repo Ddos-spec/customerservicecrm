@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Customer Service CRM - Backend Server
  *
  * This is the main entry point for the Node.js backend.
@@ -803,13 +803,13 @@ async function refreshSession(sessionId) {
         
         const msg = (response.message || '').toLowerCase();
         
-        if (response.status && response.data?.qr) {
+        if (response.status && response.data?.qrcode) {
             console.log(`[Refresh] Session ${sessionId} needs QR scan.`);
-            updateSessionStatus(sessionId, 'DISCONNECTED', response.data.qr);
+            updateSessionStatus(sessionId, 'DISCONNECTED', response.data.qrcode);
         } else if (msg.includes('reconnected') || msg.includes('already') || msg.includes('login')) {
             console.log(`[Refresh] Session ${sessionId} is ALREADY CONNECTED.`);
             updateSessionStatus(sessionId, 'CONNECTED');
-        } else if (response.code === 200 && !response.data?.qr) {
+        } else if (response.code === 200 && !response.data?.qrcode) {
              console.log(`[Refresh] Session ${sessionId} HTTP 200 OK.`);
              updateSessionStatus(sessionId, 'CONNECTED');
         } else {
@@ -1415,9 +1415,9 @@ if (!isTest) {
                             };
                         }
 
-                        if (response.status && response.data?.qr) {
+                        if (response.status && response.data?.qrcode) {
                             session.status = 'DISCONNECTED';
-                            session.qr = response.data.qr;
+                            session.qr = response.data.qrcode;
                             console.log(`[Sync] Session ${sessionId}: DISCONNECTED (needs QR)`);
                         } else if (response.message?.includes('Reconnected')) {
                             session.status = 'CONNECTED';
@@ -1506,3 +1506,4 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 module.exports = { app, server, redisClient, redisSessionClient };
+
