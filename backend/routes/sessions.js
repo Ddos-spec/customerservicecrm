@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 
 function buildSessionsRouter(deps) {
     const router = express.Router();
@@ -136,7 +136,7 @@ function buildSessionsRouter(deps) {
             const sessionOwner = session ? session.owner : null;
 
             if (sessions.has(sessionId)) {
-                await deleteSession(sessionId);
+                try { await deleteSession(sessionId); } catch (e) { log('Ignored deleteSession error', sessionId); }
             }
 
             await createSession(sessionId, sessionOwner);
@@ -159,3 +159,4 @@ function buildSessionsRouter(deps) {
 }
 
 module.exports = { buildSessionsRouter };
+
