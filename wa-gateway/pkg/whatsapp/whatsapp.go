@@ -178,26 +178,19 @@ func WhatsAppGetUserOS() string {
 	}
 }
 
-func WhatsAppGenerateQR(qrChan <-chan whatsmeow.QRChannelItem) (string, int) {
-	qrChanCode := make(chan string)
-	qrChanTimeout := make(chan int)
-
-	// Get QR Code Data and Timeout
-	go func() {
-		for evt := range qrChan {
-			if evt.Event == "code" {
-				qrChanCode <- evt.Code
-				qrChanTimeout <- int(evt.Timeout.Seconds())
+func WhatsAppGenerateQR(qrChan <-chan whatsmeow.QRChannelItem) (string, int, error) {
+	for evt := range qrChan {
+		if evt.Event == "code" {
+			qrPNG, err := qrCode.Encode(evt.Code, qrCode.Medium, 256)
+			if err != nil {
+				return "", 0, fmt.Errorf("failed to encode QR code: %w", err)
 			}
+			return base64.StdEncoding.EncodeToString(qrPNG), int(evt.Timeout.Seconds()), nil
+		} else if evt.Event == "timeout" {
+			return "", 0, fmt.Errorf("QR code timed out waiting for scan")
 		}
-	}()
-
-	// Generate QR Code Data to PNG Image
-	qrTemp := <-qrChanCode
-	qrPNG, _ := qrCode.Encode(qrTemp, qrCode.Medium, 256)
-
-	// Return QR Code PNG in Base64 Format and Timeout Information
-	return base64.StdEncoding.EncodeToString(qrPNG), <-qrChanTimeout
+	}
+	return "", 0, fmt.Errorf("WhatsApp disconnected before QR code was generated")
 }
 
 func WhatsAppLogin(jid string) (string, int, error) {
@@ -217,7 +210,10 @@ func WhatsAppLogin(jid string) (string, int, error) {
 			}
 
 			// Get Generated QR Code and Timeout Information
-			qrImage, qrTimeout := WhatsAppGenerateQR(qrChanGenerate)
+			qrImage, qrTimeout, err := WhatsAppGenerateQR(qrChanGenerate)
+			if err != nil {
+				return "", 0, err
+			}
 
 			// Return QR Code in Base64 Format and Timeout Information
 			return "data:image/png;base64," + qrImage, qrTimeout, nil
