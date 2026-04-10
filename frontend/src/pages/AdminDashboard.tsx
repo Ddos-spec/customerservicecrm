@@ -278,30 +278,20 @@ const AdminDashboard = () => {
         <div className="flex items-center space-x-3">
           {/* WhatsApp Status */}
           <div className="flex flex-col items-end gap-2">
-            <div className="flex flex-col items-end gap-1">
-              <div
-                onClick={waStatus !== 'connected' ? handleRequestQr : undefined}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-full border cursor-pointer ${
-                  waStatus === 'connected'
-                    ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
-                    : waStatus === 'connecting'
-                    ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse'
-                    : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40'
-                }`}
-              >
-                <Wifi size={16} />
-                <span className="text-sm font-bold capitalize">
-                  {waStatus === 'connected' ? 'WhatsApp Connected' : waStatus === 'connecting' ? 'Connecting...' : 'Connect WhatsApp'}
-                </span>
-              </div>
-              {waStatus !== 'connected' && (
-                <button
-                  onClick={handleRequestPairCode}
-                  className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
-                >
-                  Pakai kode telepon
-                </button>
-              )}
+            <div
+              onClick={waStatus !== 'connected' ? handleRequestQr : undefined}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-full border cursor-pointer ${
+                waStatus === 'connected'
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                  : waStatus === 'connecting'
+                  ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse'
+                  : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40'
+              }`}
+            >
+              <Wifi size={16} />
+              <span className="text-sm font-bold capitalize">
+                {waStatus === 'connected' ? 'WhatsApp Connected' : waStatus === 'connecting' ? 'Connecting...' : 'Connect WhatsApp'}
+              </span>
             </div>
             {waStatus === 'connected' && connectedNumber && (
               <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
