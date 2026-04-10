@@ -1,4 +1,5 @@
 ﻿const express = require('express');
+const waGateway = require('../wa-gateway-client');
 
 function buildSessionsRouter(deps) {
     const router = express.Router();
@@ -152,6 +153,36 @@ function buildSessionsRouter(deps) {
                 status: 'error',
                 message: 'Failed to regenerate QR code. Please try again.'
             });
+        }
+    });
+
+    router.get('/sessions/:sessionId/pair', async (req, res) => {
+        log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl });
+
+        const { sessionId } = req.params;
+        if (!sessionId) {
+            return res.status(400).json({ status: 'error', message: 'sessionId parameter is required' });
+        }
+
+        try {
+            const session = sessions.get(sessionId);
+            const sessionOwner = session ? session.owner : null;
+
+            // Recreate session to get a fresh token before requesting pair code
+            if (sessions.has(sessionId)) {
+                try { await deleteSession(sessionId); } catch (e) { log('Ignored deleteSession error', sessionId); }
+            }
+            await createSession(sessionId, sessionOwner);
+
+            const result = await waGateway.loginWithPairingCode(sessionId);
+            res.status(200).json({
+                status: 'success',
+                pairCode: result.paircode,
+                timeout: result.timeout,
+            });
+        } catch (error) {
+            log('Pair code error', sessionId, { event: 'pair-code-error', error: error.message });
+            res.status(500).json({ status: 'error', message: error.message });
         }
     });
 

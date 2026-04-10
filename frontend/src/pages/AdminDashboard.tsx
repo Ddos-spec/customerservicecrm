@@ -53,6 +53,8 @@ const AdminDashboard = () => {
   const [connectedNumber, setConnectedNumber] = useState<string>('');
   const [qrUrl, setQrUrl] = useState('');
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [connectMode, setConnectMode] = useState<'qr' | 'pair'>('qr');
+  const [pairCode, setPairCode] = useState('');
   const ws = useRef<WebSocket | null>(null);
 
   const fetchStats = useCallback(async () => {
@@ -142,12 +144,31 @@ const AdminDashboard = () => {
       toast.error('Session WA belum diatur oleh Super Admin');
       return;
     }
+    setConnectMode('qr');
+    setPairCode('');
     try {
       await api.get(`/sessions/${sessionId}/qr`);
       setIsQrModalOpen(true);
     } catch (error) {
       console.error('Failed to request QR:', error);
       toast.error('Gagal meminta QR. Coba lagi.');
+    }
+  };
+
+  const handleRequestPairCode = async () => {
+    if (!sessionId) {
+      toast.error('Session WA belum diatur oleh Super Admin');
+      return;
+    }
+    setConnectMode('pair');
+    setPairCode('');
+    setIsQrModalOpen(true);
+    try {
+      const res = await api.get(`/sessions/${sessionId}/pair`);
+      setPairCode(res.data.pairCode || '');
+    } catch (error: any) {
+      console.error('Failed to request pair code:', error);
+      toast.error(error?.response?.data?.message || 'Gagal mendapatkan kode. Coba lagi.');
     }
   };
 
@@ -257,20 +278,30 @@ const AdminDashboard = () => {
         <div className="flex items-center space-x-3">
           {/* WhatsApp Status */}
           <div className="flex flex-col items-end gap-2">
-            <div
-              onClick={waStatus !== 'connected' ? handleRequestQr : undefined}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-full border cursor-pointer ${
-                waStatus === 'connected'
-                  ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
-                  : waStatus === 'connecting'
-                  ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse'
-                  : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40'
-              }`}
-            >
-              <Wifi size={16} />
-              <span className="text-sm font-bold capitalize">
-                {waStatus === 'connected' ? 'WhatsApp Connected' : waStatus === 'connecting' ? 'Connecting...' : 'Connect WhatsApp'}
-              </span>
+            <div className="flex flex-col items-end gap-1">
+              <div
+                onClick={waStatus !== 'connected' ? handleRequestQr : undefined}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-full border cursor-pointer ${
+                  waStatus === 'connected'
+                    ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                    : waStatus === 'connecting'
+                    ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse'
+                    : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40'
+                }`}
+              >
+                <Wifi size={16} />
+                <span className="text-sm font-bold capitalize">
+                  {waStatus === 'connected' ? 'WhatsApp Connected' : waStatus === 'connecting' ? 'Connecting...' : 'Connect WhatsApp'}
+                </span>
+              </div>
+              {waStatus !== 'connected' && (
+                <button
+                  onClick={handleRequestPairCode}
+                  className="text-xs text-gray-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                >
+                  Pakai kode telepon
+                </button>
+              )}
             </div>
             {waStatus === 'connected' && connectedNumber && (
               <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
@@ -487,7 +518,7 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* QR MODAL */}
+      {/* CONNECT MODAL */}
       {isQrModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
@@ -500,29 +531,73 @@ const AdminDashboard = () => {
                 <X size={20} className="text-gray-400" />
               </button>
             </div>
-            <div className="p-10 text-center">
-              {qrUrl ? (
-                <div className="space-y-6">
-                  <div className="inline-block p-4 bg-white dark:bg-slate-900 border-2 border-dashed border-gray-200 dark:border-slate-600 rounded-2xl">
-                    <img src={qrUrl} alt="QR Code" className="w-64 h-64" />
+
+            {/* Mode Toggle */}
+            <div className="px-6 pt-4 flex rounded-xl bg-gray-100 dark:bg-slate-700 mx-6 mt-4">
+              <button
+                onClick={() => { setConnectMode('qr'); setPairCode(''); handleRequestQr(); }}
+                className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${connectMode === 'qr' ? 'bg-white dark:bg-slate-800 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
+              >
+                QR Code
+              </button>
+              <button
+                onClick={() => { setConnectMode('pair'); setQrUrl(''); handleRequestPairCode(); }}
+                className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${connectMode === 'pair' ? 'bg-white dark:bg-slate-800 shadow text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
+              >
+                Kode Telepon
+              </button>
+            </div>
+
+            <div className="p-8 text-center">
+              {connectMode === 'qr' ? (
+                qrUrl ? (
+                  <div className="space-y-6">
+                    <div className="inline-block p-4 bg-white dark:bg-slate-900 border-2 border-dashed border-gray-200 dark:border-slate-600 rounded-2xl">
+                      <img src={qrUrl} alt="QR Code" className="w-64 h-64" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 font-medium mb-2">
+                        Scan QR Code dengan WhatsApp
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500">
+                        Buka WhatsApp &gt; Menu &gt; Perangkat Tertaut &gt; Tautkan Perangkat
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium mb-2">
-                      Scan QR Code dengan WhatsApp
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-500">
-                      Buka WhatsApp &gt; Menu &gt; Perangkat Tertaut &gt; Tautkan Perangkat
-                    </p>
+                ) : (
+                  <div className="py-10 flex flex-col items-center">
+                    <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center animate-pulse mb-4">
+                      <RefreshCw size={32} className="animate-spin" />
+                    </div>
+                    <p className="text-gray-500 dark:text-gray-400 font-medium">Menghubungkan ke Gateway...</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">QR Code akan muncul sebentar lagi</p>
                   </div>
-                </div>
+                )
               ) : (
-                <div className="py-12 flex flex-col items-center">
-                  <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center animate-pulse mb-4">
-                    <RefreshCw size={32} className="animate-spin" />
+                pairCode ? (
+                  <div className="space-y-6">
+                    <div className="inline-flex items-center justify-center px-8 py-5 bg-blue-50 dark:bg-blue-900/30 border-2 border-dashed border-blue-200 dark:border-blue-700 rounded-2xl">
+                      <span className="text-4xl font-mono font-bold tracking-widest text-blue-700 dark:text-blue-300">
+                        {pairCode}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 font-medium mb-2">
+                        Masukkan kode ini di WhatsApp
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500">
+                        Buka WhatsApp &gt; Menu &gt; Perangkat Tertaut &gt; Tautkan dengan Nomor Telepon
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-gray-500 dark:text-gray-400 font-medium">Menghubungkan ke Gateway...</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">QR Code akan muncul sebentar lagi</p>
-                </div>
+                ) : (
+                  <div className="py-10 flex flex-col items-center">
+                    <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center animate-pulse mb-4">
+                      <RefreshCw size={32} className="animate-spin" />
+                    </div>
+                    <p className="text-gray-500 dark:text-gray-400 font-medium">Mendapatkan kode...</p>
+                  </div>
+                )
               )}
             </div>
           </div>
