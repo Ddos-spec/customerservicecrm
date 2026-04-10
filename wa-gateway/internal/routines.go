@@ -31,6 +31,10 @@ func Routines(cron *cron.Cron) {
 
 		for jid, client := range pkgWhatsApp.WhatsAppClient {
 			// Get Real JID from Datastore
+			if client.Store.ID == nil {
+				log.Print(nil).Infof("[HEARTBEAT] (pending QR) | AWAITING_QR | session: %s", jid)
+				continue
+			}
 			realJID := client.Store.ID.User
 
 			// Mask JID for Logging Information

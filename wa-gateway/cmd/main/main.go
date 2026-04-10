@@ -148,14 +148,14 @@ func main() {
 	signal.Notify(sigShutdown, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	<-sigShutdown
 
-	// Wait 5 Seconds Before Graceful Shutdown
-	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	// Wait 30 Seconds Before Graceful Shutdown
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelShutdown()
 
 	// Try To Shutdown Server
 	err = e.Shutdown(ctxShutdown)
 	if err != nil {
-		log.Print(nil).Fatal(err.Error())
+		log.Print(nil).Errorf("Graceful shutdown error: %v", err)
 	}
 
 	// Try To Shutdown Cron

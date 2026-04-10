@@ -746,12 +746,23 @@ function getSessionsDetails() {
         });
 }
 
+const refreshCooldowns = new Map();
+const REFRESH_COOLDOWN_MS = 60000; // 60 seconds between refresh attempts per session
+
 async function refreshSession(sessionId) {
     // Only refresh if we have a token (known session)
     if (!sessionTokens.has(sessionId)) {
         console.log(`[Refresh] Skip ${sessionId}: No token found`);
         return;
     }
+
+    // Cooldown check: prevent hammering the gateway
+    const now = Date.now();
+    const lastRefresh = refreshCooldowns.get(sessionId) || 0;
+    if (now - lastRefresh < REFRESH_COOLDOWN_MS) {
+        return;
+    }
+    refreshCooldowns.set(sessionId, now);
 
     // Debug Log: Start
     console.log(`[Refresh] Starting check for session: ${sessionId}`);
