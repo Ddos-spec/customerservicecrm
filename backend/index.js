@@ -1350,6 +1350,8 @@ if (!isTest) {
             await db.ensureTenantWebhookEventsColumn();
             await db.ensureTenantAnalyticsColumns();
             await db.ensureTenantApiKeyColumn();
+            await db.ensureTenantAiModeColumn();
+            await db.ensureTenantChatbotPairsTable();
             await db.ensureUserInvitesTable();
             await db.ensureInviteErrorColumn();
             await db.ensureSystemSettingsTable();

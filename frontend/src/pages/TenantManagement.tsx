@@ -19,6 +19,7 @@ interface Tenant {
   meta_waba_id?: string | null;
   meta_token?: string | null;
   business_category?: string | null;
+  ai_mode?: 'agent' | 'chatbot' | null;
   webhook_events?: {
     groups: boolean;
     private: boolean;
@@ -96,6 +97,7 @@ const TenantManagement = () => {
   const [metaWabaId, setMetaWabaId] = useState('');
   const [metaToken, setMetaToken] = useState('');
   const [businessCategory, setBusinessCategory] = useState('general');
+  const [aiMode, setAiMode] = useState<'agent' | 'chatbot'>('agent');
   const [webhookEvents, setWebhookEvents] = useState<WebhookEventsConfig>({ ...DEFAULT_WEBHOOK_EVENTS });
   const [isSessionSaving, setIsSessionSaving] = useState(false);
   
@@ -133,7 +135,8 @@ const TenantManagement = () => {
     admin_phone_number: '',
     session_id: '',
     gateway_url: '',
-    business_category: 'general'
+    business_category: 'general',
+    ai_mode: 'agent'
   });
   const [showAdminPassword, setShowAdminPassword] = useState(false);
 
@@ -239,7 +242,8 @@ const TenantManagement = () => {
         admin_phone_number: formData.admin_phone_number,
         session_id: formData.session_id,
         gateway_url: formData.gateway_url.trim(),
-        business_category: formData.business_category
+        business_category: formData.business_category,
+        ai_mode: formData.ai_mode
       });
       if (res.data.success) {
         setTenants([res.data.tenant, ...tenants]);
@@ -253,7 +257,8 @@ const TenantManagement = () => {
           admin_phone_number: '',
           session_id: '',
           gateway_url: '',
-          business_category: 'general'
+          business_category: 'general',
+          ai_mode: 'agent'
         });
       }
     } catch (error: any) {
@@ -398,6 +403,7 @@ const TenantManagement = () => {
     setMetaWabaId(tenant.meta_waba_id || '');
     setMetaToken(tenant.meta_token || '');
     setBusinessCategory(tenant.business_category || 'general');
+    setAiMode(tenant.ai_mode || 'agent');
     setWebhookEvents(normalizeWebhookEvents(tenant.webhook_events || undefined));
     
     setTenantApiKey(tenant.api_key || null);
@@ -420,6 +426,7 @@ const TenantManagement = () => {
     setMetaPhoneId('');
     setMetaWabaId('');
     setMetaToken('');
+    setAiMode('agent');
     setWebhookEvents({ ...DEFAULT_WEBHOOK_EVENTS });
     
     setTenantApiKey(null);
@@ -452,6 +459,7 @@ const TenantManagement = () => {
       const payload: any = {
         wa_provider: waProvider,
         business_category: businessCategory,
+        ai_mode: aiMode,
         webhook_events: webhookEvents,
         api_key: tenantApiKey ? tenantApiKey.trim() : undefined
       };
@@ -480,6 +488,7 @@ const TenantManagement = () => {
               meta_token: updated.meta_token,
               api_key: updated.api_key,
               business_category: updated.business_category,
+              ai_mode: updated.ai_mode,
               webhook_events: normalizeWebhookEvents(updated.webhook_events)
           } : t
         )));
@@ -653,6 +662,9 @@ const TenantManagement = () => {
                         <div className="text-[10px] text-gray-400 dark:text-gray-500 font-sans mt-1">
                           Gateway: {tenant.gateway_url || '-'}
                         </div>
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 font-sans mt-1">
+                          Mode: {tenant.ai_mode === 'chatbot' ? 'Chatbot FAQ' : 'AI Agent'}
+                        </div>
                       </td>
                       <td className="px-8 py-6 text-sm font-black text-gray-700 dark:text-gray-200">{tenant.user_count} Users</td>
                       <td className="px-8 py-6 text-sm text-gray-500 dark:text-gray-400 font-medium">
@@ -720,6 +732,7 @@ const TenantManagement = () => {
                      <div className="text-sm text-gray-500 dark:text-gray-400 mb-2">{tenant.user_count} Users</div>
                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Session WA: {tenant.session_id || '-'}</div>
                      <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2 break-all">Gateway: {tenant.gateway_url || '-'}</div>
+                     <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">Mode AI: {tenant.ai_mode === 'chatbot' ? 'Chatbot FAQ' : 'AI Agent'}</div>
                      {activeDropdown === tenant.id && (
                         <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-2 mb-4 animate-in fade-in zoom-in-95">
                            <button onClick={() => openAdminModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-purple-600 dark:text-purple-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
@@ -928,6 +941,21 @@ const TenantManagement = () => {
                     <span className="text-[10px] font-normal opacity-70">Cloud API</span>
                   </button>
                 </div>
+              </div>
+
+              <div className="rounded-2xl border border-purple-100 dark:border-purple-900 bg-purple-50/60 dark:bg-purple-900/20 p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-black text-purple-800 dark:text-purple-100 uppercase tracking-widest">Model AI Tenant</p>
+                  <p className="text-[11px] text-purple-600 dark:text-purple-300">Pilih apakah tenant ini berjalan dengan workflow AI agent atau chatbot FAQ.</p>
+                </div>
+                <select
+                  value={aiMode}
+                  onChange={(e) => setAiMode(e.target.value as 'agent' | 'chatbot')}
+                  className="w-full p-3 bg-white dark:bg-slate-900 rounded-xl font-bold text-xs text-gray-800 dark:text-gray-200 border border-purple-200 dark:border-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                >
+                  <option value="agent">AI Agent</option>
+                  <option value="chatbot">Chatbot FAQ</option>
+                </select>
               </div>
 
               {waProvider === 'whatsmeow' ? (
@@ -1180,6 +1208,17 @@ const TenantManagement = () => {
                     <option value="services">Jasa / Service</option>
                     <option value="property">Properti</option>
                     <option value="automotive">Otomotif</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Model AI Tenant</label>
+                  <select
+                    value={formData.ai_mode}
+                    onChange={(e) => setFormData({...formData, ai_mode: e.target.value as 'agent' | 'chatbot'})}
+                    className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  >
+                    <option value="agent">AI Agent</option>
+                    <option value="chatbot">Chatbot FAQ</option>
                   </select>
                 </div>
               </div>

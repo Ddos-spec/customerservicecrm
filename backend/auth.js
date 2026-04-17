@@ -27,6 +27,7 @@ const DEFAULT_WEBHOOK_EVENTS = {
     audio: true,
     document: true
 };
+const VALID_AI_MODES = new Set(['agent', 'chatbot']);
 
 function normalizeWebhookEventsConfig(rawConfig) {
     const source = (rawConfig && typeof rawConfig === 'object') ? rawConfig : {};
@@ -39,6 +40,28 @@ function normalizeWebhookEventsConfig(rawConfig) {
         audio: typeof source.audio === 'boolean' ? source.audio : DEFAULT_WEBHOOK_EVENTS.audio,
         document: typeof source.document === 'boolean' ? source.document : DEFAULT_WEBHOOK_EVENTS.document,
     };
+}
+
+function normalizeAiMode(value) {
+    const normalized = (value || 'agent').toString().trim().toLowerCase();
+    return VALID_AI_MODES.has(normalized) ? normalized : 'agent';
+}
+
+function sanitizeChatbotPairs(rawPairs) {
+    if (!Array.isArray(rawPairs)) return [];
+    return rawPairs
+        .map((pair) => ({
+            question: (pair?.question || '').toString().trim(),
+            answer: (pair?.answer || '').toString().trim(),
+        }))
+        .filter((pair) => pair.question && pair.answer);
+}
+
+function resolveChatbotTenantId(req) {
+    if (req.session?.user?.role === 'super_admin') {
+        return (req.params.tenantId || req.body?.tenant_id || req.query?.tenant_id || '').toString().trim();
+    }
+    return (req.session?.user?.tenant_id || '').toString().trim();
 }
 
 function resolveGatewayUrl(rawUrl) {
@@ -650,6 +673,7 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         const sessionIdRaw = req.body?.session_id;
         const gatewayUrlRaw = req.body?.gateway_url;
         const businessCategory = (req.body?.business_category || 'general').trim();
+        const aiMode = normalizeAiMode(req.body?.ai_mode);
         const apiKeyRaw = req.body?.api_key ? req.body.api_key.trim() : null;
         
         const hasSessionId = typeof sessionIdRaw !== 'undefined';
@@ -710,10 +734,10 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         try {
             await client.query('BEGIN');
             const tenantResult = await client.query(
-                `INSERT INTO tenants (company_name, status, session_id, gateway_url, api_key, business_category)
-                 VALUES ($1, 'active', $2, $3, $4, $5)
-                 RETURNING id, company_name, status, created_at, session_id, gateway_url, api_key, business_category`,
-                [companyName, normalizedSessionId, assignedGatewayUrl, apiKey, businessCategory]
+                `INSERT INTO tenants (company_name, status, session_id, gateway_url, api_key, business_category, ai_mode)
+                 VALUES ($1, 'active', $2, $3, $4, $5, $6)
+                 RETURNING id, company_name, status, created_at, session_id, gateway_url, api_key, business_category, ai_mode`,
+                [companyName, normalizedSessionId, assignedGatewayUrl, apiKey, businessCategory, aiMode]
             );
             const tenant = tenantResult.rows[0];
 
@@ -818,7 +842,8 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             meta_token,
             webhook_events,
             business_category,
-            api_key
+            api_key,
+            ai_mode
         } = req.body;
 
         const existingTenant = await db.getTenantById(id);
@@ -831,6 +856,9 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         // 0. Business Category
         if (business_category !== undefined) {
             updates.business_category = business_category;
+        }
+        if (ai_mode !== undefined) {
+            updates.ai_mode = normalizeAiMode(ai_mode);
         }
 
         // 0. API Key (Manual Override)
@@ -947,6 +975,73 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         }
         console.error('Error updating tenant config:', error);
         res.status(500).json({ success: false, error: 'Failed to update tenant configuration' });
+    }
+});
+
+/**
+ * GET /api/v1/admin/chatbot-config
+ * Get chatbot config for current tenant owner or a target tenant (super admin only)
+ */
+router.get('/chatbot-config', requireRole('admin_agent', 'super_admin'), async (req, res) => {
+    try {
+        const tenantId = resolveChatbotTenantId(req);
+        if (!tenantId) {
+            return res.status(400).json({ success: false, error: 'Tenant ID is required' });
+        }
+
+        const tenant = await db.getTenantById(tenantId);
+        if (!tenant) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
+
+        const chatbot_pairs = await db.getTenantChatbotPairs(tenantId);
+        res.json({
+            success: true,
+            tenant: {
+                id: tenant.id,
+                company_name: tenant.company_name,
+                ai_mode: tenant.ai_mode || 'agent',
+                wa_provider: tenant.wa_provider || 'whatsmeow',
+            },
+            chatbot_pairs,
+        });
+    } catch (error) {
+        console.error('Error fetching chatbot config:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch chatbot configuration' });
+    }
+});
+
+/**
+ * PUT /api/v1/admin/chatbot-config
+ * Save chatbot pairs for current tenant owner or target tenant (super admin only)
+ */
+router.put('/chatbot-config', requireRole('admin_agent', 'super_admin'), async (req, res) => {
+    try {
+        const tenantId = resolveChatbotTenantId(req);
+        if (!tenantId) {
+            return res.status(400).json({ success: false, error: 'Tenant ID is required' });
+        }
+
+        const tenant = await db.getTenantById(tenantId);
+        if (!tenant) {
+            return res.status(404).json({ success: false, error: 'Tenant not found' });
+        }
+
+        const chatbotPairs = sanitizeChatbotPairs(req.body?.chatbot_pairs);
+        const savedPairs = await db.replaceTenantChatbotPairs(tenantId, chatbotPairs);
+
+        res.json({
+            success: true,
+            tenant: {
+                id: tenant.id,
+                company_name: tenant.company_name,
+                ai_mode: tenant.ai_mode || 'agent',
+            },
+            chatbot_pairs: savedPairs,
+        });
+    } catch (error) {
+        console.error('Error saving chatbot config:', error);
+        res.status(500).json({ success: false, error: 'Failed to save chatbot configuration' });
     }
 });
 

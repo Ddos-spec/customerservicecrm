@@ -255,7 +255,7 @@ function getAuthHeader(jid) {
     // Debug Trace for Identity Swapping
     const registeredOwner = sessionJidMap.get(cleanJid);
     if (registeredOwner && registeredOwner !== jid) {
-        console.warn(`[Gateway-Client] âš ï¸ Using token for '${cleanJid}' (owned by '${registeredOwner}') to authenticate request for '${jid}'. Possible Identity Swap.`);
+        console.warn(`[Gateway-Client] Warning: using token for '${cleanJid}' (owned by '${registeredOwner}') to authenticate request for '${jid}'. Possible Identity Swap.`);
     }
 
     return { Authorization: `Bearer ${token}` };

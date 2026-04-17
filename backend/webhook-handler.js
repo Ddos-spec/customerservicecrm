@@ -9,8 +9,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('./db');
 const waGateway = require('./wa-gateway-client');
+const ProviderFactory = require('./services/whatsapp/factory');
 const { normalizeJid, getJidUser } = require('./utils/jid');
 const { sendAlertWebhook } = require('./utils/alert-webhook');
+const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 
 // Event handlers map (can be extended by other modules)
 const eventHandlers = new Map();
@@ -113,6 +115,65 @@ async function resolveCanonicalJid(rawJid, options = {}) {
     if (!pn) return normalized;
 
     return `${pn}@s.whatsapp.net`;
+}
+
+async function ensureGatewayToken(sessionId) {
+    if (waGateway.getSessionToken(sessionId)) return true;
+    if (!gatewayPassword) {
+        throw new Error('Gateway password tidak dikonfigurasi');
+    }
+
+    const authResp = await waGateway.authenticate(sessionId, gatewayPassword);
+    if (authResp?.data?.token) {
+        waGateway.setSessionToken(sessionId, authResp.data.token);
+        return true;
+    }
+
+    throw new Error(`Gagal autentikasi gateway untuk session ${sessionId}`);
+}
+
+async function sendChatbotAutoReply(tenant, chat, targetJid, replyText) {
+    const provider = ProviderFactory.getProvider(tenant);
+    let destination = targetJid;
+
+    if ((tenant.wa_provider || 'whatsmeow') === 'meta') {
+        destination = getJidUser(targetJid);
+    } else {
+        await ensureGatewayToken(tenant.session_id);
+    }
+
+    const response = await provider.sendText(destination, replyText);
+    const savedReply = await db.logMessage({
+        chatId: chat.id,
+        senderType: 'system',
+        senderId: null,
+        senderName: 'AI Chatbot',
+        messageType: 'text',
+        body: replyText,
+        mediaUrl: null,
+        waMessageId: response?.messageId || null,
+        isFromMe: true,
+    });
+
+    broadcast({
+        type: 'message',
+        sessionId: tenant.session_id,
+        data: {
+            id: response?.messageId || null,
+            body: replyText,
+            type: 'text',
+            from: tenant.session_id,
+            to: targetJid,
+            pushName: 'AI Chatbot',
+            isFromMe: true,
+            db_id: savedReply.id,
+            chat_id: chat.id,
+            tenant_id: tenant.id,
+            sender_type: 'system',
+            sender_name: 'AI Chatbot',
+            is_group: false,
+        },
+    });
 }
 
 /**
@@ -230,6 +291,7 @@ async function handleMessage(sessionId, data) {
 
         const senderType = message.isFromMe ? 'agent' : 'customer';
         const senderJid = await resolveCanonicalJid(message.from, { isGroup: false });
+        const messageAlreadyExists = await db.messageExistsByWaId(message.id);
         let senderName = message.pushName;
         if (!senderName && senderJid) {
             const contact = await db.getContactByJid(tenant.id, senderJid);
@@ -319,6 +381,19 @@ async function handleMessage(sessionId, data) {
             const webhooks = await db.getTenantWebhooks(tenant.id);
             if (webhooks && webhooks.length > 0) {
                 await forwardToTenantWebhooks(webhooks, payload);
+            }
+        }
+
+        const isChatbotTenant = (tenant.ai_mode || 'agent') === 'chatbot';
+        const canAutoReply = !message.isFromMe && !isGroup && !messageAlreadyExists && message.type === 'text';
+        if (isChatbotTenant && canAutoReply) {
+            const matchedPair = await db.findTenantChatbotReply(tenant.id, messageText);
+            if (matchedPair?.answer) {
+                try {
+                    await sendChatbotAutoReply(tenant, chat, targetJid, matchedPair.answer);
+                } catch (replyError) {
+                    console.error(`[Webhook] Failed chatbot auto-reply for tenant ${tenant.id}:`, replyError.message);
+                }
             }
         }
 
