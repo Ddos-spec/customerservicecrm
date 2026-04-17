@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import {
   Menu, X, LogOut,
   LayoutDashboard, Users, MessageSquare,
-  Clock, ChevronDown, FileCode2, Sun, Moon, Megaphone
+  Clock, ChevronDown, FileCode2, Sun, Moon, Megaphone, Bot
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useThemeStore } from '../store/useThemeStore';
@@ -51,6 +51,7 @@ const MainLayout = () => {
           { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
           { to: '/admin/chat', icon: MessageSquare, label: 'Workspace' },
           { to: '/admin/history', icon: Clock, label: 'Riwayat' },
+          { to: '/admin/chatbot', icon: Bot, label: 'Chatbot' },
           { to: '/admin/agents', icon: Users, label: 'Tim Staff' },
           { to: '/admin/marketing', icon: Megaphone, label: 'Marketing' },
         ];

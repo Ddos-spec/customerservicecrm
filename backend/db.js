@@ -49,6 +49,86 @@ async function getTenantBySessionId(sessionId) {
     return result.rows[0] || null;
 }
 
+function normalizeChatbotPrompt(text) {
+    return (text || '').toString().trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function messageExistsByWaId(waMessageId) {
+    if (!waMessageId) return false;
+    const result = await query('SELECT 1 FROM messages WHERE wa_message_id = $1 LIMIT 1', [waMessageId]);
+    return result.rows.length > 0;
+}
+
+async function getTenantChatbotPairs(tenantId) {
+    const result = await query(`
+        SELECT id, tenant_id, question, answer, sort_order, created_at, updated_at
+        FROM tenant_chatbot_pairs
+        WHERE tenant_id = $1
+        ORDER BY sort_order ASC, created_at ASC
+    `, [tenantId]);
+    return result.rows;
+}
+
+async function replaceTenantChatbotPairs(tenantId, pairs, existingClient = null) {
+    const client = existingClient || await pool.connect();
+    const shouldRelease = !existingClient;
+    const normalizedPairs = Array.isArray(pairs)
+        ? pairs
+            .map((pair, index) => ({
+                question: (pair?.question || '').toString().trim(),
+                answer: (pair?.answer || '').toString().trim(),
+                sort_order: index,
+            }))
+            .filter((pair) => pair.question && pair.answer)
+        : [];
+
+    try {
+        if (!existingClient) {
+            await client.query('BEGIN');
+        }
+
+        await client.query('DELETE FROM tenant_chatbot_pairs WHERE tenant_id = $1', [tenantId]);
+
+        for (const pair of normalizedPairs) {
+            await client.query(`
+                INSERT INTO tenant_chatbot_pairs (tenant_id, question, answer, sort_order)
+                VALUES ($1, $2, $3, $4)
+            `, [tenantId, pair.question, pair.answer, pair.sort_order]);
+        }
+
+        if (!existingClient) {
+            await client.query('COMMIT');
+        }
+    } catch (error) {
+        if (!existingClient) {
+            await client.query('ROLLBACK');
+        }
+        throw error;
+    } finally {
+        if (shouldRelease) {
+            client.release();
+        }
+    }
+
+    return getTenantChatbotPairs(tenantId);
+}
+
+async function findTenantChatbotReply(tenantId, incomingText) {
+    const normalizedText = normalizeChatbotPrompt(incomingText);
+    if (!normalizedText) return null;
+
+    const result = await query(`
+        SELECT id, question, answer, sort_order
+        FROM tenant_chatbot_pairs
+        WHERE tenant_id = $1
+          AND lower(regexp_replace(trim(question), '\s+', ' ', 'g')) = $2
+        ORDER BY sort_order ASC, created_at ASC
+        LIMIT 1
+    `, [tenantId, normalizedText]);
+
+    return result.rows[0] || null;
+}
+
 // =============================================
 // 2. CONTACTS (V2)
 // =============================================
@@ -403,6 +483,10 @@ module.exports = {
     query, getClient, pool,
     // Users & Tenants
     findUserByEmail, findUserById, getTenantById, getTenantBySessionId, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
+    messageExistsByWaId,
+    getTenantChatbotPairs,
+    replaceTenantChatbotPairs,
+    findTenantChatbotReply,
     createUser: async (u) => (await query('INSERT INTO users (tenant_id, name, email, password_hash, role, phone_number) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [u.tenant_id, u.name, u.email, u.password_hash, u.role, u.phone_number])).rows[0],
     updateUser: async (id, u) => {
         const fields = Object.keys(u).map((k, i) => `${k} = $${i + 2}`).join(', ');
@@ -426,6 +510,24 @@ module.exports = {
         return (await query('UPDATE tenants SET api_key = $1 WHERE id = $2 RETURNING *', [newKey, id])).rows[0];
     },
     ensureTenantApiKeyColumn: async () => query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS api_key TEXT UNIQUE'),
+    ensureTenantAiModeColumn: async () => {
+        await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) DEFAULT \'agent\'');
+        await query("UPDATE tenants SET ai_mode = 'agent' WHERE ai_mode IS NULL OR trim(ai_mode) = ''");
+    },
+    ensureTenantChatbotPairsTable: async () => {
+        await query(`
+            CREATE TABLE IF NOT EXISTS tenant_chatbot_pairs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT now(),
+                updated_at TIMESTAMP DEFAULT now()
+            )
+        `);
+        await query('CREATE INDEX IF NOT EXISTS idx_tenant_chatbot_pairs_tenant_sort ON tenant_chatbot_pairs (tenant_id, sort_order)');
+    },
 
     // Invites
     updateInviteError: async (id, error) => (await query('UPDATE user_invites SET last_error = $1 WHERE id = $2 RETURNING *', [error, id])).rows[0],
@@ -448,6 +550,7 @@ module.exports = {
         if (config.webhook_events !== undefined) { fields.push(`webhook_events = $${idx++}`); values.push(config.webhook_events); }
         if (config.business_category !== undefined) { fields.push(`business_category = $${idx++}`); values.push(config.business_category); }
         if (config.api_key !== undefined) { fields.push(`api_key = $${idx++}`); values.push(config.api_key); }
+        if (config.ai_mode !== undefined) { fields.push(`ai_mode = $${idx++}`); values.push(config.ai_mode); }
 
         if (fields.length === 0) return null;
         values.push(id);

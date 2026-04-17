@@ -16,6 +16,7 @@ import SuperAdminApiDocs from './pages/SuperAdminApiDocs';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminReports from './pages/AdminReports';
 import AgentDashboard from './pages/AgentDashboard';
+import ChatbotSettings from './pages/ChatbotSettings';
 import CampaignList from './pages/marketing/CampaignList';
 import CreateCampaign from './pages/marketing/CreateCampaign';
 import ContactGroups from './pages/marketing/ContactGroups';
@@ -103,6 +104,7 @@ function App() {
               <Route path="chat" element={<AgentWorkspace />} />
               <Route path="history" element={<ChatHistory />} />
               <Route path="agents" element={<AgentManagement />} />
+              <Route path="chatbot" element={<ChatbotSettings />} />
               <Route path="marketing" element={<CampaignList />} />
               <Route path="marketing/create" element={<CreateCampaign />} />
               <Route path="marketing/groups" element={<ContactGroups />} />
