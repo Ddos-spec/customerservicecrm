@@ -17,6 +17,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminReports from './pages/AdminReports';
 import AgentDashboard from './pages/AgentDashboard';
 import ChatbotSettings from './pages/ChatbotSettings';
+import BillingPage from './pages/BillingPage';
 import CampaignList from './pages/marketing/CampaignList';
 import CreateCampaign from './pages/marketing/CreateCampaign';
 import ContactGroups from './pages/marketing/ContactGroups';
@@ -78,6 +79,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/invite/:token" element={<InviteAccept />} />
+          <Route path="/subscribe" element={<BillingPage />} />
           
           {/* Debug Route (Remove later) */}
           <Route path="/debug-analytics" element={<DebugAnalytics />} />
@@ -105,6 +107,7 @@ function App() {
               <Route path="history" element={<ChatHistory />} />
               <Route path="agents" element={<AgentManagement />} />
               <Route path="chatbot" element={<ChatbotSettings />} />
+              <Route path="billing" element={<BillingPage />} />
               <Route path="marketing" element={<CampaignList />} />
               <Route path="marketing/create" element={<CreateCampaign />} />
               <Route path="marketing/groups" element={<ContactGroups />} />
