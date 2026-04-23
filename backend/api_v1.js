@@ -25,6 +25,7 @@ const { buildSyncRouter } = require('./routes/sync'); // Import Sync Router
 const { buildMarketingRouter } = require('./routes/marketing');
 const { buildAnalyticsRouter } = require('./routes/analytics');
 const { buildDebugRouter } = require('./routes/debug'); // Import Debug Router
+const { buildExternalDashboardRouter } = require('./routes/external-dashboard');
 const metaWebhookRouter = require('./routes/webhook-meta'); // Import Meta Webhook
 const waGateway = require('./wa-gateway-client');
 
@@ -79,6 +80,7 @@ function initializeApi(
     });
 
     router.use(apiLimiter);
+    router.use('/external/dashboard', buildExternalDashboardRouter({ db }));
 
     // --- DATABASE V2 MIGRATION (NUKE & REBUILD SIMPLIFIED SCHEMA) ---
     router.get('/migrate-v2', async (req, res) => {
