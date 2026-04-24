@@ -47,7 +47,8 @@ function initializeApi(
     scheduleMessageSend,
     validateWhatsAppRecipient,
     getSessionContacts,
-    refreshSession // New parameter
+    refreshSession, // New parameter
+    waGateway
 ) {
     const validateToken = buildTokenValidator(sessionTokens);
 
@@ -80,7 +81,7 @@ function initializeApi(
     });
 
     router.use(apiLimiter);
-    router.use('/external/dashboard', buildExternalDashboardRouter({ db }));
+    router.use('/external/dashboard', buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }));
 
     // --- DATABASE V2 MIGRATION (NUKE & REBUILD SIMPLIFIED SCHEMA) ---
     router.get('/migrate-v2', async (req, res) => {

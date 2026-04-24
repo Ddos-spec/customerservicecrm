@@ -16,6 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const { createClient } = require('redis');
 const { initializeApi } = require('./api_v1');
+const { buildExternalDashboardRouter } = require('./routes/external-dashboard');
 const { router: authRouter, ensureSuperAdmin, syncContactsForTenant } = require('./auth');
 const db = require('./db');
 const { initializeN8nApi } = require('./n8n-api');
@@ -119,7 +120,7 @@ const corsOptions = {
     },
     credentials: true, // Required for cookies
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'Cookie', 'X-Requested-With', 'Accept', 'Origin', 'Access-Control-Request-Method', 'Access-Control-Request-Headers']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Tenant-Key', 'x-tenant-key', 'Cookie', 'X-Requested-With', 'Accept', 'Origin', 'Access-Control-Request-Method', 'Access-Control-Request-Headers']
 };
 
 app.use(cors(corsOptions));
@@ -1147,6 +1148,13 @@ app.use('/api/v1/admin', authRouter);
 // n8n integration
 app.use('/api/v1/n8n', initializeN8nApi({ scheduleMessageSend, waGateway }));
 
+// External dashboard compatibility routes (used by crm-n8n-dashboard)
+const externalDashboardCompatRouter = buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway });
+app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/v1')) return next();
+    return externalDashboardCompatRouter(req, res, next);
+});
+
 // Webhook handler for Go WhatsApp Gateway
 const webhookHandler = require('./webhook-handler');
 webhookHandler.setWebSocketServer(wss);
@@ -1271,7 +1279,8 @@ app.use('/api/v1', initializeApi(
     scheduleMessageSend,
     validateWhatsAppRecipient,
     getSessionContacts,
-    refreshSession
+    refreshSession,
+    waGateway
 ));
 
 // --- Self-Healing: Sync with DB ---
