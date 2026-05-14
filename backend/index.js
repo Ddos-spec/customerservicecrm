@@ -46,6 +46,7 @@ const MESSAGE_SEND_RETRY_DELAY_MS = parseInt(process.env.MESSAGE_SEND_RETRY_DELA
 const MESSAGE_SEND_RETRY_BACKOFF = parseFloat(process.env.MESSAGE_SEND_RETRY_BACKOFF || '2');
 const MESSAGE_SEND_QUEUE_DELAY_MS = parseInt(process.env.MESSAGE_SEND_QUEUE_DELAY_MS || '2000', 10);
 const HEALTH_CHECK_TOKEN = process.env.HEALTH_CHECK_TOKEN || '';
+const ENABLE_DB_SESSION_SELF_HEALING = process.env.ENABLE_DB_SESSION_SELF_HEALING === 'true';
 
 const app = express();
 // Detect production if NODE_ENV is set OR if FRONTEND_URL is https (common in deployments)
@@ -818,14 +819,12 @@ async function refreshSession(sessionId) {
         if (response.status && response.data?.qrcode) {
             console.log(`[Refresh] Session ${sessionId} needs QR scan.`);
             updateSessionStatus(sessionId, 'DISCONNECTED', response.data.qrcode);
-        } else if (msg.includes('reconnected') || msg.includes('already') || msg.includes('login')) {
+        } else if (msg.includes('reconnected') || msg.includes('already connected') || msg.includes('already logged in')) {
             console.log(`[Refresh] Session ${sessionId} is ALREADY CONNECTED.`);
             updateSessionStatus(sessionId, 'CONNECTED');
-        } else if (response.code === 200 && !response.data?.qrcode) {
-             console.log(`[Refresh] Session ${sessionId} HTTP 200 OK.`);
-             updateSessionStatus(sessionId, 'CONNECTED');
         } else {
-             console.log(`[Refresh] Session ${sessionId} Unknown State.`);
+             console.log(`[Refresh] Session ${sessionId} Unknown State. Marking as UNKNOWN until verified.`);
+             updateSessionStatus(sessionId, 'UNKNOWN');
         }
         
     } catch (error) {
@@ -1285,6 +1284,11 @@ app.use('/api/v1', initializeApi(
 
 // --- Self-Healing: Sync with DB ---
 async function syncSessionsWithDatabase() {
+    if (!ENABLE_DB_SESSION_SELF_HEALING) {
+        console.log('[Self-Healing] Disabled. Skipping DB session resurrection.');
+        return;
+    }
+
     console.log('[Self-Healing] Checking Database for missing sessions...');
     try {
         const tenants = await db.getAllTenants();
@@ -1395,69 +1399,9 @@ if (!isTest) {
             // Sync sessions with Gateway
             if (isHealthy) {
                 console.log('Syncing sessions with Gateway...');
-                const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
-
                 for (const sessionId of sessionTokens.keys()) {
                     try {
-                        // Check if we have a valid JWT from loadTokens auth
-                        let hasJwt = !!waGateway.getSessionToken(sessionId);
-
-                        // If no JWT, try to authenticate now
-                        if (!hasJwt && gatewayPassword) {
-                            console.log(`[Sync] No JWT for ${sessionId}, authenticating...`);
-                            try {
-                                const auth = await waGateway.authenticate(sessionId, gatewayPassword);
-                                if (auth.status && auth.data?.token) {
-                                    waGateway.setSessionToken(sessionId, auth.data.token);
-                                    hasJwt = true;
-                                    console.log(`[Sync] JWT obtained for ${sessionId}`);
-                                }
-                            } catch (authErr) {
-                                console.warn(`[Sync] Auth failed for ${sessionId}: ${authErr.message}`);
-                            }
-                        }
-
-                        // Skip sync if we still don't have JWT
-                        if (!hasJwt) {
-                            console.warn(`[Sync] Skipping ${sessionId}: No valid JWT`);
-                            continue;
-                        }
-
-                        // Check login status
-                        // Calling login on an active session returns "Reconnected" message
-                        // Calling on inactive returns QR
-                        const response = await waGateway.login(sessionId);
-
-                        let session = sessions.get(sessionId);
-                        if (!session) {
-                            session = {
-                                sessionId,
-                                sock: createCompatSocket(sessionId),
-                                status: 'UNKNOWN'
-                            };
-                        }
-
-                        if (response.status && response.data?.qrcode) {
-                            session.status = 'DISCONNECTED';
-                            session.qr = response.data.qrcode;
-                            console.log(`[Sync] Session ${sessionId}: DISCONNECTED (needs QR)`);
-                        } else if (response.message?.includes('Reconnected')) {
-                            session.status = 'CONNECTED';
-                            session.qr = null;
-                            console.log(`[Sync] Session ${sessionId}: CONNECTED`);
-                        } else {
-                            // Default to CONNECTED if no QR and response is OK
-                            session.status = response.status ? 'CONNECTED' : 'UNKNOWN';
-                            session.qr = null;
-                            console.log(`[Sync] Session ${sessionId}: ${session.status}`);
-                        }
-
-                        sessions.set(sessionId, session);
-                        await persistSessionStatus(sessionId, {
-                            status: session.status,
-                            qr: session.qr,
-                            connectedNumber: session.connectedNumber || null
-                        });
+                        await refreshSession(sessionId);
                     } catch (err) {
                         console.warn(`Failed to sync session ${sessionId}: ${err.message}`);
                     }
