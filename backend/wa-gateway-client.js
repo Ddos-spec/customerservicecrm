@@ -353,6 +353,24 @@ async function getWithAuth(route, headers = {}, params = {}, sessionId = null) {
     return unwrap(response);
 }
 
+function parseFilenameFromContentDisposition(contentDisposition) {
+    if (typeof contentDisposition !== 'string' || !contentDisposition.trim()) return null;
+
+    const utf8Match = contentDisposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+        try {
+            return decodeURIComponent(utf8Match[1].trim());
+        } catch (_error) {
+            return utf8Match[1].trim();
+        }
+    }
+
+    const asciiMatch = contentDisposition.match(/filename\s*=\s*"([^"]+)"/i)
+        || contentDisposition.match(/filename\s*=\s*([^;]+)/i);
+
+    return asciiMatch?.[1]?.trim() || null;
+}
+
 /**
  * Authenticate with the gateway and get JWT token
  */
@@ -777,6 +795,55 @@ async function reactToMessage(jid, to, messageId, emoji) {
     }
 }
 
+async function fetchEphemeralMedia(jid, mediaToken) {
+    const cleanToken = typeof mediaToken === 'string' ? mediaToken.trim() : '';
+    if (!cleanToken) {
+        throw new Error('Media token is required');
+    }
+
+    if (!getSessionToken(jid)) {
+        const healed = await reauthAndReconnect(jid);
+        if (!healed) {
+            throw new Error(`Fetch ephemeral media failed: no gateway token for session ${jid}`);
+        }
+    }
+
+    const attemptFetch = async () => {
+        const client = getGatewayClient(resolveGatewayUrl(jid));
+        const response = await client.get(`/media/ephemeral/${encodeURIComponent(cleanToken)}`, {
+            headers: getAuthHeader(jid),
+            responseType: 'arraybuffer',
+        });
+
+        return {
+            data: Buffer.from(response.data),
+            contentType: response.headers['content-type'] || 'application/octet-stream',
+            contentLength: Number.parseInt(response.headers['content-length'] || '0', 10) || null,
+            filename: parseFilenameFromContentDisposition(response.headers['content-disposition']) || null,
+        };
+    };
+
+    try {
+        return await attemptFetch();
+    } catch (error) {
+        const statusCode = error?.response?.status;
+        const message = error?.message || '';
+        const shouldRetry = statusCode === 401
+            || statusCode === 403
+            || isSessionInvalidError(error, error?.response)
+            || message.includes('No token found for session');
+
+        if (shouldRetry) {
+            const healed = await reauthAndReconnect(jid);
+            if (healed) {
+                return await attemptFetch();
+            }
+        }
+
+        throw new Error(`Fetch ephemeral media failed: ${getGatewayErrorMessage(error)}`);
+    }
+}
+
 /**
  * Check gateway health
  */
@@ -844,6 +911,7 @@ module.exports = {
     editMessage,
     deleteMessage,
     reactToMessage,
+    fetchEphemeralMedia,
 
     // Utilities
     checkRegistered,

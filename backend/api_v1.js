@@ -194,7 +194,7 @@ function initializeApi(
     // Move Chat Router UP to verify isolation
     router.use(buildChatRouter({ sessions, formatPhoneNumber, validateToken, db }));
 
-    router.use(buildMediaRouter({ log, validateToken }));
+    router.use(buildMediaRouter({ log, validateToken, waGateway }));
     router.use(buildMessagesRouter({
         sessions,
         log,

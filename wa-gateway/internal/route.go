@@ -68,4 +68,5 @@ func Routes(e *echo.Echo) {
 	e.POST(router.BaseURL+"/message/edit", ctlWhatsApp.MessageEdit, middleware.JWTWithConfig(authJWTConfig))
 	e.POST(router.BaseURL+"/message/react", ctlWhatsApp.MessageEdit, middleware.JWTWithConfig(authJWTConfig))
 	e.POST(router.BaseURL+"/message/delete", ctlWhatsApp.MessageDelete, middleware.JWTWithConfig(authJWTConfig))
+	e.GET(router.BaseURL+"/media/ephemeral/:token", ctlWhatsApp.EphemeralMedia, middleware.JWTWithConfig(authJWTConfig))
 }

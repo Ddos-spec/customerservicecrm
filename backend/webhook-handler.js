@@ -12,6 +12,7 @@ const waGateway = require('./wa-gateway-client');
 const ProviderFactory = require('./services/whatsapp/factory');
 const { normalizeJid, getJidUser } = require('./utils/jid');
 const { sendAlertWebhook } = require('./utils/alert-webhook');
+const { buildSignedEphemeralMediaUrl } = require('./utils/ephemeral-media');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 
 // Event handlers map (can be extended by other modules)
@@ -49,6 +50,38 @@ function isMessageTypeAllowed(messageType, webhookEvents) {
     if (normalizedType === 'audio') return webhookEvents.audio;
     if (normalizedType === 'document') return webhookEvents.document;
     return true;
+}
+
+function buildForwardableMedia(req, sessionId, message) {
+    if (!req || !message || typeof message !== 'object') {
+        return {
+            forwardedMessage: message,
+            publicMediaUrl: null,
+        };
+    }
+
+    const mediaToken = typeof message.ephemeralMediaToken === 'string'
+        ? message.ephemeralMediaToken.trim()
+        : '';
+    const expiresAt = message.ephemeralMediaExpiresAt || null;
+    const publicMediaUrl = mediaToken
+        ? buildSignedEphemeralMediaUrl(req, {
+            sessionId,
+            token: mediaToken,
+            expiresAt,
+        })
+        : null;
+
+    return {
+        publicMediaUrl,
+        forwardedMessage: {
+            ...message,
+            gatewayMediaUrl: message.mediaUrl || null,
+            mediaUrl: publicMediaUrl || message.mediaUrl || null,
+            ephemeralMediaUrl: publicMediaUrl || null,
+            mediaAvailable: Boolean(publicMediaUrl),
+        },
+    };
 }
 
 /**
@@ -203,7 +236,7 @@ router.post('/incoming', async (req, res) => {
         // Process based on event type
         switch (event) {
             case 'message':
-                await handleMessage(sessionId, data);
+                await handleMessage(req, sessionId, data);
                 break;
             case 'receipt':
                 await handleReceipt(sessionId, data);
@@ -243,7 +276,7 @@ router.post('/incoming', async (req, res) => {
 /**
  * Handle incoming message
  */
-async function handleMessage(sessionId, data) {
+async function handleMessage(req, sessionId, data) {
     const { message } = data;
     if (!message) return;
 
@@ -315,12 +348,14 @@ async function handleMessage(sessionId, data) {
 
         console.log(`[Webhook] Saved ${senderType} message ID ${savedMessage.id} for Chat ${chat.id} (${targetJid})`);
 
+        const { publicMediaUrl, forwardedMessage } = buildForwardableMedia(req, sessionId, message);
+
         // 4. Broadcast to WebSocket (UI Update)
         broadcast({
             type: 'message',
             sessionId,
             data: {
-                ...message,
+                ...forwardedMessage,
                 db_id: savedMessage.id,
                 chat_id: chat.id,
                 tenant_id: tenant.id,
@@ -364,6 +399,11 @@ async function handleMessage(sessionId, data) {
                 dbMessageId: savedMessage.id,
                 messageType: message.type,
                 messageText: messageText,
+                mediaUrl: publicMediaUrl,
+                ephemeralMediaUrl: publicMediaUrl,
+                ephemeralMediaToken: message.ephemeralMediaToken || null,
+                ephemeralMediaExpiresAt: message.ephemeralMediaExpiresAt || null,
+                mediaMimeType: message.mediaMimeType || null,
                 messageTimestamp: message.timestamp || null,
                 receivedAt: new Date().toISOString(),
                 isFromMe: message.isFromMe,
@@ -375,7 +415,7 @@ async function handleMessage(sessionId, data) {
                 to: message.to || null,
                 toCanonical,
                 toPhone,
-                message
+                message: forwardedMessage
             };
 
             const webhooks = await db.getTenantWebhooks(tenant.id);
