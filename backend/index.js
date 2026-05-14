@@ -190,12 +190,67 @@ async function hydrateSessionsFromRedis() {
         if (!cached) continue;
         const existing = sessions.get(sessionId);
         const base = existing || { sessionId, sock: createCompatSocket(sessionId) };
+        const cachedStatus = typeof cached.status === 'string' ? cached.status : '';
+        const bootStatus = cachedStatus === 'CONNECTED' ? 'CONNECTING' : (cachedStatus || base.status || 'UNKNOWN');
         sessions.set(sessionId, {
             ...base,
-            status: cached.status || base.status || 'UNKNOWN',
+            status: bootStatus,
             qr: cached.qr || null,
             connectedNumber: cached.connectedNumber || null
         });
+    }
+}
+
+async function getAllowedPersistedSessionIds() {
+    const allowed = new Set();
+    const tenants = await db.getAllTenants();
+    tenants.forEach((tenant) => {
+        if (tenant?.session_id && typeof tenant.session_id === 'string' && tenant.session_id.trim()) {
+            allowed.add(tenant.session_id.trim());
+        }
+    });
+
+    try {
+        const notifierSessionId = await db.getSystemSetting('notifier_session_id');
+        if (typeof notifierSessionId === 'string' && notifierSessionId.trim()) {
+            allowed.add(notifierSessionId.trim());
+        }
+    } catch (err) {
+        logger.warn(`[System] Failed to load notifier session setting: ${err.message}`);
+    }
+
+    return allowed;
+}
+
+async function prunePersistedSessions() {
+    const allowedSessionIds = await getAllowedPersistedSessionIds();
+    let removedCount = 0;
+
+    for (const sessionId of Array.from(sessionTokens.keys())) {
+        if (allowedSessionIds.has(sessionId)) continue;
+
+        sessionTokens.delete(sessionId);
+        sessions.delete(sessionId);
+        waGateway.removeSessionToken(sessionId);
+        waGateway.setSessionGatewayUrl(sessionId, null);
+        removedCount += 1;
+
+        if (redisClient?.isOpen) {
+            await Promise.allSettled([
+                redisClient.del(`wa:contacts:${sessionId}`),
+                redisClient.del(`wa:settings:${sessionId}`),
+                redisClient.del(`wa:session_status:${sessionId}`),
+                redisClient.del(`wa:sync:last:${sessionId}`),
+                redisClient.del(`wa:sync:next:${sessionId}`),
+                redisClient.del(`wa:sync:fail:${sessionId}`),
+                redisClient.zRem(CONTACT_SYNC_QUEUE_NAME, sessionId),
+            ]);
+        }
+    }
+
+    if (removedCount > 0) {
+        saveTokens();
+        console.log(`[System] Pruned ${removedCount} stale persisted session(s) with no DB owner.`);
     }
 }
 
@@ -1387,7 +1442,8 @@ if (!isTest) {
         await fixSessionCollisions();
 
         await loadTokens();
-        await syncSessionsWithDatabase(); // <--- NEW CALL HERE
+        await prunePersistedSessions();
+        await syncSessionsWithDatabase();
         await seedContactSyncQueue(true);
 
         // Check Go gateway health
