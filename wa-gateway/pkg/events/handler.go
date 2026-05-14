@@ -7,11 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
+	"customerservicecrm/wa-gateway/pkg/ephemeralmedia"
 	"customerservicecrm/wa-gateway/pkg/log"
 	"customerservicecrm/wa-gateway/pkg/webhook"
 )
@@ -25,8 +27,8 @@ type groupNameCacheEntry struct {
 
 // Handler handles WhatsApp events and forwards them to webhooks
 type Handler struct {
-	sessionID string
-	client    *whatsmeow.Client
+	sessionID        string
+	client           *whatsmeow.Client
 	groupNameCache   map[string]groupNameCacheEntry
 	groupNameCacheMu sync.RWMutex
 }
@@ -96,6 +98,7 @@ func (h *Handler) handleMessage(evt *events.Message) {
 
 	// Determine message type and extract content
 	h.extractMessageContent(evt.Message, &msg)
+	h.attachEphemeralMediaReference(evt.Message, evt.Info.ID, &msg)
 
 	// Handle quoted message if exists
 	if evt.Message.GetExtendedTextMessage() != nil {
@@ -211,6 +214,47 @@ func (h *Handler) extractMessageContent(msg *waE2E.Message, payload *webhook.Mes
 
 	default:
 		payload.Type = "unknown"
+	}
+}
+
+func (h *Handler) attachEphemeralMediaReference(msg *waE2E.Message, messageID string, payload *webhook.MessagePayload) {
+	mediaType, mimeType, filename, protoMessage := extractEphemeralMediaReference(msg)
+	if protoMessage == nil || mediaType == "" {
+		return
+	}
+
+	meta, err := ephemeralmedia.StoreReference(context.Background(), h.sessionID, messageID, mediaType, mimeType, filename, protoMessage)
+	if err != nil {
+		log.Print(nil).Warnf("[MEDIA] Failed to cache ephemeral media reference for %s (%s): %v", messageID, mediaType, err)
+		return
+	}
+
+	payload.EphemeralMediaToken = meta.Token
+	payload.EphemeralMediaExpiresAt = meta.ExpiresAt
+	if payload.MediaMimeType == "" {
+		payload.MediaMimeType = meta.MimeType
+	}
+}
+
+func extractEphemeralMediaReference(msg *waE2E.Message) (mediaType, mimeType, filename string, payload proto.Message) {
+	switch {
+	case msg.GetImageMessage() != nil:
+		image := msg.GetImageMessage()
+		return "image", image.GetMimetype(), "", image
+	case msg.GetVideoMessage() != nil:
+		video := msg.GetVideoMessage()
+		return "video", video.GetMimetype(), "", video
+	case msg.GetAudioMessage() != nil:
+		audio := msg.GetAudioMessage()
+		return "audio", audio.GetMimetype(), "", audio
+	case msg.GetDocumentMessage() != nil:
+		document := msg.GetDocumentMessage()
+		return "document", document.GetMimetype(), document.GetFileName(), document
+	case msg.GetStickerMessage() != nil:
+		sticker := msg.GetStickerMessage()
+		return "sticker", sticker.GetMimetype(), "", sticker
+	default:
+		return "", "", "", nil
 	}
 }
 

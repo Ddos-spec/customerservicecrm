@@ -42,21 +42,23 @@ type WebhookPayload struct {
 
 // MessagePayload represents an incoming WhatsApp message
 type MessagePayload struct {
-	ID            string                 `json:"id"`
-	From          string                 `json:"from"`
-	To            string                 `json:"to"`
-	Type          string                 `json:"type"`
-	Body          string                 `json:"body,omitempty"`
-	Caption       string                 `json:"caption,omitempty"`
-	MediaURL      string                 `json:"mediaUrl,omitempty"`
-	MediaMimeType string                 `json:"mediaMimeType,omitempty"`
-	IsGroup       bool                   `json:"isGroup"`
-	IsFromMe      bool                   `json:"isFromMe"`
-	PushName      string                 `json:"pushName,omitempty"`
-	GroupName     string                 `json:"groupName,omitempty"`
-	Timestamp     int64                  `json:"timestamp"`
-	QuotedMessage map[string]interface{} `json:"quotedMessage,omitempty"`
-	Raw           map[string]interface{} `json:"raw,omitempty"`
+	ID                     string                 `json:"id"`
+	From                   string                 `json:"from"`
+	To                     string                 `json:"to"`
+	Type                   string                 `json:"type"`
+	Body                   string                 `json:"body,omitempty"`
+	Caption                string                 `json:"caption,omitempty"`
+	MediaURL               string                 `json:"mediaUrl,omitempty"`
+	MediaMimeType          string                 `json:"mediaMimeType,omitempty"`
+	EphemeralMediaToken    string                 `json:"ephemeralMediaToken,omitempty"`
+	EphemeralMediaExpiresAt int64                 `json:"ephemeralMediaExpiresAt,omitempty"`
+	IsGroup                bool                   `json:"isGroup"`
+	IsFromMe               bool                   `json:"isFromMe"`
+	PushName               string                 `json:"pushName,omitempty"`
+	GroupName              string                 `json:"groupName,omitempty"`
+	Timestamp              int64                  `json:"timestamp"`
+	QuotedMessage          map[string]interface{} `json:"quotedMessage,omitempty"`
+	Raw                    map[string]interface{} `json:"raw,omitempty"`
 }
 
 // QueuedWebhook represents a webhook in the queue
