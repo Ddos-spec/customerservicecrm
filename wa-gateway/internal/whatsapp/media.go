@@ -70,8 +70,8 @@ func EphemeralMedia(c echo.Context) error {
 		c.Response().Header().Set(echo.HeaderContentDisposition, fmt.Sprintf(`inline; filename*=UTF-8''%s`, url.PathEscape(trimmedFilename)))
 	}
 	c.Response().Header().Set(echo.HeaderCacheControl, "private, no-store, max-age=0")
-	c.Response().Header().Set(echo.HeaderPragma, "no-cache")
-	c.Response().Header().Set(echo.HeaderExpires, "0")
+	c.Response().Header().Set("Pragma", "no-cache")
+	c.Response().Header().Set("Expires", "0")
 	c.Response().Header().Set(echo.HeaderContentLength, fmt.Sprintf("%d", len(bytes)))
 
 	return c.Blob(http.StatusOK, contentType, bytes)
