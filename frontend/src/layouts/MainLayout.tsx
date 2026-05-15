@@ -94,16 +94,19 @@ const MainLayout = () => {
       <button
         onClick={() => navigate(to)}
         className={clsx(
-          "flex items-center space-x-2 px-5 py-2.5 rounded-full transition-all text-xs font-black uppercase tracking-widest",
+          "group relative flex items-center space-x-2 rounded-2xl px-4 py-3 transition-all text-[11px] font-black uppercase tracking-[0.18em]",
           isActive
             ? (isSuperAdmin
-                ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-1 ring-green-100 dark:ring-green-800"
-                : "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-1 ring-blue-100 dark:ring-blue-800")
+                ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-1 ring-green-100 dark:ring-green-800 shadow-[0_12px_30px_-24px_rgba(22,163,74,0.8)]"
+                : "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-1 ring-blue-100 dark:ring-blue-800 shadow-[0_12px_30px_-24px_rgba(37,99,235,0.8)]")
             : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
         )}
       >
         <Icon size={16} />
         <span>{label}</span>
+        {isActive && (
+          <span className={clsx("absolute inset-x-4 -bottom-1 h-0.5 rounded-full", isSuperAdmin ? "bg-green-500" : "bg-blue-500")} />
+        )}
       </button>
     );
   };
@@ -128,18 +131,23 @@ const MainLayout = () => {
 
       {/* ================= DESKTOP NAVBAR ================= */}
       <header className="hidden lg:flex bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-100 dark:border-slate-800 h-20 sticky top-0 z-40 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto w-full px-8 flex items-center justify-between">
-          <div className="flex items-center space-x-12">
+        <div className="max-w-7xl mx-auto w-full px-8 flex items-center justify-between gap-6">
+          <div className="flex items-center space-x-10 min-w-0">
             {/* Logo */}
             <div className="flex items-center space-x-3">
               <img src="/logo.png" alt="CRM SaaS" className="h-9 w-9 rounded-xl object-contain" />
-              <span className="text-xl font-black tracking-tighter text-gray-900 dark:text-white uppercase">
-                CRM<span className={isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}>SaaS</span>
-              </span>
+              <div className="min-w-0">
+                <span className="text-xl font-black tracking-tighter text-gray-900 dark:text-white uppercase block leading-none">
+                  CRM<span className={isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}>SaaS</span>
+                </span>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">
+                  Customer Service Command Center
+                </p>
+              </div>
             </div>
 
             {/* Desktop Navigation */}
-            <nav className="flex items-center space-x-1">
+            <nav className="flex items-center space-x-1 rounded-3xl border border-gray-100 bg-white/80 p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
               {getNavItems().map((item) => (
                 <NavItemDesktop key={item.to} {...item} />
               ))}
@@ -158,14 +166,19 @@ const MainLayout = () => {
             <div className="relative">
               <button
                 onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                className="flex items-center space-x-3 p-1.5 pr-4 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-800 border border-transparent hover:border-gray-100 dark:hover:border-slate-700 transition-all"
+                className="flex items-center space-x-3 rounded-3xl border border-gray-100 bg-white/80 p-1.5 pr-4 shadow-sm transition-all hover:border-gray-200 hover:bg-gray-50 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:border-slate-700 dark:hover:bg-slate-800"
               >
                 <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black shadow-lg", isSuperAdmin ? "bg-green-600 shadow-green-100 dark:shadow-green-900/50" : "bg-blue-600 shadow-blue-100 dark:shadow-blue-900/50")}>
                   {user?.name.charAt(0)}
                 </div>
                 <div className="text-left hidden xl:block">
                   <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{user?.name}</p>
-                  <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest pt-1">{roleLabel}</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{roleLabel}</p>
+                    <span className={clsx("rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em]", isSuperAdmin ? "bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-300" : "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300")}>
+                      {getRoleLabel(user?.role)}
+                    </span>
+                  </div>
                 </div>
                 <ChevronDown size={14} className="text-gray-300 dark:text-gray-600" />
               </button>
@@ -251,8 +264,8 @@ const MainLayout = () => {
 
 
       {/* ================= MAIN CONTENT AREA ================= */}
-      <main className="flex-1 pt-24 lg:pt-0 overflow-x-hidden bg-gray-50/50 dark:bg-slate-900 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-12 py-6">
+      <main className="flex-1 pt-24 lg:pt-0 overflow-x-hidden bg-[linear-gradient(to_bottom,_rgba(248,250,252,0.96),_rgba(248,250,252,1))] dark:bg-[linear-gradient(to_bottom,_rgba(15,23,42,0.94),_rgba(2,6,23,1))] transition-colors duration-300">
+        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-12 py-6 lg:py-8">
           <Outlet />
         </div>
       </main>
