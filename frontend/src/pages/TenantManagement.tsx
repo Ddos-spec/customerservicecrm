@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, MoreVertical, Building2, X, Loader2, RefreshCw, Copy } from 'lucide-react';
+import {
+  Plus, Search, MoreVertical, Building2, X, Loader2, RefreshCw, Copy,
+  Smartphone, Users, Bot, Globe, Shield
+} from 'lucide-react';
 import { toast } from 'sonner';
 import Pagination from '../components/Pagination';
 import api from '../lib/api';
@@ -74,6 +77,47 @@ const normalizeWebhookEvents = (raw?: Partial<WebhookEventsConfig> | null): Webh
   audio: typeof raw?.audio === 'boolean' ? raw.audio : DEFAULT_WEBHOOK_EVENTS.audio,
   document: typeof raw?.document === 'boolean' ? raw.document : DEFAULT_WEBHOOK_EVENTS.document
 });
+
+const getStatusClasses = (status?: string) =>
+  status === 'active'
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300';
+
+const getStatusLabel = (status?: string) => (status === 'active' ? 'Aktif' : 'Ditangguhkan');
+
+const getProviderLabel = (provider?: Tenant['wa_provider']) => {
+  switch (provider) {
+    case 'meta':
+      return 'Meta Cloud API';
+    case 'whatsmeow':
+      return 'WhatsMeow Gateway';
+    default:
+      return 'Belum diatur';
+  }
+};
+
+const getAiModeLabel = (mode?: Tenant['ai_mode']) => {
+  switch (mode) {
+    case 'chatbot':
+      return 'Chatbot FAQ';
+    case 'agent':
+      return 'AI Agent';
+    default:
+      return 'Belum dipilih';
+  }
+};
+
+const formatCompactDate = (value?: string) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const parseUserCount = (value?: string) => {
+  const parsed = Number.parseInt(value || '0', 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const TenantManagement = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -594,27 +638,96 @@ const TenantManagement = () => {
     }
   };
 
+  const activeTenants = tenants.filter((tenant) => tenant.status === 'active').length;
+  const suspendedTenants = tenants.filter((tenant) => tenant.status !== 'active').length;
+  const configuredSessions = tenants.filter((tenant) => Boolean(tenant.session_id)).length;
+  const chatbotTenants = tenants.filter((tenant) => tenant.ai_mode === 'chatbot').length;
+  const totalUsers = tenants.reduce((total, tenant) => total + parseUserCount(tenant.user_count), 0);
+  const tenantStats = [
+    {
+      label: 'Tenant Aktif',
+      value: activeTenants.toLocaleString('id-ID'),
+      helper: `${suspendedTenants.toLocaleString('id-ID')} tenant dibatasi`,
+      icon: Building2,
+      accent: 'emerald',
+    },
+    {
+      label: 'Session WA',
+      value: configuredSessions.toLocaleString('id-ID'),
+      helper: `${Math.max(tenants.length - configuredSessions, 0).toLocaleString('id-ID')} belum setup`,
+      icon: Smartphone,
+      accent: 'blue',
+    },
+    {
+      label: 'User Tenant',
+      value: totalUsers.toLocaleString('id-ID'),
+      helper: `${tenants.length.toLocaleString('id-ID')} perusahaan terdaftar`,
+      icon: Users,
+      accent: 'amber',
+    },
+    {
+      label: 'Chatbot FAQ',
+      value: chatbotTenants.toLocaleString('id-ID'),
+      helper: `${Math.max(tenants.length - chatbotTenants, 0).toLocaleString('id-ID')} pakai AI Agent`,
+      icon: Bot,
+      accent: 'purple',
+    },
+  ] as const;
+
   return (
-    <div className="animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter uppercase">Manajemen Tenant</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 font-medium">Pusat kendali seluruh entitas bisnis pelanggan SaaS.</p>
+    <div className="animate-in fade-in duration-500 space-y-8">
+      <div className="rounded-[2rem] border border-emerald-100 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(255,255,255,0.92))] p-6 shadow-[0_24px_80px_-50px_rgba(16,185,129,0.45)] dark:border-emerald-900/40 dark:bg-[linear-gradient(135deg,rgba(6,78,59,0.45),rgba(15,23,42,0.92))] dark:shadow-none lg:p-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-emerald-600 dark:text-emerald-300">Tenant Command Center</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-gray-900 dark:text-white lg:text-4xl">Manajemen Tenant</h1>
+            <p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">
+              Pusat kendali seluruh entitas bisnis pelanggan SaaS: status aktif, koneksi WhatsApp, mode AI, dan pemeliharaan integrasi tenant.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button onClick={fetchTenants} className="flex items-center justify-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-gray-700 shadow-sm transition-all hover:bg-white dark:border-slate-700 dark:bg-slate-900/80 dark:text-gray-200 dark:hover:bg-slate-900">
+              <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+            <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-3.5 text-xs font-black uppercase tracking-[0.18em] text-white shadow-xl shadow-emerald-200 transition-all active:scale-95 hover:bg-emerald-700 dark:shadow-emerald-950/40">
+              <Plus size={18} />
+              <span>Tambah Tenant</span>
+            </button>
+          </div>
         </div>
-        <div className="flex space-x-3">
-          <button onClick={fetchTenants} className="p-3.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-all">
-            <RefreshCw size={18} className={`text-gray-600 dark:text-gray-300 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
-          <button onClick={() => setIsModalOpen(true)} className="flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl transition-all shadow-xl shadow-emerald-100 dark:shadow-emerald-900/30 font-black uppercase tracking-widest text-xs active:scale-95">
-            <Plus size={18} />
-            <span>Tambah Tenant</span>
-          </button>
+
+        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {tenantStats.map((stat) => {
+            const accentClasses = {
+              emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+              blue: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+              amber: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+              purple: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+            }[stat.accent];
+
+            return (
+              <div key={stat.label} className="rounded-3xl border border-white/70 bg-white/85 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">{stat.label}</p>
+                    <p className="mt-2 text-2xl font-black tracking-tight text-gray-900 dark:text-white">{stat.value}</p>
+                  </div>
+                  <div className={`rounded-2xl p-3 ${accentClasses}`}>
+                    <stat.icon size={20} />
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">{stat.helper}</p>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden flex flex-col min-h-[600px]">
-        <div className="p-6 border-b border-gray-50 dark:border-slate-700 flex items-center bg-gray-50/30 dark:bg-slate-800/60">
-          <div className="relative flex-1 max-w-md">
+        <div className="border-b border-gray-100 bg-gray-50/60 p-6 dark:border-slate-700 dark:bg-slate-800/60">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative flex-1 max-w-xl">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={18} />
             <input
               type="text"
@@ -623,6 +736,41 @@ const TenantManagement = () => {
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               className="pl-12 pr-4 py-3.5 w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all"
             />
+          </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-gray-500 ring-1 ring-gray-100 dark:bg-slate-900 dark:text-gray-300 dark:ring-slate-700">
+                {filteredTenants.length.toLocaleString('id-ID')} tenant
+              </span>
+              <span className="rounded-full bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+                {activeTenants.toLocaleString('id-ID')} aktif
+              </span>
+              <span className="rounded-full bg-blue-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                {configuredSessions.toLocaleString('id-ID')} session
+              </span>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-gray-100 bg-white/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/60">
+              <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
+                <Globe size={16} className="text-emerald-500" />
+                <p className="text-sm font-bold">Integrasi multitenant</p>
+              </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Kelola provider WA, webhook, dan API key tenant dari satu tempat.</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/60">
+              <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
+                <Shield size={16} className="text-blue-500" />
+                <p className="text-sm font-bold">Aman untuk aksi sensitif</p>
+              </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Dropdown aksi tenant dipisahkan jelas agar suspend, impersonate, dan delete tidak tertukar.</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/60">
+              <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
+                <Bot size={16} className="text-purple-500" />
+                <p className="text-sm font-bold">AI mode transparan</p>
+              </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Lihat cepat tenant yang masih di AI Agent vs tenant yang sudah dipindah ke Chatbot FAQ.</p>
+            </div>
           </div>
         </div>
 
@@ -639,7 +787,7 @@ const TenantManagement = () => {
                 <thead className="bg-gray-50/50 dark:bg-slate-800/70 border-b border-gray-100 dark:border-slate-700 text-gray-400 dark:text-gray-500 text-[10px] font-black uppercase tracking-[0.2em]">
                   <tr>
                     <th className="px-8 py-5">Nama Perusahaan</th>
-                    <th className="px-8 py-5">Session WA</th>
+                    <th className="px-8 py-5">Channel & AI</th>
                     <th className="px-8 py-5">Jumlah User</th>
                     <th className="px-8 py-5">Tanggal Dibuat</th>
                     <th className="px-8 py-5">Status</th>
@@ -654,27 +802,50 @@ const TenantManagement = () => {
                           <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-inner">
                             <Building2 size={20} />
                           </div>
-                          <span className="font-black text-gray-900 dark:text-white text-sm tracking-tight">{tenant.company_name}</span>
+                          <div>
+                            <span className="font-black text-gray-900 dark:text-white text-sm tracking-tight block">{tenant.company_name}</span>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-gray-500 dark:bg-slate-700 dark:text-gray-300">
+                                {tenant.business_category || 'general'}
+                              </span>
+                              <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                                dibuat {formatCompactDate(tenant.created_at)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                      </td>
-                      <td className="px-8 py-6 text-xs font-mono text-gray-600 dark:text-gray-300">
-                        <div>{tenant.session_id || '-'}</div>
-                        <div className="text-[10px] text-gray-400 dark:text-gray-500 font-sans mt-1">
-                          Gateway: {tenant.gateway_url || '-'}
-                        </div>
-                        <div className="text-[10px] text-gray-400 dark:text-gray-500 font-sans mt-1">
-                          Mode: {tenant.ai_mode === 'chatbot' ? 'Chatbot FAQ' : 'AI Agent'}
-                        </div>
-                      </td>
-                      <td className="px-8 py-6 text-sm font-black text-gray-700 dark:text-gray-200">{tenant.user_count} Users</td>
-                      <td className="px-8 py-6 text-sm text-gray-500 dark:text-gray-400 font-medium">
-                        {new Date(tenant.created_at).toLocaleDateString('id-ID')}
                       </td>
                       <td className="px-8 py-6">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${ 
-                          tenant.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                        }`}>
-                          {tenant.status === 'active' ? 'Aktif' : 'Ditangguhkan'}
+                        <div className="space-y-2 text-xs text-gray-600 dark:text-gray-300">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                              {getProviderLabel(tenant.wa_provider)}
+                            </span>
+                            <span className="rounded-full bg-purple-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-purple-600 dark:bg-purple-900/30 dark:text-purple-300">
+                              {getAiModeLabel(tenant.ai_mode)}
+                            </span>
+                          </div>
+                          <div className="font-mono text-[11px]">{tenant.session_id || 'Belum ada session'}</div>
+                          <div className="truncate text-[11px] text-gray-400 dark:text-gray-500">
+                            {tenant.gateway_url || 'Gateway default server'}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="text-sm font-black text-gray-700 dark:text-gray-200">{parseUserCount(tenant.user_count).toLocaleString('id-ID')} Users</div>
+                        <div className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                          {tenant.status === 'active' ? 'Tenant dapat menerima chat baru' : 'Akses tenant sedang dibatasi'}
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 text-sm text-gray-500 dark:text-gray-400 font-medium">
+                        <div>{formatCompactDate(tenant.created_at)}</div>
+                        <div className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                          {tenant.meta_phone_id ? 'Meta siap' : tenant.session_id ? 'WA configured' : 'Perlu setup'}
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusClasses(tenant.status)}`}>
+                          {getStatusLabel(tenant.status)}
                         </span>
                       </td>
                       <td className="px-8 py-6 text-right relative">
@@ -705,7 +876,12 @@ const TenantManagement = () => {
                   )) : (
                     <tr>
                       <td colSpan={6} className="px-8 py-16 text-center text-gray-400 dark:text-gray-500">
-                        {searchTerm ? 'Tidak ada tenant yang cocok dengan pencarian.' : 'Belum ada tenant. Klik "Tambah Tenant" untuk membuat.'}
+                        <div className="mx-auto max-w-sm rounded-3xl border border-dashed border-gray-200 bg-gray-50/80 px-6 py-8 dark:border-slate-700 dark:bg-slate-900/50">
+                          <p className="text-base font-bold text-gray-700 dark:text-gray-200">{searchTerm ? 'Tenant tidak ditemukan' : 'Belum ada tenant'}</p>
+                          <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
+                            {searchTerm ? 'Coba kata kunci lain atau hapus filter pencarian.' : 'Klik tombol "Tambah Tenant" untuk mulai menambahkan perusahaan baru.'}
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -722,17 +898,28 @@ const TenantManagement = () => {
                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center"><Building2 size={24} /></div>
                            <div>
                               <h4 className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{tenant.company_name}</h4>
-                              <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${ 
-                                tenant.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                              }`}>{tenant.status === 'active' ? 'Aktif' : 'Ditangguhkan'}</span>
+                              <div className="mt-1 flex flex-wrap gap-2">
+                                <span className={`inline-block px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${getStatusClasses(tenant.status)}`}>{getStatusLabel(tenant.status)}</span>
+                                <span className="inline-block rounded-md bg-gray-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-gray-500 dark:bg-slate-700 dark:text-gray-300">{tenant.business_category || 'general'}</span>
+                              </div>
                            </div>
                         </div>
                         <button onClick={() => toggleDropdown(tenant.id)} className="p-2 text-gray-400 dark:text-gray-500"><MoreVertical size={20}/></button>
                      </div>
-                     <div className="text-sm text-gray-500 dark:text-gray-400 mb-2">{tenant.user_count} Users</div>
-                     <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Session WA: {tenant.session_id || '-'}</div>
-                     <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2 break-all">Gateway: {tenant.gateway_url || '-'}</div>
-                     <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">Mode AI: {tenant.ai_mode === 'chatbot' ? 'Chatbot FAQ' : 'AI Agent'}</div>
+                     <div className="mb-3 grid grid-cols-2 gap-2">
+                       <div className="rounded-xl bg-gray-50 p-3 dark:bg-slate-800/60">
+                         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Users</p>
+                         <p className="mt-1 text-sm font-bold text-gray-800 dark:text-gray-100">{parseUserCount(tenant.user_count).toLocaleString('id-ID')}</p>
+                       </div>
+                       <div className="rounded-xl bg-gray-50 p-3 dark:bg-slate-800/60">
+                         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Mode AI</p>
+                         <p className="mt-1 text-sm font-bold text-gray-800 dark:text-gray-100">{getAiModeLabel(tenant.ai_mode)}</p>
+                       </div>
+                     </div>
+                     <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-mono">Session WA: {tenant.session_id || 'Belum ada session'}</div>
+                     <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2 break-all">Provider: {getProviderLabel(tenant.wa_provider)}</div>
+                     <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2 break-all">Gateway: {tenant.gateway_url || 'Gateway default server'}</div>
+                     <div className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">Dibuat: {formatCompactDate(tenant.created_at)}</div>
                      {activeDropdown === tenant.id && (
                         <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-2 mb-4 animate-in fade-in zoom-in-95">
                            <button onClick={() => openAdminModal(tenant)} className="w-full p-3 text-center text-xs font-bold text-purple-600 dark:text-purple-300 bg-white dark:bg-slate-900 rounded-lg shadow-sm mb-2">
@@ -755,7 +942,12 @@ const TenantManagement = () => {
                   </div>
                )) : (
                  <div className="p-8 text-center text-gray-400 dark:text-gray-500">
-                   Belum ada tenant.
+                   <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50/80 px-6 py-8 dark:border-slate-700 dark:bg-slate-900/50">
+                     <p className="text-base font-bold text-gray-700 dark:text-gray-200">{searchTerm ? 'Tenant tidak ditemukan' : 'Belum ada tenant'}</p>
+                     <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
+                       {searchTerm ? 'Coba ubah kata kunci pencarian.' : 'Tambahkan tenant baru untuk mulai mengelola akun pelanggan.'}
+                     </p>
+                   </div>
                  </div>
                )}
             </div>
@@ -909,6 +1101,21 @@ const TenantManagement = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{sessionTenant.company_name}</p>
               </div>
               <button onClick={closeSessionModal}><X className="text-gray-400 dark:text-gray-500" /></button>
+            </div>
+
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/60">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">Provider</p>
+                <p className="mt-1 text-sm font-bold text-gray-800 dark:text-gray-100">{getProviderLabel(waProvider)}</p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/60">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">Mode AI</p>
+                <p className="mt-1 text-sm font-bold text-gray-800 dark:text-gray-100">{getAiModeLabel(aiMode)}</p>
+              </div>
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/60">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">Session</p>
+                <p className="mt-1 truncate text-sm font-bold text-gray-800 dark:text-gray-100">{sessionIdInput || sessionTenant.session_id || 'Belum ada'}</p>
+              </div>
             </div>
 
             <form onSubmit={handleSaveSessionId} className="space-y-4">
