@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Send, Paperclip, Smile, MoreVertical, Search,
-  Info, CheckCheck, Clock, User, X, Loader2, Users
+  Info, CheckCheck, Clock, User, X, Loader2, Users, Image as ImageIcon, Video, Mic, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
@@ -52,7 +52,7 @@ const formatRelativeTime = (value?: string) => {
   if (diffHours < 24) return `${diffHours}h`;
   
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}h`; // Typo fix: should be 'd' but keeping consistent style
+  if (diffDays < 7) return `${diffDays}d`;
   
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 };
@@ -62,6 +62,45 @@ const formatMessageTime = (value?: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+};
+
+const formatFullDateTime = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getDisplayInitials = (value?: string, fallback = '?') => {
+  if (!value?.trim()) return fallback;
+  const parts = value.trim().split(/\s+/).slice(0, 2);
+  return parts.map((part) => part.charAt(0)).join('').toUpperCase();
+};
+
+const isMediaPlaceholder = (body?: string) => {
+  if (!body) return false;
+  return /^\[[A-Z_]+\]$/i.test(body.trim());
+};
+
+const getMessageTypeMeta = (messageType?: string) => {
+  switch (messageType) {
+    case 'image':
+      return { label: 'Gambar', icon: ImageIcon };
+    case 'video':
+      return { label: 'Video', icon: Video };
+    case 'audio':
+      return { label: 'Audio', icon: Mic };
+    case 'document':
+      return { label: 'Dokumen', icon: FileText };
+    default:
+      return null;
+  }
 };
 
 const CHAT_PAGE_SIZE = 100;
@@ -399,37 +438,75 @@ const AgentWorkspace = () => {
     (c.display_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (c.phone_number || '').includes(searchQuery)
   );
+  const openChatsCount = chats.filter((chat) => chat.status === 'open').length;
+  const unreadChatsCount = chats.filter((chat) => chat.unread_count > 0).length;
+  const totalUnreadMessages = chats.reduce((total, chat) => total + (chat.unread_count || 0), 0);
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] bg-white dark:bg-slate-900 overflow-hidden transition-colors duration-300">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] overflow-hidden rounded-[28px] border border-gray-200/80 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none transition-colors duration-300">
       
       {/* LEFT SIDEBAR: CHAT LIST */}
-      <div className="w-full lg:w-96 border-b lg:border-b-0 lg:border-r border-gray-100 dark:border-slate-800 flex flex-col shrink-0 bg-white dark:bg-slate-900 max-h-[40vh] lg:max-h-none lg:h-full">
+      <div className="w-full lg:w-[25rem] border-b lg:border-b-0 lg:border-r border-gray-200/80 dark:border-slate-800 flex flex-col shrink-0 bg-white/95 dark:bg-slate-950 max-h-[44vh] lg:max-h-none lg:h-full backdrop-blur">
         {/* Search Header */}
-        <div className="p-4 border-b border-gray-50 dark:border-slate-800">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-              Total Kontak
-            </span>
-            <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
-              {typeof totalContacts === 'number' ? totalContacts.toLocaleString('id-ID') : '-'}
-            </span>
+        <div className="border-b border-gray-100 dark:border-slate-800 bg-white/90 px-5 py-5 dark:bg-slate-950/90">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600 dark:text-blue-400">
+                Workspace
+              </p>
+              <h2 className="mt-1 text-xl font-black tracking-tight text-gray-900 dark:text-white">
+                Inbox Aktif
+              </h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Pantau percakapan, balas cepat, dan jaga SLA tim.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-right dark:border-blue-900/50 dark:bg-blue-950/30">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-500 dark:text-blue-300">
+                Total Kontak
+              </p>
+              <p className="mt-1 text-lg font-black text-blue-700 dark:text-blue-200">
+                {typeof totalContacts === 'number' ? totalContacts.toLocaleString('id-ID') : '-'}
+              </p>
+            </div>
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
+                Open
+              </p>
+              <p className="mt-1 text-lg font-black text-gray-900 dark:text-white">{openChatsCount}</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
+                Unread
+              </p>
+              <p className="mt-1 text-lg font-black text-gray-900 dark:text-white">{unreadChatsCount}</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
+                Pesan
+              </p>
+              <p className="mt-1 text-lg font-black text-gray-900 dark:text-white">{totalUnreadMessages}</p>
+            </div>
+          </div>
+
+          <div className="relative mt-4">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
-              placeholder="Cari chat atau nomor..."
+              placeholder="Cari nama pelanggan atau nomor..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800 border-none rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              className="w-full rounded-2xl border border-gray-200 bg-gray-50 pl-11 pr-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500 dark:focus:border-blue-500/50 dark:focus:bg-slate-950"
             />
           </div>
         </div>
 
         {/* Chat List */}
         <div
-          className="flex-1 overflow-y-auto divide-y divide-gray-50 dark:divide-slate-800"
+          className="flex-1 overflow-y-auto px-3 py-3"
           ref={chatListRef}
           onScroll={handleChatListScroll}
         >
@@ -443,39 +520,62 @@ const AgentWorkspace = () => {
               <div
                 key={chat.id}
                 onClick={() => handleSelectChat(chat)}
-                className={`p-4 hover:bg-blue-50/50 dark:hover:bg-slate-800 cursor-pointer transition-colors flex items-center space-x-3 ${selectedChat?.id === chat.id ? 'bg-blue-50 dark:bg-slate-800' : ''}`}
+                className={`mb-2 cursor-pointer rounded-3xl border px-4 py-4 transition-all duration-200 ${
+                  selectedChat?.id === chat.id
+                    ? 'border-blue-200 bg-blue-50 shadow-[0_12px_30px_-20px_rgba(37,99,235,0.8)] dark:border-blue-900/50 dark:bg-blue-950/20'
+                    : 'border-transparent hover:border-gray-200 hover:bg-gray-50 dark:hover:border-slate-800 dark:hover:bg-slate-900'
+                }`}
               >
-                <div className="relative shrink-0">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm ${chat.is_group ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'}`}>
-                    {chat.is_group ? <Users size={20} /> : (chat.display_name ? chat.display_name.substring(0, 2).toUpperCase() : '?')}
+                <div className="flex items-center gap-3">
+                  <div className="relative shrink-0">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl font-bold text-sm shadow-sm ${chat.is_group ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                      {chat.is_group ? <Users size={20} /> : getDisplayInitials(chat.display_name || chat.phone_number)}
+                    </div>
+                    {chat.status === 'open' && (
+                      <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-950" />
+                    )}
                   </div>
-                </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-baseline mb-1">
-                    <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate pr-2 flex items-center gap-1.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="mb-1 flex items-baseline justify-between gap-3">
+                      <h4 className="flex items-center gap-1.5 truncate pr-2 text-sm font-bold text-gray-900 dark:text-white">
                         {chat.display_name || chat.phone_number}
-                        {chat.is_group && <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">GRUP</span>}
-                    </h4>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                        {chat.is_group && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">GRUP</span>}
+                      </h4>
+                      <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500">
                         {formatRelativeTime(chat.last_message_time)}
-                    </span>
+                      </span>
+                    </div>
+                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                      {chat.last_message_preview || 'Belum ada pesan'}
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
+                        chat.status === 'open'
+                          ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
+                          : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-gray-400'
+                      }`}>
+                        {chat.status === 'open' ? 'Aktif' : 'Selesai'}
+                      </span>
+                      {!chat.is_group && (
+                        <span className="truncate text-[11px] text-gray-400 dark:text-gray-500">
+                          {chat.phone_number}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {chat.last_message_preview || 'Belum ada pesan'}
-                  </p>
-                </div>
 
-                {chat.unread_count > 0 && (
-                  <div className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
-                    {chat.unread_count}
-                  </div>
-                )}
+                  {chat.unread_count > 0 && (
+                    <div className="shrink-0 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm shadow-blue-500/30">
+                      {chat.unread_count}
+                    </div>
+                  )}
+                </div>
               </div>
             ))
           ) : (
-            <div className="p-10 text-center text-gray-400 dark:text-gray-500 text-sm">
-              Belum ada percakapan.
+            <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50 p-10 text-center text-sm text-gray-400 dark:border-slate-800 dark:bg-slate-900 dark:text-gray-500">
+              Belum ada percakapan yang cocok.
             </div>
           )}
           {!isLoadingChats && isLoadingMoreChats && (
@@ -493,32 +593,44 @@ const AgentWorkspace = () => {
       </div>
 
       {/* RIGHT AREA: CHAT ROOM */}
-      <div className="flex-1 min-w-0 flex flex-col bg-gray-50/50 dark:bg-slate-900/50 relative">
+      <div className="relative flex min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_35%),linear-gradient(to_bottom,_rgba(248,250,252,0.9),_rgba(248,250,252,0.98))] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_30%),linear-gradient(to_bottom,_rgba(2,6,23,0.92),_rgba(2,6,23,1))]">
         {selectedChat ? (
             <>
                 {/* Chat Header */}
-                <div className="h-16 bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 px-6 flex items-center justify-between shadow-sm z-10">
-                    <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setIsInfoOpen(true)}>
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs ${selectedChat.is_group ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'}`}>
-                            {selectedChat.is_group ? <Users size={18} /> : selectedChat.display_name?.substring(0, 2).toUpperCase()}
+                <div className="sticky top-0 z-10 border-b border-white/60 bg-white/85 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex cursor-pointer items-center space-x-3" onClick={() => setIsInfoOpen(true)}>
+                        <div className={`flex h-11 w-11 items-center justify-center rounded-2xl font-bold text-xs shadow-sm ${selectedChat.is_group ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                            {selectedChat.is_group ? <Users size={18} /> : getDisplayInitials(selectedChat.display_name, selectedChat.phone_number?.slice(-2) || '?')}
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                                 {selectedChat.display_name}
-                                {selectedChat.is_group && <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">GRUP</span>}
-                            </h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              </h3>
+                              {selectedChat.is_group && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">Grup</span>}
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
+                                selectedChat.status === 'open'
+                                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                  : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-gray-400'
+                              }`}>
+                                {selectedChat.status === 'open' ? 'Sedang ditangani' : 'Selesai'}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                 {selectedChat.is_group ? 'Grup WhatsApp' : selectedChat.phone_number}
+                                {selectedChat.last_message_time ? ` • Aktif ${formatRelativeTime(selectedChat.last_message_time)}` : ''}
                             </p>
                         </div>
-                    </div>
-                    <div className="flex items-center space-x-2 text-gray-400 dark:text-gray-500">
-                        <button className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors" title="Info" onClick={() => setIsInfoOpen(!isInfoOpen)}>
+                      </div>
+                      <div className="flex items-center space-x-2 text-gray-400 dark:text-gray-500">
+                        <button className="rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm transition-colors hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800" title="Info" onClick={() => setIsInfoOpen(!isInfoOpen)}>
                             <Info size={20} />
                         </button>
-                        <button className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors" title="More">
+                        <button className="rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm transition-colors hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800" title="More">
                             <MoreVertical size={20} />
                         </button>
+                      </div>
                     </div>
                 </div>
 
@@ -526,7 +638,7 @@ const AgentWorkspace = () => {
                 <div 
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
-                    className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4"
+                    className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6"
                 >
                     {isFetchingMore && (
                         <div className="flex justify-center py-2">
@@ -540,12 +652,12 @@ const AgentWorkspace = () => {
                         </div>
                     ) : messages.length > 0 ? (
                         messages.map((msg) => (
-                            <div key={msg.id} className={`flex ${msg.is_from_me ? 'justify-end' : 'justify-start'}`}>
+                            <div key={msg.id} className={`mb-4 flex ${msg.is_from_me ? 'justify-end' : 'justify-start'}`}>
                                 <div 
-                                    className={`max-w-[75%] lg:max-w-[60%] rounded-2xl px-4 py-3 text-sm shadow-sm relative group ${
+                                    className={`group relative max-w-[82%] rounded-[24px] px-4 py-3 text-sm shadow-sm lg:max-w-[62%] ${
                                     msg.is_from_me
-                                        ? 'bg-blue-600 text-white rounded-tr-none'
-                                        : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-white border border-gray-100 dark:border-slate-700 rounded-tl-none'
+                                        ? 'rounded-tr-md bg-blue-600 text-white shadow-blue-500/15'
+                                        : 'rounded-tl-md border border-white/70 bg-white/90 text-gray-800 shadow-[0_18px_35px_-28px_rgba(15,23,42,0.6)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-white dark:shadow-none'
                                     }`}
                                 >
                                     {/* Sender Name in Group Chat */}
@@ -553,7 +665,48 @@ const AgentWorkspace = () => {
                                         <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mb-1">{msg.sender_name}</p>
                                     )}
 
-                                    <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                                    {msg.message_type === 'image' ? (
+                                      <div className="space-y-3">
+                                        {msg.media_url ? (
+                                          <a href={msg.media_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-white/20 bg-white/10">
+                                            <img
+                                              src={msg.media_url}
+                                              alt={msg.body && !isMediaPlaceholder(msg.body) ? msg.body : 'Gambar pelanggan'}
+                                              className="max-h-72 w-full object-cover"
+                                              loading="lazy"
+                                            />
+                                          </a>
+                                        ) : (
+                                          <div className={`flex items-center gap-2 rounded-2xl px-3 py-2 ${msg.is_from_me ? 'bg-blue-500/60 text-blue-50' : 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-gray-300'}`}>
+                                            <ImageIcon size={16} />
+                                            <span>Gambar diterima</span>
+                                          </div>
+                                        )}
+                                        {!isMediaPlaceholder(msg.body) && (
+                                          <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                                        )}
+                                      </div>
+                                    ) : getMessageTypeMeta(msg.message_type) ? (
+                                      <div className="space-y-2">
+                                        <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] ${msg.is_from_me ? 'bg-blue-500/60 text-blue-50' : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-gray-300'}`}>
+                                          {(() => {
+                                            const meta = getMessageTypeMeta(msg.message_type);
+                                            const Icon = meta!.icon;
+                                            return (
+                                              <>
+                                                <Icon size={14} />
+                                                <span>{meta!.label}</span>
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
+                                        {!isMediaPlaceholder(msg.body) && (
+                                          <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                                    )}
                                     
                                     <div className={`flex items-center justify-end mt-1.5 space-x-1 text-[10px] opacity-70 ${msg.is_from_me ? 'text-blue-100' : 'text-gray-400'}`}>
                                         <span>{formatMessageTime(msg.created_at)}</span>
@@ -565,42 +718,48 @@ const AgentWorkspace = () => {
                             </div>
                         ))
                     ) : (
-                        <div className="flex h-full flex-col items-center justify-center text-gray-400 dark:text-gray-500 opacity-60">
-                            <div className="w-16 h-16 bg-gray-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-3">
+                        <div className="flex h-full flex-col items-center justify-center rounded-[28px] border border-dashed border-gray-200 bg-white/70 text-gray-400 dark:border-slate-800 dark:bg-slate-900/60 dark:text-gray-500">
+                            <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-800">
                                 <Send size={24} className="-ml-1" />
                             </div>
-                            <p>Belum ada pesan. Sapa pelanggan sekarang!</p>
+                            <p className="font-semibold text-gray-600 dark:text-gray-300">Belum ada pesan.</p>
+                            <p className="mt-1 text-sm">Sapa pelanggan sekarang untuk mulai percakapan.</p>
                         </div>
                     )}
                     <div ref={messagesEndRef} />
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 bg-white dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700 z-10">
-                    <div className="max-w-4xl mx-auto flex items-end space-x-3">
-                        <button className="p-3 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                <div className="border-t border-white/70 bg-white/85 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 z-10">
+                    <div className="mx-auto flex max-w-4xl items-end gap-3 rounded-[28px] border border-gray-200 bg-white/90 p-3 shadow-[0_24px_40px_-32px_rgba(15,23,42,0.7)] dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
+                        <button className="rounded-2xl p-3 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400">
                             <Paperclip size={20} />
                         </button>
                         
-                        <div className="flex-1 bg-gray-50 dark:bg-slate-700 rounded-2xl flex items-center px-4 py-2">
+                        <div className="flex-1 rounded-2xl bg-gray-50 px-4 py-2 dark:bg-slate-800">
                              <input
                                 type="text"
                                 value={messageText}
                                 onChange={(e) => setMessageText(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                                 placeholder="Ketik pesan..."
-                                className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-gray-900 dark:text-white placeholder-gray-400 max-h-32 py-2"
+                                className="flex-1 max-h-32 w-full border-none bg-transparent py-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-0 dark:text-white"
                                 autoComplete="off"
                             />
-                            <button className="ml-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
+                            <div className="mt-1 flex items-center justify-between">
+                              <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                                Balas cepat akan langsung masuk ke percakapan aktif.
+                              </p>
+                              <button className="ml-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
                                 <Smile size={20} />
-                            </button>
+                              </button>
+                            </div>
                         </div>
 
                         <button
                             onClick={handleSendMessage}
                             disabled={isSending || !messageText.trim()}
-                            className="p-3 bg-blue-600 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-xl shadow-lg shadow-blue-100 dark:shadow-blue-900/30 hover:bg-blue-700 transition-all active:scale-95 flex-shrink-0"
+                            className="flex-shrink-0 rounded-2xl bg-blue-600 p-3 text-white shadow-lg shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400 dark:shadow-blue-900/30"
                         >
                             {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
                         </button>
@@ -609,46 +768,79 @@ const AgentWorkspace = () => {
             </>
         ) : (
             // No Chat Selected State
-            <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-slate-900/50 text-gray-400 dark:text-gray-500">
-                <div className="w-24 h-24 bg-blue-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 animate-pulse">
+            <div className="flex-1 flex flex-col items-center justify-center px-6 text-gray-400 dark:text-gray-500">
+                <div className="flex w-full max-w-xl flex-col items-center rounded-[32px] border border-gray-200/80 bg-white/85 px-8 py-12 text-center shadow-[0_24px_80px_-48px_rgba(15,23,42,0.6)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-none">
+                  <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-blue-50 dark:bg-slate-800 animate-pulse">
                     <User size={48} className="text-blue-200 dark:text-slate-600" />
+                  </div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600 dark:text-blue-400">
+                    Customer Service Hub
+                  </p>
+                  <h3 className="mt-3 text-2xl font-black tracking-tight text-gray-800 dark:text-gray-100">Selamat Datang, {user?.name}</h3>
+                  <p className="mt-3 max-w-md text-sm leading-6">Pilih percakapan dari daftar di sebelah kiri untuk mulai melayani pelanggan. Semua chat, status, dan respons tim akan terpusat di sini.</p>
                 </div>
-                <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300">Selamat Datang, {user?.name}</h3>
-                <p className="max-w-xs text-center mt-2 text-sm">Pilih percakapan dari daftar di sebelah kiri untuk mulai melayani pelanggan.</p>
             </div>
         )}
 
         {/* Info Sidebar (Right) */}
         {selectedChat && isInfoOpen && (
-            <div className="w-80 border-l border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full absolute right-0 top-0 shadow-2xl lg:relative lg:shadow-none z-20 animate-in slide-in-from-right duration-300">
-                <div className="p-4 border-b border-gray-50 dark:border-slate-800 flex items-center justify-between">
-                    <h3 className="font-bold text-gray-900 dark:text-white">Detail Kontak</h3>
-                    <button onClick={() => setIsInfoOpen(false)} className="lg:hidden p-1 hover:bg-gray-100 rounded-full">
+            <div className="absolute right-0 top-0 z-20 flex h-full w-80 flex-col border-l border-gray-200 bg-white/95 shadow-2xl backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:relative lg:shadow-none animate-in slide-in-from-right duration-300">
+                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-slate-800">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-600 dark:text-blue-400">Profil Chat</p>
+                      <h3 className="mt-1 font-bold text-gray-900 dark:text-white">Detail Kontak</h3>
+                    </div>
+                    <button onClick={() => setIsInfoOpen(false)} className="rounded-full p-1 transition-colors hover:bg-gray-100 dark:hover:bg-slate-800 lg:hidden">
                         <X size={20} />
                     </button>
                 </div>
-                <div className="p-6 flex flex-col items-center text-center overflow-y-auto">
-                    <div className="w-24 h-24 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 text-2xl font-bold mb-4">
-                        {selectedChat.display_name?.substring(0, 2).toUpperCase()}
+                <div className="flex flex-1 flex-col overflow-y-auto p-6 text-center">
+                    <div className="mb-4 flex h-24 w-24 self-center rounded-[28px] bg-blue-100 text-2xl font-bold text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 items-center justify-center">
+                        {getDisplayInitials(selectedChat.display_name, selectedChat.phone_number?.slice(-2) || '?')}
                     </div>
                     <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedChat.display_name}</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selectedChat.phone_number}</p>
                     
-                    <div className="w-full mt-8 space-y-4">
-                        <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl text-left">
+                    <div className="mt-8 w-full space-y-4 text-left">
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                             <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Status Chat</span>
-                            <div className="mt-1 flex items-center space-x-2">
+                            <div className="mt-2 flex items-center space-x-2">
                                 <div className={`w-2 h-2 rounded-full ${selectedChat.status === 'open' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
                                 <span className="text-sm font-medium text-gray-700 dark:text-gray-200 capitalize">{selectedChat.status || 'Open'}</span>
                             </div>
                         </div>
                         
-                        <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl text-left">
-                            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Tenant ID</span>
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Contact ID</span>
                             <p className="mt-1 text-xs font-mono text-gray-600 dark:text-gray-300 break-all">
                                 {selectedChat.contact_id}
                             </p>
                         </div>
+
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Tipe Percakapan</span>
+                            <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                              {selectedChat.is_group ? 'Grup WhatsApp' : 'Chat pribadi'}
+                            </p>
+                        </div>
+
+                        {selectedChat.agent_name && (
+                          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Ditangani Oleh</span>
+                              <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                {selectedChat.agent_name}
+                              </p>
+                          </div>
+                        )}
+
+                        {selectedChat.last_message_time && (
+                          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Aktivitas Terakhir</span>
+                              <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                {formatFullDateTime(selectedChat.last_message_time)}
+                              </p>
+                          </div>
+                        )}
                     </div>
                 </div>
             </div>
