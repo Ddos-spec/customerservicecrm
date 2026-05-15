@@ -74,6 +74,7 @@ const MainLayout = () => {
         onClick={() => {
           navigate(to);
           setIsMobileMenuOpen(false);
+          setIsProfileMenuOpen(false);
         }}
         className={clsx(
           "w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all mb-1",
@@ -92,13 +93,16 @@ const MainLayout = () => {
     const isActive = location.pathname === to;
     return (
       <button
-        onClick={() => navigate(to)}
+        onClick={() => {
+          setIsProfileMenuOpen(false);
+          navigate(to);
+        }}
         className={clsx(
-          "group relative flex items-center space-x-2 rounded-2xl px-4 py-3 transition-all text-[11px] font-black uppercase tracking-[0.18em]",
+          "group relative flex min-w-max items-center gap-2 rounded-2xl px-3.5 py-3 text-sm font-semibold tracking-tight transition-all duration-200",
           isActive
             ? (isSuperAdmin
-                ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-1 ring-green-100 dark:ring-green-800 shadow-[0_12px_30px_-24px_rgba(22,163,74,0.8)]"
-                : "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 ring-1 ring-blue-100 dark:ring-blue-800 shadow-[0_12px_30px_-24px_rgba(37,99,235,0.8)]")
+                ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 ring-1 ring-green-100 dark:ring-green-800 shadow-[0_12px_30px_-24px_rgba(22,163,74,0.8)]"
+                : "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ring-1 ring-blue-100 dark:ring-blue-800 shadow-[0_12px_30px_-24px_rgba(37,99,235,0.8)]")
             : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
         )}
       >
@@ -130,52 +134,54 @@ const MainLayout = () => {
       )}
 
       {/* ================= DESKTOP NAVBAR ================= */}
-      <header className="hidden lg:flex bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-100 dark:border-slate-800 h-20 sticky top-0 z-40 transition-colors duration-300">
-        <div className="max-w-7xl mx-auto w-full px-8 flex items-center justify-between gap-6">
-          <div className="flex items-center space-x-10 min-w-0">
+      <header className="hidden lg:flex sticky top-0 z-40 border-b border-gray-100/90 bg-white/84 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/84 transition-colors duration-300">
+        <div className="mx-auto flex h-20 w-full max-w-[1480px] items-center justify-between gap-4 px-5 xl:px-8">
+          <div className="flex min-w-0 flex-1 items-center gap-4 xl:gap-8">
             {/* Logo */}
-            <div className="flex items-center space-x-3">
-              <img src="/logo.png" alt="CRM SaaS" className="h-9 w-9 rounded-xl object-contain" />
+            <div className="flex shrink-0 items-center space-x-3">
+              <img src="/logo.png" alt="CRM SaaS" className="h-10 w-10 rounded-2xl object-contain ring-1 ring-gray-100 dark:ring-slate-800" />
               <div className="min-w-0">
-                <span className="text-xl font-black tracking-tighter text-gray-900 dark:text-white uppercase block leading-none">
+                <span className="block leading-none text-xl font-black tracking-tight text-gray-900 dark:text-white">
                   CRM<span className={isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}>SaaS</span>
                 </span>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
                   Customer Service Command Center
                 </p>
               </div>
             </div>
 
             {/* Desktop Navigation */}
-            <nav className="flex items-center space-x-1 rounded-3xl border border-gray-100 bg-white/80 p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-              {getNavItems().map((item) => (
-                <NavItemDesktop key={item.to} {...item} />
-              ))}
-            </nav>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <nav className="hide-scrollbar flex items-center gap-1 overflow-x-auto rounded-[28px] border border-gray-100 bg-white/85 p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900/72">
+                {getNavItems().map((item) => (
+                  <NavItemDesktop key={item.to} {...item} />
+                ))}
+              </nav>
+            </div>
           </div>
 
           {/* User Profile (Desktop) */}
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2.5 xl:gap-3">
             <button
               onClick={toggleDarkMode}
               aria-label={isDarkMode ? "Matikan mode gelap" : "Nyalakan mode gelap"}
-              className="p-2 rounded-xl border border-gray-100 dark:border-slate-700 text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+              className="rounded-2xl border border-gray-100 p-2.5 text-gray-500 transition-colors hover:bg-gray-50 dark:border-slate-700 dark:text-gray-300 dark:hover:bg-slate-800"
             >
               {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <div className="relative">
               <button
                 onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                className="flex items-center space-x-3 rounded-3xl border border-gray-100 bg-white/80 p-1.5 pr-4 shadow-sm transition-all hover:border-gray-200 hover:bg-gray-50 dark:border-slate-800 dark:bg-slate-900/70 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+                className="flex items-center gap-3 rounded-[28px] border border-gray-100 bg-white/85 p-1.5 pr-3 shadow-sm transition-all hover:border-gray-200 hover:bg-gray-50 dark:border-slate-800 dark:bg-slate-900/72 dark:hover:border-slate-700 dark:hover:bg-slate-800"
               >
                 <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black shadow-lg", isSuperAdmin ? "bg-green-600 shadow-green-100 dark:shadow-green-900/50" : "bg-blue-600 shadow-blue-100 dark:shadow-blue-900/50")}>
                   {user?.name.charAt(0)}
                 </div>
-                <div className="text-left hidden xl:block">
-                  <p className="text-sm font-black text-gray-900 dark:text-white leading-none">{user?.name}</p>
+                <div className="hidden min-w-0 text-left xl:block">
+                  <p className="truncate text-sm font-black leading-none text-gray-900 dark:text-white">{user?.name}</p>
                   <div className="flex items-center gap-2 pt-1">
-                    <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{roleLabel}</p>
-                    <span className={clsx("rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em]", isSuperAdmin ? "bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-300" : "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300")}>
+                    <p className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">{roleLabel}</p>
+                    <span className={clsx("rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em]", isSuperAdmin ? "bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-300" : "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300")}>
                       {getRoleLabel(user?.role)}
                     </span>
                   </div>
@@ -202,12 +208,17 @@ const MainLayout = () => {
 
 
       {/* ================= MOBILE HEADER ================= */}
-      <div className="lg:hidden fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center shadow-lg border-b border-gray-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md">
-        <div className="font-black text-lg flex items-center space-x-2 text-gray-900 dark:text-white uppercase tracking-tighter">
-          <img src="/logo.png" alt="CRM SaaS" className="h-8 w-8 rounded-lg object-contain" />
-          <span>CRM SaaS</span>
+      <div className="fixed top-0 z-50 flex w-full items-center justify-between border-b border-gray-100 bg-white/92 px-4 py-3 shadow-lg backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/92 lg:hidden">
+        <div className="min-w-0">
+          <div className="flex items-center space-x-2 text-lg font-black tracking-tight text-gray-900 dark:text-white">
+            <img src="/logo.png" alt="CRM SaaS" className="h-8 w-8 rounded-xl object-contain" />
+            <span>CRM SaaS</span>
+          </div>
+          <p className="mt-0.5 truncate pl-10 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+            {roleLabel || 'Workspace'}
+          </p>
         </div>
-        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 bg-gray-100 dark:bg-white/10 rounded-xl text-gray-900 dark:text-white">
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="rounded-2xl bg-gray-100 p-2.5 text-gray-900 dark:bg-white/10 dark:text-white">
           {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
@@ -264,8 +275,8 @@ const MainLayout = () => {
 
 
       {/* ================= MAIN CONTENT AREA ================= */}
-      <main className="flex-1 pt-24 lg:pt-0 overflow-x-hidden bg-[linear-gradient(to_bottom,_rgba(248,250,252,0.96),_rgba(248,250,252,1))] dark:bg-[linear-gradient(to_bottom,_rgba(15,23,42,0.94),_rgba(2,6,23,1))] transition-colors duration-300">
-        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-12 py-6 lg:py-8">
+      <main className="flex-1 overflow-x-hidden bg-[linear-gradient(to_bottom,_rgba(248,250,252,0.96),_rgba(248,250,252,1))] pt-20 transition-colors duration-300 dark:bg-[linear-gradient(to_bottom,_rgba(15,23,42,0.94),_rgba(2,6,23,1))] lg:pt-0">
+        <div className="mx-auto w-full max-w-[1480px] px-4 py-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-8 lg:py-8 xl:px-10">
           <Outlet />
         </div>
       </main>

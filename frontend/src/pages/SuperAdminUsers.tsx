@@ -123,12 +123,12 @@ const SuperAdminUsers = () => {
   ];
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="crm-page">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">All Users</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="crm-page-title">All Users</h1>
+          <p className="crm-page-subtitle">
             Semua users dari seluruh sistem
           </p>
         </div>
@@ -142,12 +142,12 @@ const SuperAdminUsers = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="crm-stat-grid-4">
         {stats.map((stat) => (
           <button
             key={stat.filter}
             onClick={() => setRoleFilter(stat.filter)}
-            className={`p-4 rounded-xl border transition-all text-left ${
+            className={`rounded-[24px] border p-4 text-left transition-all sm:p-5 ${
               roleFilter === stat.filter
                 ? 'bg-purple-50 border-purple-200 dark:bg-purple-900/30 dark:border-purple-700'
                 : 'bg-white border-gray-200 dark:bg-slate-800 dark:border-slate-700 hover:border-purple-200 dark:hover:border-purple-700'
@@ -160,7 +160,7 @@ const SuperAdminUsers = () => {
       </div>
 
       {/* Search & Filters */}
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
           <input
@@ -174,7 +174,7 @@ const SuperAdminUsers = () => {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 dark:text-white"
+          className="px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 dark:text-white lg:min-w-[180px]"
         >
           <option value="all">All Status</option>
           <option value="active">Active</option>
@@ -183,7 +183,7 @@ const SuperAdminUsers = () => {
       </div>
 
       {/* Users List */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+      <div className="crm-surface overflow-hidden p-0">
         {isLoading ? (
           <div className="p-12 text-center text-gray-400">
             <RefreshCw className="animate-spin mx-auto mb-3" size={32} />

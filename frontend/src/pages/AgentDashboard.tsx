@@ -313,16 +313,16 @@ Terima kasih.`);
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8">
+    <div className="crm-page">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Selamat Datang, {user?.name || 'Staff'}!</h1>
-          <p className="text-gray-500 dark:text-gray-400">Pantau aktivitas percakapan pelanggan Anda.</p>
+          <h1 className="crm-page-title">Selamat Datang, {user?.name || 'Staff'}!</h1>
+          <p className="crm-page-subtitle">Pantau aktivitas percakapan pelanggan, status WhatsApp, dan follow-up yang sedang berjalan.</p>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <div className="flex flex-col items-end gap-2">
+        <div className="crm-action-row xl:justify-end">
+          <div className="flex flex-col gap-2 xl:items-end">
             <div className={`flex items-center space-x-2 px-4 py-2 rounded-full border ${ 
               waStatus === 'connected' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400' :
               waStatus === 'connecting' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 animate-pulse' :
@@ -364,9 +364,9 @@ Terima kasih.`);
           </button>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="crm-stat-grid-4">
         {statCards.map((item, idx) => (
-          <div key={idx} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 hover:shadow-md transition-all">
+          <div key={idx} className="crm-surface hover:-translate-y-0.5 hover:shadow-md transition-all">
             <div className="flex items-center justify-between mb-4">
               <div className={`p-3 rounded-xl ${item.bg} dark:bg-opacity-20 ${item.color}`}>
                 <item.icon size={24} />
@@ -379,9 +379,9 @@ Terima kasih.`);
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="crm-two-column">
         {/* Recent Chats Section */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+        <div className="crm-surface overflow-hidden p-0">
           <div className="p-6 border-b border-gray-50 dark:border-slate-700 flex items-center justify-between">
             <h3 className="font-bold text-gray-900 dark:text-white flex items-center">
               <MessageSquare size={18} className="mr-2 text-blue-600 dark:text-blue-400" />
@@ -415,7 +415,7 @@ Terima kasih.`);
         </div>
 
         {/* Right Sidebar - Support/Activity */}
-        <div className="space-y-8">
+        <div className="crm-panel-stack">
           
           {/* Quick Action Card */}
           <div className="bg-gradient-to-br from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 p-6 rounded-2xl text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/30 relative overflow-hidden group">
@@ -433,7 +433,7 @@ Terima kasih.`);
           </div>
           
            {/* Placeholder for Team Activity (Not yet implemented in V2 Backend) */}
-           <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 opacity-60">
+           <div className="crm-surface opacity-60">
              <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center">
                <Activity size={18} className="mr-2 text-gray-400" />
                Aktivitas Tim

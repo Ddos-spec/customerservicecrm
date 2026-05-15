@@ -443,10 +443,10 @@ const AgentWorkspace = () => {
   const totalUnreadMessages = chats.reduce((total, chat) => total + (chat.unread_count || 0), 0);
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] overflow-hidden rounded-[28px] border border-gray-200/80 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-none transition-colors duration-300">
+    <div className="flex min-h-[calc(100dvh-7rem)] flex-col overflow-hidden rounded-[32px] border border-gray-200/80 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] transition-colors duration-300 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none lg:h-[calc(100dvh-7rem)] lg:flex-row">
       
       {/* LEFT SIDEBAR: CHAT LIST */}
-      <div className="w-full lg:w-[25rem] border-b lg:border-b-0 lg:border-r border-gray-200/80 dark:border-slate-800 flex flex-col shrink-0 bg-white/95 dark:bg-slate-950 max-h-[44vh] lg:max-h-none lg:h-full backdrop-blur">
+      <div className="w-full shrink-0 border-b border-gray-200/80 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950 lg:h-full lg:w-[25rem] lg:max-h-none lg:border-b-0 lg:border-r xl:w-[26rem] max-h-[42svh]">
         {/* Search Header */}
         <div className="border-b border-gray-100 dark:border-slate-800 bg-white/90 px-5 py-5 dark:bg-slate-950/90">
           <div className="flex items-start justify-between gap-3">

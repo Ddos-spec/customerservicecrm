@@ -176,19 +176,19 @@ const AdminReports = () => {
   ];
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
+    <div className="crm-page">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Performance Reports</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="crm-page-title">Performance Reports</h1>
+          <p className="crm-page-subtitle">
             Analisa performa dan statistik untuk{' '}
             <span className="font-semibold text-blue-600 dark:text-blue-400">
               {user?.tenant_name}
             </span>
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="crm-action-row xl:justify-end">
           <select
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
@@ -211,11 +211,11 @@ const AdminReports = () => {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="crm-stat-grid-4">
         {kpiCards.map((kpi, i) => (
           <div
             key={i}
-            className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm"
+            className="crm-surface"
           >
             <div className="flex items-center justify-between mb-4">
               <div className={`p-3 rounded-xl ${kpi.bg} dark:bg-opacity-10 ${kpi.color}`}>
@@ -236,7 +236,7 @@ const AdminReports = () => {
       </div>
 
       {/* Chat Breakdown */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-8">
+      <div className="crm-surface">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Chat Breakdown</h2>
           <BarChart3 className="text-gray-400" size={24} />

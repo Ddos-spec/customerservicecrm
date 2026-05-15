@@ -221,14 +221,14 @@ const SuperAdminDashboard = () => {
   ];
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-10">
+    <div className="crm-page">
       {/* Header */}
-      <div className="flex justify-between items-end">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">System Global Overview</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Pusat kendali infrastruktur CRM Multitenant.</p>
+          <h1 className="crm-page-title">System Global Overview</h1>
+          <p className="crm-page-subtitle">Pusat kendali infrastruktur CRM multitenant, gateway, dan tenant aktif.</p>
         </div>
-        <div className="flex space-x-3">
+        <div className="crm-action-row xl:justify-end">
             <button onClick={fetchData} className="p-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-600 dark:text-gray-300 transition-all">
                 <RefreshCw size={20} className={isLoading ? 'animate-spin' : ''} />
             </button>
@@ -243,12 +243,12 @@ const SuperAdminDashboard = () => {
       </div>
 
       {/* Global Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="crm-stat-grid-4">
         {globalStats.map((stat, i) => (
           <div
             key={i}
             onClick={stat.onClick}
-            className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm cursor-pointer hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-700 transition-all group"
+            className="crm-surface cursor-pointer group hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-lg dark:hover:border-emerald-700"
           >
             <div className="flex justify-between items-start mb-4">
                 <div className={`p-3 rounded-xl bg-gray-50 dark:bg-slate-700/60 ${stat.color} group-hover:scale-110 transition-transform`}>
@@ -279,7 +279,7 @@ const SuperAdminDashboard = () => {
         return (
           <div
             onClick={() => navigate('/super-admin/settings')}
-            className={`relative overflow-hidden p-5 rounded-2xl border cursor-pointer transition-all hover:shadow-md ${
+            className={`relative overflow-hidden rounded-[28px] border p-5 cursor-pointer transition-all hover:shadow-md sm:p-6 ${
               isConnected
                 ? 'bg-gradient-to-r from-emerald-50 via-white to-cyan-50 dark:from-emerald-900/30 dark:via-slate-800 dark:to-emerald-900/20 border-emerald-200 dark:border-emerald-800'
                 : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700'
@@ -328,12 +328,12 @@ const SuperAdminDashboard = () => {
         );
       })()}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="crm-two-column">
         {/* Tenant Overview */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="crm-panel-stack">
 
             {/* Tenant Overview - Real Data */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="crm-surface overflow-hidden p-0">
                 <div className="p-6 border-b border-gray-50 dark:border-slate-700 flex items-center justify-between">
                     <h3 className="font-bold text-gray-900 dark:text-white">Registered Tenants</h3>
                     <div className="flex items-center space-x-3">
@@ -376,7 +376,7 @@ const SuperAdminDashboard = () => {
         </div>
 
         {/* System Logs & Health */}
-        <div className="space-y-6">
+        <div className="crm-panel-stack">
             <div className="bg-gray-900 rounded-2xl shadow-xl overflow-hidden p-6 border border-gray-800">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-emerald-400 flex items-center text-sm">
@@ -395,7 +395,7 @@ const SuperAdminDashboard = () => {
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
+            <div className="crm-surface">
                 <h3 className="font-bold text-gray-900 dark:text-white mb-4">Infrastructure Status</h3>
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">

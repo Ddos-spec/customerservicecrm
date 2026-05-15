@@ -90,15 +90,15 @@ const ChatbotSettings = () => {
   }
 
   return (
-    <div className="animate-in fade-in duration-500 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="crm-page-tight animate-in fade-in duration-500">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter uppercase">Knowledge Chatbot</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-medium">
+          <h1 className="crm-page-title">Knowledge Chatbot</h1>
+          <p className="crm-page-subtitle">
             Atur pertanyaan dan jawaban otomatis untuk tenant {tenant?.company_name || 'Anda'}.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="crm-action-row xl:justify-end">
           <button
             type="button"
             onClick={handleAddPair}
@@ -119,8 +119,8 @@ const ChatbotSettings = () => {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[1.25fr_0.75fr]">
-        <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr] xl:items-start">
+        <div className="crm-surface overflow-hidden p-0">
           <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">Pertanyaan & Jawaban</p>

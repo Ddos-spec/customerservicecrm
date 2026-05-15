@@ -75,15 +75,15 @@ const CampaignList = () => {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <div className="crm-page">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Marketing Campaign</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="crm-page-title">Marketing Campaign</h1>
+          <p className="crm-page-subtitle">
             Kelola broadcast WhatsApp dengan aman dan terjadwal.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="crm-action-row xl:justify-end">
           <button
             onClick={() => navigate('/admin/marketing/groups')}
             className="px-4 py-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-800 flex items-center gap-2"
@@ -101,7 +101,7 @@ const CampaignList = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+      <div className="crm-surface overflow-hidden p-0">
         <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
           <Megaphone className="text-blue-600" size={20} />
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">Daftar Campaign</h2>
