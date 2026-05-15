@@ -38,6 +38,12 @@ html.dark body {
   color: #e2e8f0;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 /* Allow interaction with inputs */
 input, textarea, select {
   user-select: text !important;
@@ -48,4 +54,67 @@ input, textarea, select {
 #root {
   width: 100%;
   height: 100%;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@layer components {
+  .crm-page {
+    @apply mx-auto flex w-full max-w-[1440px] flex-col gap-5 sm:gap-6 lg:gap-8;
+  }
+
+  .crm-page-tight {
+    @apply mx-auto flex w-full max-w-[1240px] flex-col gap-5 sm:gap-6 lg:gap-8;
+  }
+
+  .crm-page-header {
+    @apply flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between;
+  }
+
+  .crm-page-title {
+    @apply text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl;
+  }
+
+  .crm-page-subtitle {
+    @apply mt-1 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px];
+  }
+
+  .crm-action-row {
+    @apply flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center;
+  }
+
+  .crm-surface {
+    @apply rounded-[28px] border border-gray-200/80 bg-white/88 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/88 sm:p-6;
+  }
+
+  .crm-surface-soft {
+    @apply rounded-[24px] border border-gray-100 bg-gray-50/85 p-4 dark:border-slate-800 dark:bg-slate-900/65;
+  }
+
+  .crm-stat-grid-3 {
+    @apply grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .crm-stat-grid-4 {
+    @apply grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4;
+  }
+
+  .crm-two-column {
+    @apply grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.75fr)_minmax(320px,1fr)];
+  }
+
+  .crm-panel-stack {
+    @apply flex flex-col gap-6;
+  }
+
+  .crm-table-scroll {
+    @apply overflow-x-auto rounded-[24px];
+  }
 }

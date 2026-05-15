@@ -153,11 +153,11 @@ const AgentManagement = () => {
   };
 
   return (
-    <div className="animate-in fade-in duration-500 pb-20 md:pb-0 flex flex-col min-h-[80vh]">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+    <div className="crm-page animate-in fade-in duration-500 pb-20 md:pb-0 min-h-[80vh]">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tighter uppercase">Manajemen Tim</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1 font-medium">Atur staf support dan peran operasional mereka.</p>
+          <h1 className="crm-page-title">Manajemen Tim</h1>
+          <p className="crm-page-subtitle">Atur staff support, seat aktif, dan undangan onboarding dalam satu alur yang lebih rapi.</p>
         </div>
         
         <button 

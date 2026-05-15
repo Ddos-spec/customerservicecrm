@@ -86,10 +86,10 @@ const SuperAdminApiDocs = () => {
   ];
 
   return (
-    <div className="animate-in fade-in duration-500 p-6 max-w-6xl mx-auto">
-      <div className="mb-10">
-        <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tighter uppercase mb-2">Integrasi API n8n</h1>
-        <p className="text-gray-500 dark:text-gray-400 font-medium">Hubungkan CRM ke workflow n8n lu dengan template cURL di bawah ini.</p>
+    <div className="crm-page-tight animate-in fade-in duration-500">
+      <div>
+        <h1 className="crm-page-title">Integrasi API n8n</h1>
+        <p className="crm-page-subtitle">Hubungkan CRM ke workflow n8n dengan template cURL yang lebih rapi dan gampang dicoba.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6">

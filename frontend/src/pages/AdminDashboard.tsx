@@ -266,18 +266,18 @@ const AdminDashboard = () => {
   ];
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-10">
+    <div className="crm-page">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Owner Console</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="crm-page-title">Owner Console</h1>
+          <p className="crm-page-subtitle">
             Manajemen operasional untuk <span className="font-bold text-blue-600 dark:text-blue-400">{user?.tenant_name || 'Perusahaan'}</span>
           </p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="crm-action-row xl:justify-end">
           {/* WhatsApp Status */}
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col gap-2 xl:items-end">
             <div
               onClick={waStatus !== 'connected' ? handleRequestQr : undefined}
               className={`flex items-center space-x-2 px-4 py-2 rounded-full border cursor-pointer ${
@@ -323,12 +323,12 @@ const AdminDashboard = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="crm-stat-grid-3">
         {quickStats.map((stat, i) => (
           <div
             key={i}
             onClick={stat.onClick}
-            className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm cursor-pointer hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-700 transition-all group"
+            className="crm-surface cursor-pointer group hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg dark:hover:border-blue-700"
           >
             <div className="flex justify-between items-start mb-4">
               <div className={`p-3 rounded-xl ${stat.bg} dark:bg-opacity-10 ${stat.color} group-hover:scale-110 transition-transform`}>
@@ -345,11 +345,11 @@ const AdminDashboard = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="crm-two-column">
         {/* Main Content Area: Recent Chats & Analytics */}
-        <div className="lg:col-span-2 space-y-8">
+        <div className="crm-panel-stack">
           {/* Recent Chats */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+          <div className="crm-surface">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">Aktivitas Percakapan Terbaru</h3>
               <button onClick={() => navigate('/admin/chat')} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline flex items-center gap-1">
@@ -407,7 +407,7 @@ const AdminDashboard = () => {
           </div>
 
           {/* Analytics Card */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm p-8">
+          <div className="crm-surface">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
               <div>
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -469,7 +469,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Sidebar Actions */}
-        <div className="space-y-6">
+        <div className="crm-panel-stack">
           <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-8 rounded-3xl text-white shadow-xl shadow-blue-200 dark:shadow-blue-900/30 relative overflow-hidden">
             <Shield className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10 rotate-12" />
             <h4 className="text-lg font-bold mb-2">Manajemen Staff</h4>
@@ -483,7 +483,7 @@ const AdminDashboard = () => {
             </button>
           </div>
 
-          <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm">
+          <div className="crm-surface">
             <h4 className="font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <Settings size={18} className="text-gray-400" />
               Quick Actions

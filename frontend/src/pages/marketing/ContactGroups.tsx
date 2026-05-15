@@ -138,11 +138,11 @@ const ContactGroups = () => {
   };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <div className="crm-page-tight">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Contact Groups</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="crm-page-title">Contact Groups</h1>
+          <p className="crm-page-subtitle">
             Segmentasi kontak untuk kebutuhan blast.
           </p>
         </div>
@@ -152,7 +152,7 @@ const ContactGroups = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6 space-y-4">
+      <div className="crm-surface space-y-4">
         <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
           <Plus size={18} />
           Buat Group Baru
@@ -180,7 +180,7 @@ const ContactGroups = () => {
         </button>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-4 sm:gap-5">
         {groups.map((group) => (
           <div
             key={group.id}

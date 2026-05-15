@@ -108,21 +108,21 @@ const SuperAdminSettings = () => {
     : 'bg-gray-200 text-gray-600 dark:bg-slate-700 dark:text-gray-300';
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
-      <div className="mb-8 flex items-center gap-3">
-        <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-200">
+    <div className="crm-page-tight">
+      <div className="flex items-start gap-3">
+        <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-200">
           <Bell size={20} />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Pengaturan Notifier</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <div className="min-w-0">
+          <h1 className="crm-page-title text-2xl sm:text-3xl">Pengaturan Notifier</h1>
+          <p className="crm-page-subtitle mt-1">
             WhatsApp khusus notifikasi otomatis ke super admin
           </p>
         </div>
       </div>
 
       {/* Main Card */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+      <div className="crm-surface overflow-hidden p-0">
 
         {/* Status Header */}
         <div className={`px-6 py-4 flex items-center justify-between ${

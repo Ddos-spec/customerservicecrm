@@ -136,18 +136,18 @@ const CreateCampaign = () => {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="crm-page">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Buat Campaign</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
+        <h1 className="crm-page-title">Buat Campaign</h1>
+        <p className="crm-page-subtitle">
           Susun pesan promosi dan jadwalkan pengiriman otomatis.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)] xl:items-start">
         {/* LEFT COLUMN: FORM */}
         <div className="space-y-6">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6 space-y-6">
+            <div className="crm-surface space-y-6">
                 {/* Campaign Info */}
                 <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Nama Campaign</label>
@@ -201,7 +201,7 @@ const CreateCampaign = () => {
             </div>
 
             {/* Target Selection */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6 space-y-4">
+            <div className="crm-surface space-y-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
                         <Layers3 size={18} />
@@ -254,9 +254,9 @@ const CreateCampaign = () => {
         </div>
 
         {/* RIGHT COLUMN: PREVIEW & SUBMIT */}
-        <div className="space-y-6 lg:sticky lg:top-24">
+        <div className="space-y-6 xl:sticky xl:top-24">
             {/* Phone Preview */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6">
+            <div className="crm-surface">
                 <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                     <Smartphone size={16} /> Live Preview
                 </h3>

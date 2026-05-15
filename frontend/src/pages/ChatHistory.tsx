@@ -119,13 +119,13 @@ const ChatHistory = () => {
   };
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+    <div className="crm-page-tight">
+      <div className="crm-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Chat History</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Archive of all resolved conversations.</p>
+          <h1 className="crm-page-title">Chat History</h1>
+          <p className="crm-page-subtitle">Arsip percakapan yang sudah selesai, lengkap dengan transcript dan durasi penanganan.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="crm-action-row xl:justify-end">
           <button className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-gray-600 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-slate-700">
             <Calendar size={16} />
             <span>Select Date</span>
@@ -137,7 +137,7 @@ const ChatHistory = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+      <div className="crm-surface overflow-hidden p-0">
         {/* Search Bar */}
         <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/70">
           <div className="relative">
@@ -239,7 +239,7 @@ const ChatHistory = () => {
                  </div>
                  <div>
                     <h2 className="text-xl font-bold text-gray-900 dark:text-white leading-tight">{selectedChat.customer_name || selectedChat.customer_contact}</h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Topic: {selectedChat.last_message || '-'} · {formatDateTime(selectedChat.updated_at || selectedChat.created_at)}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Topic: {selectedChat.last_message || '-'} Â· {formatDateTime(selectedChat.updated_at || selectedChat.created_at)}</p>
                  </div>
               </div>
               <button onClick={() => setSelectedChat(null)} className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-colors text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
@@ -272,7 +272,7 @@ const ChatHistory = () => {
                     <span>{msg.text}</span>
                   </div>
                   <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 px-1 font-medium tracking-wide">
-                    {msg.time} · {msg.sender.toUpperCase()}
+                    {msg.time} ï¿½ {msg.sender.toUpperCase()}
                   </span>
                 </div>
               )) : (
