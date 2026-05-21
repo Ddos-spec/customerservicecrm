@@ -593,10 +593,10 @@ const AgentWorkspace = () => {
       </div>
 
       {/* RIGHT AREA: CHAT ROOM */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_35%),linear-gradient(to_bottom,_rgba(248,250,252,0.9),_rgba(248,250,252,0.98))] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_30%),linear-gradient(to_bottom,_rgba(2,6,23,0.92),_rgba(2,6,23,1))]">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_35%),linear-gradient(to_bottom,_rgba(248,250,252,0.9),_rgba(248,250,252,0.98))] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_30%),linear-gradient(to_bottom,_rgba(2,6,23,0.92),_rgba(2,6,23,1))]">
         {selectedChat ? (
-            <div className="flex min-h-0 flex-1 overflow-hidden">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex h-full min-h-0 flex-1 overflow-hidden">
+              <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
                 {/* Chat Header */}
                 <div className="sticky top-0 z-10 shrink-0 border-b border-white/60 bg-white/85 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 sm:px-5 lg:px-6">
                     <div className="flex items-center justify-between gap-4">
@@ -731,36 +731,31 @@ const AgentWorkspace = () => {
                 </div>
 
                 {/* Input Area */}
-                <div className="z-10 shrink-0 border-t border-white/70 bg-white/90 px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 sm:px-4 sm:py-4 lg:px-5">
-                    <div className="flex w-full items-end gap-3 rounded-[30px] border border-gray-200 bg-white/95 px-3 py-3 shadow-[0_16px_32px_-28px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
-                        <button className="rounded-2xl p-3 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400">
+                <div className="z-10 shrink-0 border-t border-gray-200/80 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:px-3 lg:px-4">
+                    <div className="flex w-full items-center gap-2 rounded-[28px] bg-[#eef1f5] px-2 py-2 dark:bg-slate-900/95">
+                        <button className="rounded-full p-2.5 text-gray-400 transition-colors hover:bg-white hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400">
                             <Paperclip size={20} />
                         </button>
                         
-                        <div className="flex-1 rounded-[24px] bg-gray-50 px-4 py-2 dark:bg-slate-800">
+                        <div className="flex min-w-0 flex-1 items-center rounded-[24px] bg-white px-4 py-2 shadow-sm dark:bg-slate-800 dark:shadow-none">
                              <input
                                 type="text"
                                 value={messageText}
                                 onChange={(e) => setMessageText(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                                 placeholder="Ketik pesan..."
-                                className="max-h-32 w-full border-none bg-transparent py-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-0 dark:text-white"
+                                className="min-w-0 flex-1 border-none bg-transparent py-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-0 dark:text-white"
                                 autoComplete="off"
                             />
-                            <div className="mt-1 flex items-center justify-between">
-                              <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                                Balas cepat akan langsung masuk ke percakapan aktif.
-                              </p>
-                              <button className="ml-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
-                                <Smile size={20} />
-                              </button>
-                            </div>
+                            <button className="ml-2 shrink-0 rounded-full p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-blue-600 dark:hover:bg-slate-700 dark:hover:text-blue-400">
+                              <Smile size={19} />
+                            </button>
                         </div>
 
                         <button
                             onClick={handleSendMessage}
                             disabled={isSending || !messageText.trim()}
-                            className="flex-shrink-0 rounded-2xl bg-blue-600 p-3 text-white shadow-lg shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400 dark:shadow-blue-900/30"
+                            className="flex-shrink-0 rounded-full bg-blue-600 p-3 text-white shadow-lg shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400 dark:shadow-blue-900/30"
                         >
                             {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
                         </button>
