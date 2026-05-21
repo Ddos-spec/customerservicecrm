@@ -21,7 +21,7 @@ jobs:
           - 5432:5432
         # Set health checks to wait until postgres has started
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -57,10 +57,10 @@ jobs:
         done
         
         # Run schema SQL
-        psql -h localhost -U postgres -d customerservice_test -f doc/strukturdatabase.sql
+        psql -h localhost -U postgres -d customerservice_test -f docs/strukturdatabase.sql
         
         # Run migrations (query.sql) if needed for updates not in structure
-        psql -h localhost -U postgres -d customerservice_test -f doc/query.sql
+        psql -h localhost -U postgres -d customerservice_test -f docs/query.sql
 
     - name: Run Backend Tests
       working-directory: ./backend
