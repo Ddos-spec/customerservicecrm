@@ -443,10 +443,10 @@ const AgentWorkspace = () => {
   const totalUnreadMessages = chats.reduce((total, chat) => total + (chat.unread_count || 0), 0);
 
   return (
-    <div className="flex min-h-[calc(100dvh-7rem)] flex-col overflow-hidden rounded-[32px] border border-gray-200/80 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] transition-colors duration-300 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none lg:h-[calc(100dvh-7rem)] lg:flex-row">
+    <div className="flex min-h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden rounded-[28px] border border-gray-200/80 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] transition-colors duration-300 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none lg:h-[calc(100dvh-7rem)] lg:flex-row">
       
       {/* LEFT SIDEBAR: CHAT LIST */}
-      <div className="w-full shrink-0 border-b border-gray-200/80 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950 lg:h-full lg:w-[25rem] lg:max-h-none lg:border-b-0 lg:border-r xl:w-[26rem] max-h-[42svh]">
+      <div className="flex w-full min-h-0 shrink-0 flex-col border-b border-gray-200/80 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950 lg:h-full lg:w-[25rem] lg:max-h-none lg:border-b-0 lg:border-r xl:w-[26rem] max-h-[42svh]">
         {/* Search Header */}
         <div className="border-b border-gray-100 dark:border-slate-800 bg-white/90 px-5 py-5 dark:bg-slate-950/90">
           <div className="flex items-start justify-between gap-3">
@@ -506,7 +506,7 @@ const AgentWorkspace = () => {
 
         {/* Chat List */}
         <div
-          className="flex-1 overflow-y-auto px-3 py-3"
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
           ref={chatListRef}
           onScroll={handleChatListScroll}
         >
@@ -593,11 +593,12 @@ const AgentWorkspace = () => {
       </div>
 
       {/* RIGHT AREA: CHAT ROOM */}
-      <div className="relative flex min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_35%),linear-gradient(to_bottom,_rgba(248,250,252,0.9),_rgba(248,250,252,0.98))] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_30%),linear-gradient(to_bottom,_rgba(2,6,23,0.92),_rgba(2,6,23,1))]">
+      <div className="relative flex min-h-0 min-w-0 flex-1 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_35%),linear-gradient(to_bottom,_rgba(248,250,252,0.9),_rgba(248,250,252,0.98))] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_30%),linear-gradient(to_bottom,_rgba(2,6,23,0.92),_rgba(2,6,23,1))]">
         {selectedChat ? (
-            <>
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 {/* Chat Header */}
-                <div className="sticky top-0 z-10 border-b border-white/60 bg-white/85 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
+                <div className="sticky top-0 z-10 shrink-0 border-b border-white/60 bg-white/85 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 sm:px-5 lg:px-6">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex cursor-pointer items-center space-x-3" onClick={() => setIsInfoOpen(true)}>
                         <div className={`flex h-11 w-11 items-center justify-center rounded-2xl font-bold text-xs shadow-sm ${selectedChat.is_group ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
@@ -605,7 +606,7 @@ const AgentWorkspace = () => {
                         </div>
                         <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                              <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
                                 {selectedChat.display_name}
                               </h3>
                               {selectedChat.is_group && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">Grup</span>}
@@ -638,7 +639,7 @@ const AgentWorkspace = () => {
                 <div 
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
-                    className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6"
+                    className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-5"
                 >
                     {isFetchingMore && (
                         <div className="flex justify-center py-2">
@@ -662,7 +663,7 @@ const AgentWorkspace = () => {
                                 >
                                     {/* Sender Name in Group Chat */}
                                     {selectedChat.is_group && !msg.is_from_me && msg.sender_name && (
-                                        <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mb-1">{msg.sender_name}</p>
+                                        <p className="mb-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{msg.sender_name}</p>
                                     )}
 
                                     {msg.message_type === 'image' ? (
@@ -708,7 +709,7 @@ const AgentWorkspace = () => {
                                       <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
                                     )}
                                     
-                                    <div className={`flex items-center justify-end mt-1.5 space-x-1 text-[10px] opacity-70 ${msg.is_from_me ? 'text-blue-100' : 'text-gray-400'}`}>
+                                    <div className={`mt-1.5 flex items-center justify-end space-x-1 text-[10px] opacity-70 ${msg.is_from_me ? 'text-blue-100' : 'text-gray-400'}`}>
                                         <span>{formatMessageTime(msg.created_at)}</span>
                                         {msg.is_from_me && (
                                             msg.status === 'read' ? <CheckCheck size={12} /> : <Clock size={12} />
@@ -730,20 +731,20 @@ const AgentWorkspace = () => {
                 </div>
 
                 {/* Input Area */}
-                <div className="border-t border-white/70 bg-white/85 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 z-10">
-                    <div className="mx-auto flex max-w-4xl items-end gap-3 rounded-[28px] border border-gray-200 bg-white/90 p-3 shadow-[0_24px_40px_-32px_rgba(15,23,42,0.7)] dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-none">
+                <div className="z-10 shrink-0 border-t border-white/70 bg-white/90 px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 sm:px-4 sm:py-4 lg:px-5">
+                    <div className="flex w-full items-end gap-3 rounded-[30px] border border-gray-200 bg-white/95 px-3 py-3 shadow-[0_16px_32px_-28px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none">
                         <button className="rounded-2xl p-3 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400">
                             <Paperclip size={20} />
                         </button>
                         
-                        <div className="flex-1 rounded-2xl bg-gray-50 px-4 py-2 dark:bg-slate-800">
+                        <div className="flex-1 rounded-[24px] bg-gray-50 px-4 py-2 dark:bg-slate-800">
                              <input
                                 type="text"
                                 value={messageText}
                                 onChange={(e) => setMessageText(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                                 placeholder="Ketik pesan..."
-                                className="flex-1 max-h-32 w-full border-none bg-transparent py-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-0 dark:text-white"
+                                className="max-h-32 w-full border-none bg-transparent py-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-0 dark:text-white"
                                 autoComplete="off"
                             />
                             <div className="mt-1 flex items-center justify-between">
@@ -765,7 +766,72 @@ const AgentWorkspace = () => {
                         </button>
                     </div>
                 </div>
-            </>
+              </div>
+
+              {/* Info Sidebar (Right) */}
+              {isInfoOpen && (
+                  <div className="absolute right-0 top-0 z-20 flex h-full w-80 flex-col border-l border-gray-200 bg-white/95 shadow-2xl backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 animate-in slide-in-from-right duration-300 lg:relative lg:shrink-0 lg:shadow-none">
+                      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-slate-800">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-600 dark:text-blue-400">Profil Chat</p>
+                            <h3 className="mt-1 font-bold text-gray-900 dark:text-white">Detail Kontak</h3>
+                          </div>
+                          <button onClick={() => setIsInfoOpen(false)} className="rounded-full p-1 transition-colors hover:bg-gray-100 dark:hover:bg-slate-800 lg:hidden">
+                              <X size={20} />
+                          </button>
+                      </div>
+                      <div className="flex flex-1 flex-col overflow-y-auto p-6 text-center">
+                          <div className="mb-4 flex h-24 w-24 self-center rounded-[28px] bg-blue-100 text-2xl font-bold text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 items-center justify-center">
+                              {getDisplayInitials(selectedChat.display_name, selectedChat.phone_number?.slice(-2) || '?')}
+                          </div>
+                          <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedChat.display_name}</h2>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selectedChat.phone_number}</p>
+                          
+                          <div className="mt-8 w-full space-y-4 text-left">
+                              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Status Chat</span>
+                                  <div className="mt-2 flex items-center space-x-2">
+                                      <div className={`w-2 h-2 rounded-full ${selectedChat.status === 'open' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200 capitalize">{selectedChat.status || 'Open'}</span>
+                                  </div>
+                              </div>
+                              
+                              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Contact ID</span>
+                                  <p className="mt-1 text-xs font-mono text-gray-600 dark:text-gray-300 break-all">
+                                      {selectedChat.contact_id}
+                                  </p>
+                              </div>
+
+                              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Tipe Percakapan</span>
+                                  <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                    {selectedChat.is_group ? 'Grup WhatsApp' : 'Chat pribadi'}
+                                  </p>
+                              </div>
+
+                              {selectedChat.agent_name && (
+                                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Ditangani Oleh</span>
+                                    <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                      {selectedChat.agent_name}
+                                    </p>
+                                </div>
+                              )}
+
+                              {selectedChat.last_message_time && (
+                                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Aktivitas Terakhir</span>
+                                    <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                      {formatFullDateTime(selectedChat.last_message_time)}
+                                    </p>
+                                </div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+              )}
+            </div>
         ) : (
             // No Chat Selected State
             <div className="flex-1 flex flex-col items-center justify-center px-6 text-gray-400 dark:text-gray-500">
@@ -778,70 +844,6 @@ const AgentWorkspace = () => {
                   </p>
                   <h3 className="mt-3 text-2xl font-black tracking-tight text-gray-800 dark:text-gray-100">Selamat Datang, {user?.name}</h3>
                   <p className="mt-3 max-w-md text-sm leading-6">Pilih percakapan dari daftar di sebelah kiri untuk mulai melayani pelanggan. Semua chat, status, dan respons tim akan terpusat di sini.</p>
-                </div>
-            </div>
-        )}
-
-        {/* Info Sidebar (Right) */}
-        {selectedChat && isInfoOpen && (
-            <div className="absolute right-0 top-0 z-20 flex h-full w-80 flex-col border-l border-gray-200 bg-white/95 shadow-2xl backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:relative lg:shadow-none animate-in slide-in-from-right duration-300">
-                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-slate-800">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-600 dark:text-blue-400">Profil Chat</p>
-                      <h3 className="mt-1 font-bold text-gray-900 dark:text-white">Detail Kontak</h3>
-                    </div>
-                    <button onClick={() => setIsInfoOpen(false)} className="rounded-full p-1 transition-colors hover:bg-gray-100 dark:hover:bg-slate-800 lg:hidden">
-                        <X size={20} />
-                    </button>
-                </div>
-                <div className="flex flex-1 flex-col overflow-y-auto p-6 text-center">
-                    <div className="mb-4 flex h-24 w-24 self-center rounded-[28px] bg-blue-100 text-2xl font-bold text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 items-center justify-center">
-                        {getDisplayInitials(selectedChat.display_name, selectedChat.phone_number?.slice(-2) || '?')}
-                    </div>
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedChat.display_name}</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selectedChat.phone_number}</p>
-                    
-                    <div className="mt-8 w-full space-y-4 text-left">
-                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Status Chat</span>
-                            <div className="mt-2 flex items-center space-x-2">
-                                <div className={`w-2 h-2 rounded-full ${selectedChat.status === 'open' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                                <span className="text-sm font-medium text-gray-700 dark:text-gray-200 capitalize">{selectedChat.status || 'Open'}</span>
-                            </div>
-                        </div>
-                        
-                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Contact ID</span>
-                            <p className="mt-1 text-xs font-mono text-gray-600 dark:text-gray-300 break-all">
-                                {selectedChat.contact_id}
-                            </p>
-                        </div>
-
-                        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Tipe Percakapan</span>
-                            <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
-                              {selectedChat.is_group ? 'Grup WhatsApp' : 'Chat pribadi'}
-                            </p>
-                        </div>
-
-                        {selectedChat.agent_name && (
-                          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Ditangani Oleh</span>
-                              <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
-                                {selectedChat.agent_name}
-                              </p>
-                          </div>
-                        )}
-
-                        {selectedChat.last_message_time && (
-                          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Aktivitas Terakhir</span>
-                              <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
-                                {formatFullDateTime(selectedChat.last_message_time)}
-                              </p>
-                          </div>
-                        )}
-                    </div>
                 </div>
             </div>
         )}
