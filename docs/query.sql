@@ -70,3 +70,9 @@ CREATE INDEX IF NOT EXISTS "idx_campaign_queue" ON "public"."campaign_messages" 
 -- 1. Add Business Category to Tenants
 ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "business_category" VARCHAR(50) DEFAULT 'general';
 
+-- 2. Add AI Mode to Tenants
+ALTER TABLE "public"."tenants" ADD COLUMN IF NOT EXISTS "ai_mode" VARCHAR(20) DEFAULT 'agent';
+UPDATE "public"."tenants"
+SET "ai_mode" = 'agent'
+WHERE "ai_mode" IS NULL OR trim("ai_mode") = '';
+
