@@ -731,13 +731,13 @@ const AgentWorkspace = () => {
                 </div>
 
                 {/* Input Area */}
-                <div className="z-10 shrink-0 border-t border-gray-200/80 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:px-3 lg:px-4">
-                    <div className="flex w-full items-center gap-2 rounded-[28px] bg-[#eef1f5] px-2 py-2 dark:bg-slate-900/95">
-                        <button className="rounded-full p-2.5 text-gray-400 transition-colors hover:bg-white hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400">
+                <div className="z-10 shrink-0 border-t border-gray-200/80 bg-[#eef1f5] px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900 sm:px-4">
+                    <div className="flex w-full items-center gap-2">
+                        <button className="rounded-full p-2.5 text-gray-400 transition-colors hover:bg-white/80 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400">
                             <Paperclip size={20} />
                         </button>
                         
-                        <div className="flex min-w-0 flex-1 items-center rounded-[24px] bg-white px-4 py-2 shadow-sm dark:bg-slate-800 dark:shadow-none">
+                        <div className="flex min-w-0 flex-1 items-center rounded-full bg-white px-4 py-2.5 shadow-sm dark:bg-slate-800 dark:shadow-none">
                              <input
                                 type="text"
                                 value={messageText}
