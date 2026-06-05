@@ -44,6 +44,7 @@ func Routes(e *echo.Echo) {
 	e.POST(router.BaseURL+"/login", ctlWhatsApp.Login, middleware.JWTWithConfig(authJWTConfig))
 	e.POST(router.BaseURL+"/login/pair", ctlWhatsApp.LoginPair, middleware.JWTWithConfig(authJWTConfig))
 	e.POST(router.BaseURL+"/logout", ctlWhatsApp.Logout, middleware.JWTWithConfig(authJWTConfig))
+	e.GET(router.BaseURL+"/session/status", ctlWhatsApp.SessionStatus, middleware.JWTWithConfig(authJWTConfig))
 
 	e.GET(router.BaseURL+"/registered", ctlWhatsApp.Registered, middleware.JWTWithConfig(authJWTConfig))
 
@@ -69,4 +70,6 @@ func Routes(e *echo.Echo) {
 	e.POST(router.BaseURL+"/message/react", ctlWhatsApp.MessageEdit, middleware.JWTWithConfig(authJWTConfig))
 	e.POST(router.BaseURL+"/message/delete", ctlWhatsApp.MessageDelete, middleware.JWTWithConfig(authJWTConfig))
 	e.GET(router.BaseURL+"/media/ephemeral/:token", ctlWhatsApp.EphemeralMedia, middleware.JWTWithConfig(authJWTConfig))
+	e.GET(router.BaseURL+"/webhook/stats", ctlWhatsApp.WebhookStats, middleware.JWTWithConfig(authJWTConfig))
+	e.POST(router.BaseURL+"/webhook/retry-failed", ctlWhatsApp.WebhookRetryFailed, middleware.JWTWithConfig(authJWTConfig))
 }

@@ -292,7 +292,11 @@ async function handleMessage(req, sessionId, data) {
         // For groups: message.to = group JID, message.from = sender in group
         // For private: message.to = recipient, message.from = sender
         const isGroup = message.isGroup || message.to?.endsWith('@g.us');
-        const rawTargetJid = message.to || message.from;
+        const rawTargetJid = isGroup
+            ? (message.to || message.from)
+            : message.isFromMe
+                ? (message.to || message.from)
+                : (message.from || message.to);
         const targetJid = await resolveCanonicalJid(rawTargetJid, { isGroup });
 
         // Ensure we have a valid JID

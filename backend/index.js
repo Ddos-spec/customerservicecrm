@@ -1132,6 +1132,71 @@ app.get('/api/v1/gateway/health', async (req, res) => {
     }
 });
 
+app.get('/api/v1/gateway/sessions/status', async (req, res) => {
+    if (!ensureHealthToken(req, res)) return;
+
+    try {
+        const tenants = await db.getAllTenants();
+        const results = await Promise.allSettled(
+            tenants
+                .filter(tenant => tenant?.session_id)
+                .map(async (tenant) => {
+                    const status = await waGateway.getSessionStatus(tenant.session_id);
+                    return {
+                        tenant_id: tenant.id,
+                        tenant_name: tenant.company_name,
+                        session_id: tenant.session_id,
+                        gateway_url: tenant.gateway_url || null,
+                        status
+                    };
+                })
+        );
+
+        res.json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            sessions: results.map((result) => {
+                if (result.status === 'fulfilled') return result.value;
+                return {
+                    status: {
+                        status: 'error',
+                        message: result.reason?.message || 'Failed to load session status'
+                    }
+                };
+            })
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+app.post('/api/v1/gateway/webhook/retry-failed', async (req, res) => {
+    if (!ensureHealthToken(req, res)) return;
+
+    try {
+        const sessionId = (req.query.sessionId || req.body?.sessionId || '').toString().trim();
+        let targetSessionId = sessionId;
+
+        if (!targetSessionId) {
+            const tenants = await db.getAllTenants();
+            targetSessionId = tenants.find(tenant => tenant?.session_id)?.session_id;
+        }
+
+        if (!targetSessionId) {
+            return res.status(400).json({ status: 'error', message: 'No session available for gateway auth' });
+        }
+
+        const result = await waGateway.retryFailedWebhooks(targetSessionId);
+        res.json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            result
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
 app.get('/api/v1/health/infra', async (req, res) => {
     if (!ensureHealthToken(req, res)) return;
 
@@ -1142,11 +1207,20 @@ app.get('/api/v1/health/infra', async (req, res) => {
     ]);
 
     let gateways = [];
+    let gatewayWebhook = null;
     let gatewayError = null;
     if (postgres.status === 'ok') {
         try {
             const tenants = await db.getAllTenants();
             gateways = await getGatewayHealthSummary(tenants);
+            const diagnosticSession = tenants.find(tenant => tenant?.session_id)?.session_id;
+            if (diagnosticSession) {
+                try {
+                    gatewayWebhook = await waGateway.getWebhookStats(diagnosticSession);
+                } catch (diagError) {
+                    gatewayWebhook = { status: 'error', message: diagError.message };
+                }
+            }
         } catch (error) {
             gatewayError = error.message;
         }
@@ -1171,6 +1245,7 @@ app.get('/api/v1/health/infra', async (req, res) => {
         redis,
         gateway_default: gatewayDefault,
         gateways,
+        gateway_webhook: gatewayWebhook,
         gateway_error: gatewayError
     });
 });

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -17,19 +18,22 @@ import (
 )
 
 const (
-	webhookQueueKey     = "wa:webhook:queue"
-	webhookFailedKey    = "wa:webhook:failed"
-	maxRetries          = 3
-	retryDelay          = 5 * time.Second
-	webhookTimeout      = 10 * time.Second
-	processingInterval  = 100 * time.Millisecond
+	webhookQueueKey      = "wa:webhook:queue"
+	webhookFailedKey     = "wa:webhook:failed"
+	defaultMaxRetries    = 288
+	defaultRetryDelay    = 5 * time.Second
+	defaultMaxRetryDelay = 5 * time.Minute
+	webhookTimeout       = 10 * time.Second
+	processingInterval   = 100 * time.Millisecond
 )
 
 var (
-	webhookURL     string
-	httpClient     *http.Client
-	processorOnce  sync.Once
-	stopChan       chan struct{}
+	webhookURL    string
+	httpClient    *http.Client
+	processorOnce sync.Once
+	stopChan      chan struct{}
+	maxRetries    = defaultMaxRetries
+	maxRetryDelay = defaultMaxRetryDelay
 )
 
 // WebhookPayload represents the structure of webhook data
@@ -42,30 +46,32 @@ type WebhookPayload struct {
 
 // MessagePayload represents an incoming WhatsApp message
 type MessagePayload struct {
-	ID                     string                 `json:"id"`
-	From                   string                 `json:"from"`
-	To                     string                 `json:"to"`
-	Type                   string                 `json:"type"`
-	Body                   string                 `json:"body,omitempty"`
-	Caption                string                 `json:"caption,omitempty"`
-	MediaURL               string                 `json:"mediaUrl,omitempty"`
-	MediaMimeType          string                 `json:"mediaMimeType,omitempty"`
-	EphemeralMediaToken    string                 `json:"ephemeralMediaToken,omitempty"`
-	EphemeralMediaExpiresAt int64                 `json:"ephemeralMediaExpiresAt,omitempty"`
-	IsGroup                bool                   `json:"isGroup"`
-	IsFromMe               bool                   `json:"isFromMe"`
-	PushName               string                 `json:"pushName,omitempty"`
-	GroupName              string                 `json:"groupName,omitempty"`
-	Timestamp              int64                  `json:"timestamp"`
-	QuotedMessage          map[string]interface{} `json:"quotedMessage,omitempty"`
-	Raw                    map[string]interface{} `json:"raw,omitempty"`
+	ID                      string                 `json:"id"`
+	From                    string                 `json:"from"`
+	To                      string                 `json:"to"`
+	Type                    string                 `json:"type"`
+	Body                    string                 `json:"body,omitempty"`
+	Caption                 string                 `json:"caption,omitempty"`
+	MediaURL                string                 `json:"mediaUrl,omitempty"`
+	MediaMimeType           string                 `json:"mediaMimeType,omitempty"`
+	EphemeralMediaToken     string                 `json:"ephemeralMediaToken,omitempty"`
+	EphemeralMediaExpiresAt int64                  `json:"ephemeralMediaExpiresAt,omitempty"`
+	IsGroup                 bool                   `json:"isGroup"`
+	IsFromMe                bool                   `json:"isFromMe"`
+	PushName                string                 `json:"pushName,omitempty"`
+	GroupName               string                 `json:"groupName,omitempty"`
+	Timestamp               int64                  `json:"timestamp"`
+	QuotedMessage           map[string]interface{} `json:"quotedMessage,omitempty"`
+	Raw                     map[string]interface{} `json:"raw,omitempty"`
 }
 
 // QueuedWebhook represents a webhook in the queue
 type QueuedWebhook struct {
-	Payload   WebhookPayload `json:"payload"`
-	Retries   int            `json:"retries"`
-	CreatedAt int64          `json:"createdAt"`
+	Payload       WebhookPayload `json:"payload"`
+	Retries       int            `json:"retries"`
+	CreatedAt     int64          `json:"createdAt"`
+	NextAttemptAt int64          `json:"nextAttemptAt"`
+	LastError     string         `json:"lastError,omitempty"`
 }
 
 // Init initializes the webhook system
@@ -81,10 +87,18 @@ func Init() {
 		Timeout: webhookTimeout,
 	}
 
+	if configuredMaxRetries, parseErr := env.GetEnvInt("WEBHOOK_MAX_RETRIES"); parseErr == nil && configuredMaxRetries > 0 {
+		maxRetries = configuredMaxRetries
+	}
+	if configuredMaxDelaySeconds, parseErr := env.GetEnvInt("WEBHOOK_MAX_RETRY_DELAY_SECONDS"); parseErr == nil && configuredMaxDelaySeconds > 0 {
+		maxRetryDelay = time.Duration(configuredMaxDelaySeconds) * time.Second
+	}
+
 	// Start background processor
 	StartProcessor()
 
-	log.Print(nil).Infof("Webhook system initialized, target: %s", webhookURL)
+	log.Print(nil).Infof("Webhook system initialized, target: %s, max retries: %d, max retry delay: %s",
+		webhookURL, maxRetries, maxRetryDelay)
 }
 
 // SetWebhookURL allows dynamic webhook URL configuration
@@ -100,9 +114,10 @@ func GetWebhookURL() string {
 // Queue adds a webhook payload to the processing queue
 func Queue(payload WebhookPayload) error {
 	queued := QueuedWebhook{
-		Payload:   payload,
-		Retries:   0,
-		CreatedAt: time.Now().Unix(),
+		Payload:       payload,
+		Retries:       0,
+		CreatedAt:     time.Now().Unix(),
+		NextAttemptAt: time.Now().Unix(),
 	}
 
 	data, err := json.Marshal(queued)
@@ -195,6 +210,19 @@ func processNextWebhook() {
 		return
 	}
 
+	now := time.Now().Unix()
+	if queued.NextAttemptAt > now {
+		if err := pkgRedis.LPush(ctx, webhookQueueKey, data); err != nil {
+			log.Print(nil).Errorf("Failed to requeue deferred webhook: %v", err)
+		}
+		sleepFor := time.Duration(queued.NextAttemptAt-now) * time.Second
+		if sleepFor > time.Second {
+			sleepFor = time.Second
+		}
+		time.Sleep(sleepFor)
+		return
+	}
+
 	// Try to deliver
 	if err := deliver(queued.Payload); err != nil {
 		log.Print(nil).Warnf("[WEBHOOK] Delivery failed for %s (session: %s): %v",
@@ -202,12 +230,12 @@ func processNextWebhook() {
 
 		// Retry logic
 		queued.Retries++
+		queued.LastError = err.Error()
 		if queued.Retries < maxRetries {
-			// Re-queue for retry
+			retryDelay := calculateRetryDelay(queued.Retries)
+			queued.NextAttemptAt = time.Now().Add(retryDelay).Unix()
 			retryData, _ := json.Marshal(queued)
-			time.AfterFunc(retryDelay, func() {
-				pkgRedis.LPush(context.Background(), webhookQueueKey, string(retryData))
-			})
+			pkgRedis.LPush(context.Background(), webhookQueueKey, string(retryData))
 			log.Print(nil).Infof("[WEBHOOK] Retry scheduled %d/%d for %s (session: %s)",
 				queued.Retries, maxRetries, queued.Payload.Event, queued.Payload.SessionID)
 		} else {
@@ -220,6 +248,18 @@ func processNextWebhook() {
 	} else {
 		log.Print(nil).Infof("[WEBHOOK] Delivered: %s | session: %s", queued.Payload.Event, queued.Payload.SessionID)
 	}
+}
+
+func calculateRetryDelay(retries int) time.Duration {
+	if retries <= 0 {
+		return defaultRetryDelay
+	}
+	multiplier := math.Pow(2, float64(retries-1))
+	delay := time.Duration(multiplier) * defaultRetryDelay
+	if delay > maxRetryDelay {
+		return maxRetryDelay
+	}
+	return delay
 }
 
 // deliver sends the webhook payload to the configured URL
@@ -265,6 +305,26 @@ func GetFailedCount() (int64, error) {
 	return pkgRedis.LLen(context.Background(), webhookFailedKey)
 }
 
+func Stats() map[string]interface{} {
+	queueLength, queueErr := GetQueueLength()
+	failedCount, failedErr := GetFailedCount()
+
+	stats := map[string]interface{}{
+		"webhookUrl":      webhookURL,
+		"queueLength":     queueLength,
+		"failedCount":     failedCount,
+		"maxRetries":      maxRetries,
+		"maxRetryDelayMs": maxRetryDelay.Milliseconds(),
+	}
+	if queueErr != nil {
+		stats["queueError"] = queueErr.Error()
+	}
+	if failedErr != nil {
+		stats["failedError"] = failedErr.Error()
+	}
+	return stats
+}
+
 // RetryFailed moves all failed webhooks back to the main queue
 func RetryFailed() (int64, error) {
 	ctx := context.Background()
@@ -285,6 +345,8 @@ func RetryFailed() (int64, error) {
 			continue
 		}
 		queued.Retries = 0
+		queued.NextAttemptAt = time.Now().Unix()
+		queued.LastError = ""
 		retryData, _ := json.Marshal(queued)
 
 		if err := pkgRedis.LPush(ctx, webhookQueueKey, string(retryData)); err != nil {

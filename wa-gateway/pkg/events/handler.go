@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/protobuf/proto"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/proto"
 
 	"customerservicecrm/wa-gateway/pkg/ephemeralmedia"
 	"customerservicecrm/wa-gateway/pkg/log"
@@ -25,6 +25,26 @@ type groupNameCacheEntry struct {
 	fetchedAt time.Time
 }
 
+type SessionStats struct {
+	SessionID            string `json:"sessionId"`
+	TotalMessages        uint64 `json:"totalMessages"`
+	PrivateMessages      uint64 `json:"privateMessages"`
+	GroupMessages        uint64 `json:"groupMessages"`
+	OutgoingMessages     uint64 `json:"outgoingMessages"`
+	LastMessageAt        int64  `json:"lastMessageAt"`
+	LastPrivateMessageAt int64  `json:"lastPrivateMessageAt"`
+	LastGroupMessageAt   int64  `json:"lastGroupMessageAt"`
+	LastFrom             string `json:"lastFrom,omitempty"`
+	LastTo               string `json:"lastTo,omitempty"`
+	LastType             string `json:"lastType,omitempty"`
+	LastPushName         string `json:"lastPushName,omitempty"`
+}
+
+var (
+	statsMu      sync.RWMutex
+	sessionStats = make(map[string]*SessionStats)
+)
+
 // Handler handles WhatsApp events and forwards them to webhooks
 type Handler struct {
 	sessionID        string
@@ -36,8 +56,8 @@ type Handler struct {
 // NewHandler creates a new event handler for a WhatsApp session
 func NewHandler(sessionID string, client *whatsmeow.Client) *Handler {
 	return &Handler{
-		sessionID: sessionID,
-		client:    client,
+		sessionID:      sessionID,
+		client:         client,
 		groupNameCache: make(map[string]groupNameCacheEntry),
 	}
 }
@@ -79,15 +99,21 @@ func (h *Handler) handleMessage(evt *events.Message) {
 		return
 	}
 
+	fromJID, toJID := h.resolveMessageParties(evt)
+
 	// Build message payload
 	msg := webhook.MessagePayload{
 		ID:        evt.Info.ID,
-		From:      evt.Info.Sender.String(),
-		To:        evt.Info.Chat.String(),
+		From:      fromJID,
+		To:        toJID,
 		IsGroup:   evt.Info.IsGroup,
 		IsFromMe:  evt.Info.IsFromMe,
 		PushName:  evt.Info.PushName,
 		Timestamp: evt.Info.Timestamp.Unix(),
+		Raw: map[string]interface{}{
+			"chat":   evt.Info.Chat.String(),
+			"sender": evt.Info.Sender.String(),
+		},
 	}
 
 	if msg.IsGroup {
@@ -123,10 +149,97 @@ func (h *Handler) handleMessage(evt *events.Message) {
 	log.Print(nil).Infof("[%s] [%s] %s | from: %s | type: %s | session: %s",
 		direction, chatType, msg.PushName, msg.From, msg.Type, h.sessionID)
 
+	recordMessageStats(h.sessionID, msg)
+
 	// Queue webhook
 	if err := webhook.QueueMessage(h.sessionID, msg); err != nil {
 		log.Print(nil).Errorf("[MESSAGE] Failed to queue webhook: %v", err)
 	}
+}
+
+func (h *Handler) resolveMessageParties(evt *events.Message) (from string, to string) {
+	chat := evt.Info.Chat.String()
+	sender := evt.Info.Sender.String()
+	ownJID := h.ownJID()
+
+	if evt.Info.IsGroup {
+		if sender == "" {
+			sender = chat
+		}
+		return sender, chat
+	}
+
+	if evt.Info.IsFromMe {
+		return ownJID, chat
+	}
+
+	if sender != "" {
+		from = sender
+	} else {
+		from = chat
+	}
+	to = ownJID
+	return from, to
+}
+
+func (h *Handler) ownJID() string {
+	if h.client == nil || h.client.Store == nil || h.client.Store.ID == nil {
+		return h.sessionID + "@s.whatsapp.net"
+	}
+	return h.client.Store.ID.String()
+}
+
+func recordMessageStats(sessionID string, msg webhook.MessagePayload) {
+	statsMu.Lock()
+	defer statsMu.Unlock()
+
+	current, ok := sessionStats[sessionID]
+	if !ok {
+		current = &SessionStats{SessionID: sessionID}
+		sessionStats[sessionID] = current
+	}
+
+	now := time.Now().Unix()
+	current.TotalMessages++
+	current.LastMessageAt = now
+	current.LastFrom = msg.From
+	current.LastTo = msg.To
+	current.LastType = msg.Type
+	current.LastPushName = msg.PushName
+
+	if msg.IsFromMe {
+		current.OutgoingMessages++
+	}
+	if msg.IsGroup {
+		current.GroupMessages++
+		current.LastGroupMessageAt = now
+	} else {
+		current.PrivateMessages++
+		current.LastPrivateMessageAt = now
+	}
+}
+
+func GetSessionStats(sessionID string) *SessionStats {
+	statsMu.RLock()
+	defer statsMu.RUnlock()
+
+	current, ok := sessionStats[sessionID]
+	if !ok {
+		return &SessionStats{SessionID: sessionID}
+	}
+	copy := *current
+	return &copy
+}
+
+func GetAllSessionStats() []SessionStats {
+	statsMu.RLock()
+	defer statsMu.RUnlock()
+
+	result := make([]SessionStats, 0, len(sessionStats))
+	for _, current := range sessionStats {
+		result = append(result, *current)
+	}
+	return result
 }
 
 func (h *Handler) getGroupName(jid types.JID) string {

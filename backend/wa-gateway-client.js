@@ -857,6 +857,47 @@ async function checkHealth(gatewayUrl = null) {
     }
 }
 
+async function withGatewayAuthOnly(jid, operation) {
+    const password = process.env.WA_GATEWAY_PASSWORD;
+
+    const ensureToken = async () => {
+        if (getSessionToken(jid)) return;
+        if (!password) throw new Error('WA_GATEWAY_PASSWORD is not configured');
+        const auth = await authenticate(jid, password);
+        if (!auth?.data?.token) throw new Error('Gateway authentication failed');
+        setSessionToken(jid, auth.data.token);
+    };
+
+    await ensureToken();
+    try {
+        return await operation();
+    } catch (error) {
+        const shouldRetry = error?.response?.status === 401 || error?.response?.status === 403;
+        if (!shouldRetry) throw error;
+        removeSessionToken(jid);
+        await ensureToken();
+        return await operation();
+    }
+}
+
+async function getSessionStatus(jid) {
+    return withGatewayAuthOnly(jid, async () => (
+        getWithAuth('/session/status', getAuthHeader(jid), {}, jid)
+    ));
+}
+
+async function getWebhookStats(jid) {
+    return withGatewayAuthOnly(jid, async () => (
+        getWithAuth('/webhook/stats', getAuthHeader(jid), {}, jid)
+    ));
+}
+
+async function retryFailedWebhooks(jid) {
+    return withGatewayAuthOnly(jid, async () => (
+        postUrlEncoded('/webhook/retry-failed', buildUrlEncoded({}), getAuthHeader(jid), jid)
+    ));
+}
+
 /**
  * Check for collision
  */
@@ -921,6 +962,9 @@ module.exports = {
     joinGroup,
     leaveGroup,
     checkHealth,
+    getSessionStatus,
+    getWebhookStats,
+    retryFailedWebhooks,
 
     // Raw client for advanced usage
     gatewayClient,
