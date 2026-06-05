@@ -1,5 +1,4 @@
 const { execSync } = require('child_process');
-const fs = require('fs');
 const path = require('path');
 
 // Colors for console output
@@ -25,6 +24,52 @@ function runCommand(command, cwd) {
         log(`❌ Check failed in ${cwd}`, colors.red);
         return false;
     }
+}
+
+function quoteCommandArg(value) {
+    return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function commandExists(command) {
+    try {
+        const lookupCommand = process.platform === 'win32'
+            ? `where ${command}`
+            : `command -v ${command}`;
+        const output = execSync(lookupCommand, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+        return output ? output.split(/\r?\n/)[0] : null;
+    } catch {
+        return null;
+    }
+}
+
+function findGoBinary() {
+    const envGo = process.env.GO_BINARY || process.env.GO_EXE;
+    const candidates = [
+        envGo,
+        commandExists('go'),
+        ...(process.platform === 'win32'
+            ? [
+                'C:\\Program Files\\Go\\bin\\go.exe',
+                'C:\\Go\\bin\\go.exe',
+                path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Go', 'bin', 'go.exe'),
+            ]
+            : [
+                '/usr/local/go/bin/go',
+                '/usr/bin/go',
+                '/opt/homebrew/bin/go',
+            ]),
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+        try {
+            execSync(`${quoteCommandArg(candidate)} version`, { stdio: 'ignore' });
+            return candidate;
+        } catch {
+            // Try next candidate.
+        }
+    }
+
+    return null;
 }
 
 function getStagedFiles() {
@@ -80,14 +125,14 @@ function main() {
 
     if (checks.gateway) {
         log('\n🐹 Go Gateway changes detected. verifying...', colors.yellow);
-        // Check if go is installed
-        try {
-            execSync('go version', { stdio: 'ignore' });
-            if (!runCommand('go build -v ./...', path.join(process.cwd(), 'wa-gateway'))) {
+        const goBinary = findGoBinary();
+        if (!goBinary) {
+            log('⚠️  Go is not installed or not discoverable. Set GO_BINARY to the full go executable path to enable Gateway checks.', colors.yellow);
+        } else {
+            log(`Using Go binary: ${goBinary}`, colors.blue);
+            if (!runCommand(`${quoteCommandArg(goBinary)} build -v ./...`, path.join(process.cwd(), 'wa-gateway'))) {
                 success = false;
             }
-        } catch (e) {
-            log('⚠️  Go is not installed or not in PATH. Skipping Gateway check.', colors.yellow);
         }
     }
 
