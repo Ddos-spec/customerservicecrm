@@ -134,7 +134,9 @@ function buildSessionsRouter(deps) {
             const sessionOwner = session ? session.owner : null;
 
             if (sessions.has(sessionId)) {
-                try { await deleteSession(sessionId); } catch (e) { log('Ignored deleteSession error', sessionId); }
+                try {
+                    await deleteSession(sessionId, { unlinkReferences: false, reason: 'qr-regeneration' });
+                } catch (e) { log('Ignored deleteSession error', sessionId); }
             }
 
             await createSession(sessionId, sessionOwner);
@@ -167,7 +169,9 @@ function buildSessionsRouter(deps) {
 
             // Recreate session to get a fresh token before requesting pair code
             if (sessions.has(sessionId)) {
-                try { await deleteSession(sessionId); } catch (e) { log('Ignored deleteSession error', sessionId); }
+                try {
+                    await deleteSession(sessionId, { unlinkReferences: false, reason: 'pair-code-regeneration' });
+                } catch (e) { log('Ignored deleteSession error', sessionId); }
             }
             await createSession(sessionId, sessionOwner);
 

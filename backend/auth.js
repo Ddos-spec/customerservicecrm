@@ -28,6 +28,27 @@ const DEFAULT_WEBHOOK_EVENTS = {
     document: true
 };
 const VALID_AI_MODES = new Set(['agent', 'chatbot']);
+let sessionDeleteHandler = null;
+
+function setSessionDeleteHandler(handler) {
+    sessionDeleteHandler = typeof handler === 'function' ? handler : null;
+}
+
+async function cleanupWhatsmeowSession(sessionId, options = {}) {
+    const normalized = (sessionId || '').toString().trim();
+    if (!normalized) return null;
+
+    if (sessionDeleteHandler) {
+        return await sessionDeleteHandler(normalized, options);
+    }
+
+    try {
+        await waGateway.logout(normalized);
+    } catch (e) { /* Ignore logout error */ }
+    waGateway.removeSessionToken(normalized);
+    waGateway.setSessionGatewayUrl(normalized, null);
+    return null;
+}
 
 function normalizeWebhookEventsConfig(rawConfig) {
     const source = (rawConfig && typeof rawConfig === 'object') ? rawConfig : {};
@@ -945,8 +966,10 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             
             // Clean up old session if changed
             if (existingTenant.session_id && existingTenant.session_id !== nextSessionId) {
-                waGateway.removeSessionToken(existingTenant.session_id);
-                waGateway.setSessionGatewayUrl(existingTenant.session_id, null);
+                await cleanupWhatsmeowSession(existingTenant.session_id, {
+                    unlinkReferences: false,
+                    reason: 'tenant-session-changed'
+                });
             }
 
             // Register new session
@@ -960,11 +983,10 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
         } else if (effectiveProvider === 'meta' && existingTenant.wa_provider === 'whatsmeow') {
             // Switching from Whatsmeow to Meta -> Kill Zombie Session
             if (existingTenant.session_id) {
-                try {
-                    await waGateway.logout(existingTenant.session_id);
-                } catch (e) { /* Ignore logout error */ }
-                waGateway.removeSessionToken(existingTenant.session_id);
-                waGateway.setSessionGatewayUrl(existingTenant.session_id, null);
+                await cleanupWhatsmeowSession(existingTenant.session_id, {
+                    unlinkReferences: false,
+                    reason: 'tenant-provider-switched'
+                });
             }
         }
 
@@ -1076,8 +1098,10 @@ router.delete('/tenants/:id', requireRole('super_admin'), async (req, res) => {
             return res.status(404).json({ success: false, error: 'Tenant not found' });
         }
         if (existingTenant.session_id) {
-            waGateway.removeSessionToken(existingTenant.session_id);
-            waGateway.setSessionGatewayUrl(existingTenant.session_id, null);
+            await cleanupWhatsmeowSession(existingTenant.session_id, {
+                unlinkReferences: true,
+                reason: 'tenant-deleted'
+            });
         }
         res.json({ success: true, message: 'Tenant deleted successfully' });
     } catch (error) {
@@ -1969,5 +1993,6 @@ module.exports = {
     requireRole,
     requireTenantAccess,
     ensureSuperAdmin,
-    syncContactsForTenant
+    syncContactsForTenant,
+    setSessionDeleteHandler
 };

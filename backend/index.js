@@ -17,7 +17,7 @@ const fs = require('fs');
 const { createClient } = require('redis');
 const { initializeApi } = require('./api_v1');
 const { buildExternalDashboardRouter } = require('./routes/external-dashboard');
-const { router: authRouter, ensureSuperAdmin, syncContactsForTenant } = require('./auth');
+const { router: authRouter, ensureSuperAdmin, syncContactsForTenant, setSessionDeleteHandler } = require('./auth');
 const db = require('./db');
 const { initializeN8nApi } = require('./n8n-api');
 require('dotenv').config();
@@ -256,6 +256,30 @@ async function prunePersistedSessions() {
         saveTokens();
         console.log(`[System] Pruned ${removedCount} stale persisted session(s) with no DB owner.`);
     }
+}
+
+async function persistRecoveredSessionToken(sessionId) {
+    const allowedSessionIds = await getAllowedPersistedSessionIds();
+    if (!allowedSessionIds.has(sessionId)) {
+        logger.warn(`[Auto-Recovery] Ignoring orphan connected session ${sessionId}; no tenant/notifier owns it.`);
+        if (sessionTokens.delete(sessionId)) {
+            waGateway.removeSessionToken(sessionId);
+            waGateway.setSessionGatewayUrl(sessionId, null);
+            saveTokens();
+        }
+        sessions.delete(sessionId);
+        await clearRedisSessionState(sessionId);
+        broadcastSessionUpdate();
+        return false;
+    }
+
+    if (sessionTokens.has(sessionId)) return true;
+
+    console.log(`[Auto-Recovery] Session ${sessionId} detected from Webhook. Saving to disk...`);
+    const recoveryToken = crypto.randomBytes(32).toString('hex');
+    sessionTokens.set(sessionId, recoveryToken);
+    saveTokens();
+    return true;
 }
 
 async function hydrateGatewayMappingsFromTenants() {
@@ -1367,6 +1391,13 @@ async function createSession(sessionId) {
         return { token };
     } catch (error) {
         logger.error(`Failed to create session ${sessionId}: ${error.message}`);
+        sessions.delete(sessionId);
+        if (sessionTokens.delete(sessionId)) {
+            waGateway.removeSessionToken(sessionId);
+            waGateway.setSessionGatewayUrl(sessionId, null);
+            saveTokens();
+        }
+        await clearRedisSessionState(sessionId);
         await releaseSessionLock(sessionId);
         throw error;
     }
@@ -1376,12 +1407,13 @@ async function createSession(sessionId) {
  * Delete a WhatsApp session
  * Logs out from Go gateway and cleans up local state
  */
-async function deleteSession(sessionId) {
+async function deleteSession(sessionId, options = {}) {
     try {
         const normalizedSessionId = String(sessionId || '').trim();
         if (!normalizedSessionId) {
             throw new Error('Session ID is required');
         }
+        const unlinkReferences = options.unlinkReferences !== false;
 
         // Try to logout via Go gateway
         try {
@@ -1399,7 +1431,9 @@ async function deleteSession(sessionId) {
 
         await releaseSessionLock(normalizedSessionId);
 
-        const references = await db.clearSessionReferences(normalizedSessionId);
+        const references = unlinkReferences
+            ? await db.clearSessionReferences(normalizedSessionId)
+            : { tenants: [], users: [], systemSettings: [] };
         const unlinkedTenantNames = references.tenants.map((tenant) => tenant.company_name || tenant.id);
         if (references.tenants.length || references.users.length || references.systemSettings.length) {
             logger.info({
@@ -1417,6 +1451,7 @@ async function deleteSession(sessionId) {
         broadcastSessionUpdate();
         return {
             sessionId: normalizedSessionId,
+            unlinkedReferences: unlinkReferences,
             unlinkedTenants: references.tenants,
             unlinkedUsers: references.users.length,
             clearedSystemSettings: references.systemSettings.length
@@ -1680,6 +1715,7 @@ app.get('/api/v1/debug/config', (req, res) => {
 // --- Routes ---
 
 // Admin authentication
+setSessionDeleteHandler(deleteSession);
 app.use('/api/v1/admin', authRouter);
 
 // n8n integration
@@ -1746,20 +1782,16 @@ webhookHandler.on('connection', (sessionId, data) => {
     });
     
     // CRITICAL FIX: Persistence
-    // If Gateway says "Connected" but we don't have it in file, SAVE IT!
+    // If Gateway says "Connected", persist only DB-owned sessions.
+    // Orphan gateway events must not resurrect deleted sessions.
     if (session.status === 'CONNECTED') {
-        if (!sessionTokens.has(sessionId)) {
-            console.log(`[Auto-Recovery] Session ${sessionId} detected from Webhook. Saving to disk...`);
-            // Generate a token so it can be managed via API later
-            const recoveryToken = crypto.randomBytes(32).toString('hex');
-            sessionTokens.set(sessionId, recoveryToken);
-            saveTokens(); // Write to session_tokens.enc
-        }
-
         // AUTO-SYNC: When session becomes CONNECTED, sync contacts immediately
         // Find tenant by session_id and trigger sync
         setImmediate(async () => {
             try {
+                const canUseSession = await persistRecoveredSessionToken(sessionId);
+                if (!canUseSession) return;
+
                 const tenant = await db.getTenantBySessionId(sessionId);
                 if (tenant) {
                     console.log(`[Auto-Sync] Session ${sessionId} connected. Syncing contacts for ${tenant.company_name}...`);
