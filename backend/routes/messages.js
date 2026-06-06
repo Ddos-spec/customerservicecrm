@@ -182,7 +182,7 @@ function buildMessagesRouter(deps) {
             });
 
             let result = null;
-            let sentMsg = null;
+            let responseMsg = savedMsg;
             try {
                 // Send via Provider (persistent DB-backed queue)
                 result = await sendMessageViaProvider(tenant, rawPhone, messageText, false, {
@@ -191,7 +191,9 @@ function buildMessagesRouter(deps) {
                     messageId: savedMsg.id,
                     chatJid: destination,
                 });
-                sentMsg = await db.markMessageOutboundSent(savedMsg.id, result.messageId);
+                if (result?.provider !== 'whatsmeow') {
+                    responseMsg = await db.markMessageOutboundSent(savedMsg.id, result.messageId) || savedMsg;
+                }
             } catch (sendError) {
                 if (!isDeferredSendError(sendError)) throw sendError;
                 return res.status(202).json({
@@ -208,7 +210,7 @@ function buildMessagesRouter(deps) {
                 status: 'success', 
                 messageId: result?.messageId,
                 provider: result?.provider,
-                data: sentMsg || savedMsg
+                data: responseMsg
             });
 
         } catch (error) {
@@ -281,7 +283,7 @@ function buildMessagesRouter(deps) {
             });
 
             let result = null;
-            let sentMsg = null;
+            let responseMsg = savedMsg;
             try {
                 // Send via Provider (persistent DB-backed queue)
                 result = await sendMessageViaProvider(tenant, rawPhone, messageText, isGroup, {
@@ -290,7 +292,9 @@ function buildMessagesRouter(deps) {
                     messageId: savedMsg.id,
                     chatJid: chat.jid || (isGroup ? rawPhone : toWhatsAppFormat(formatPhoneNumber(rawPhone))),
                 });
-                sentMsg = await db.markMessageOutboundSent(savedMsg.id, result.messageId);
+                if (result?.provider !== 'whatsmeow') {
+                    responseMsg = await db.markMessageOutboundSent(savedMsg.id, result.messageId) || savedMsg;
+                }
             } catch (sendError) {
                 if (!isDeferredSendError(sendError)) throw sendError;
                 return res.status(202).json({
@@ -307,7 +311,7 @@ function buildMessagesRouter(deps) {
                 status: 'success', 
                 messageId: result?.messageId,
                 provider: result?.provider,
-                db_message: sentMsg || savedMsg
+                db_message: responseMsg
             });
 
         } catch (error) {

@@ -482,9 +482,7 @@ async function sendExternalMessage({
         throw new Error(result?.message || 'Failed to send message');
     }
 
-    const sentMessage = await db.markMessageOutboundSent(message.id, result?.data?.msgid || result?.messageId || null);
-
-    return { chat, message: sentMessage || message, result };
+    return { chat, message, result };
 }
 
 function buildPublicMediaUrl(req, mediaId) {

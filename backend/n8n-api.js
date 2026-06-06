@@ -566,11 +566,9 @@ function initializeN8nApi(deps) {
                 }
             });
 
-            const sentMessage = await db.markMessageOutboundSent(message.id, result.data?.msgid || result.messageId || null);
-
             res.json({
                 success: true,
-                message_id: (sentMessage || message).id,
+                message_id: message.id,
                 tenant_id: tenant.id,
                 chat_id: chat.id,
                 gateway_response: result.data
@@ -677,11 +675,9 @@ function initializeN8nApi(deps) {
                 }
             });
 
-            const sentMessage = await db.markMessageOutboundSent(message.id, result.data?.msgid || result.messageId || null);
-
             res.json({
                 success: true,
-                message_id: (sentMessage || message).id,
+                message_id: message.id,
                 tenant_id: tenant.id,
                 chat_id: chat.id,
                 media_url: imageSource,

@@ -29,6 +29,8 @@ const DEFAULT_WEBHOOK_EVENTS = {
     audio: true,
     document: true
 };
+const UNKNOWN_SESSION_ALERT_TTL_MS = parseInt(process.env.UNKNOWN_SESSION_ALERT_TTL_MS || `${10 * 60 * 1000}`, 10);
+const unknownSessionAlertCache = new Map();
 
 function normalizeWebhookEvents(rawConfig) {
     const source = (rawConfig && typeof rawConfig === 'object') ? rawConfig : {};
@@ -50,6 +52,39 @@ function isMessageTypeAllowed(messageType, webhookEvents) {
     if (normalizedType === 'audio') return webhookEvents.audio;
     if (normalizedType === 'document') return webhookEvents.document;
     return true;
+}
+
+function shouldAlertUnknownSession(sessionId) {
+    const key = String(sessionId || '').trim();
+    if (!key) return false;
+
+    const now = Date.now();
+    const lastAt = unknownSessionAlertCache.get(key) || 0;
+    if (lastAt && now - lastAt < UNKNOWN_SESSION_ALERT_TTL_MS) return false;
+
+    unknownSessionAlertCache.set(key, now);
+    for (const [cachedKey, cachedAt] of unknownSessionAlertCache.entries()) {
+        if (now - cachedAt > UNKNOWN_SESSION_ALERT_TTL_MS * 2) {
+            unknownSessionAlertCache.delete(cachedKey);
+        }
+    }
+    return true;
+}
+
+async function alertUnknownSessionMessage(sessionId, message) {
+    if (!shouldAlertUnknownSession(sessionId)) return;
+
+    await sendAlertWebhook('unknown_session_message', {
+        session_id: sessionId,
+        message_id: message?.id || null,
+        message_type: message?.type || null,
+        from: message?.from || null,
+        to: message?.to || null,
+        is_group: Boolean(message?.isGroup || message?.to?.endsWith?.('@g.us')),
+        is_from_me: Boolean(message?.isFromMe),
+        received_at: new Date().toISOString(),
+        action: 'ignored_no_tenant_owner'
+    });
 }
 
 function buildForwardableMedia(req, sessionId, message) {
@@ -285,6 +320,7 @@ async function handleMessage(req, sessionId, data) {
         let tenant = await db.getTenantBySessionId(sessionId);
         if (!tenant) {
             console.warn(`[Webhook] Received message for unknown session: ${sessionId}`);
+            await alertUnknownSessionMessage(sessionId, message);
             return;
         }
 

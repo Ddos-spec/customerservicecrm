@@ -966,10 +966,23 @@ async function processPersistentOutboundQueue() {
     outboundQueueRunning = true;
 
     try {
+        const quarantinedJobs = await db.quarantineStaleProcessingOutboundJobs(OUTBOUND_QUEUE_LOCK_STALE_SECONDS);
+        for (const job of quarantinedJobs) {
+            logger.warn(`[Queue] Outbound job ${job.id} moved to maybe_sent to avoid duplicate WhatsApp send after stale processing lock.`);
+            if (job.message_id) {
+                const maybeSentMessage = await db.updateMessageDelivery({
+                    messageId: job.message_id,
+                    status: 'maybe_sent',
+                    deliveryError: job.last_error,
+                    outboundJobId: job.id
+                });
+                broadcastMessageStatus(maybeSentMessage);
+            }
+        }
+
         const jobs = await db.claimOutboundMessageJobs(
             outboundQueueWorkerId,
-            OUTBOUND_QUEUE_BATCH_SIZE,
-            OUTBOUND_QUEUE_LOCK_STALE_SECONDS
+            OUTBOUND_QUEUE_BATCH_SIZE
         );
 
         for (const job of jobs) {

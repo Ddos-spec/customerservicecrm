@@ -140,7 +140,7 @@ async function messageExistsByWaId(waMessageId) {
 
 function normalizeDeliveryStatus(status, isFromMe = false) {
     const normalized = (status || '').toString().trim().toLowerCase();
-    const allowed = new Set(['queued', 'processing', 'sending', 'sent', 'delivered', 'read', 'failed', 'received']);
+    const allowed = new Set(['queued', 'processing', 'sending', 'maybe_sent', 'sent', 'delivered', 'read', 'failed', 'received']);
     if (allowed.has(normalized)) return normalized;
     return isFromMe ? 'sent' : 'received';
 }
@@ -278,19 +278,14 @@ async function markOutboundMessageJobProcessing(id, workerId) {
     return result.rows[0] || null;
 }
 
-async function claimOutboundMessageJobs(workerId, limit = 5, staleSeconds = 180) {
+async function claimOutboundMessageJobs(workerId, limit = 5) {
     const result = await query(`
         WITH picked AS (
             SELECT id
             FROM outbound_message_jobs
-            WHERE status IN ('queued', 'processing')
+            WHERE status = 'queued'
               AND next_attempt_at <= now()
               AND attempts < max_attempts
-              AND (
-                status = 'queued'
-                OR locked_at IS NULL
-                OR locked_at < now() - ($3::int * interval '1 second')
-              )
             ORDER BY next_attempt_at ASC, created_at ASC
             LIMIT $2
             FOR UPDATE SKIP LOCKED
@@ -304,7 +299,23 @@ async function claimOutboundMessageJobs(workerId, limit = 5, staleSeconds = 180)
         FROM picked
         WHERE j.id = picked.id
         RETURNING j.*
-    `, [workerId, limit, staleSeconds]);
+    `, [workerId, limit]);
+    return result.rows;
+}
+
+async function quarantineStaleProcessingOutboundJobs(staleSeconds = 180) {
+    const result = await query(`
+        UPDATE outbound_message_jobs
+        SET status = 'maybe_sent',
+            locked_at = NULL,
+            locked_by = NULL,
+            last_error = 'Worker stopped while job was processing; manual verification required before retry to avoid duplicate WhatsApp send.',
+            updated_at = now()
+        WHERE status = 'processing'
+          AND locked_at IS NOT NULL
+          AND locked_at < now() - ($1::int * interval '1 second')
+        RETURNING *
+    `, [staleSeconds]);
     return result.rows;
 }
 
@@ -1086,6 +1097,7 @@ module.exports = {
     enqueueOutboundMessageJob,
     markOutboundMessageJobProcessing,
     claimOutboundMessageJobs,
+    quarantineStaleProcessingOutboundJobs,
     markOutboundMessageJobSent,
     rescheduleOutboundMessageJob,
     failOutboundMessageJob,
