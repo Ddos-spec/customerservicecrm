@@ -45,6 +45,16 @@ const MESSAGE_SEND_RETRIES = parseInt(process.env.MESSAGE_SEND_RETRIES || '2', 1
 const MESSAGE_SEND_RETRY_DELAY_MS = parseInt(process.env.MESSAGE_SEND_RETRY_DELAY_MS || '2000', 10);
 const MESSAGE_SEND_RETRY_BACKOFF = parseFloat(process.env.MESSAGE_SEND_RETRY_BACKOFF || '2');
 const MESSAGE_SEND_QUEUE_DELAY_MS = parseInt(process.env.MESSAGE_SEND_QUEUE_DELAY_MS || '2000', 10);
+const OUTBOUND_QUEUE_TICK_MS = parseInt(process.env.OUTBOUND_QUEUE_TICK_MS || '1000', 10);
+const OUTBOUND_QUEUE_BATCH_SIZE = parseInt(process.env.OUTBOUND_QUEUE_BATCH_SIZE || '5', 10);
+const OUTBOUND_QUEUE_LOCK_STALE_SECONDS = parseInt(process.env.OUTBOUND_QUEUE_LOCK_STALE_SECONDS || '180', 10);
+const OUTBOUND_QUEUE_MAX_ATTEMPTS = parseInt(process.env.OUTBOUND_QUEUE_MAX_ATTEMPTS || `${MESSAGE_SEND_RETRIES + 1}`, 10);
+const WEBHOOK_RECOVERY_TICK_MS = parseInt(process.env.WEBHOOK_RECOVERY_TICK_MS || `${5 * 60 * 1000}`, 10);
+const PRIVATE_MESSAGE_GAP_TICK_MS = parseInt(process.env.PRIVATE_MESSAGE_GAP_TICK_MS || `${5 * 60 * 1000}`, 10);
+const PRIVATE_MESSAGE_GAP_THRESHOLD_MINUTES = parseInt(process.env.PRIVATE_MESSAGE_GAP_THRESHOLD_MINUTES || '30', 10);
+const PRIVATE_MESSAGE_GAP_RECENT_ACTIVITY_MINUTES = parseInt(process.env.PRIVATE_MESSAGE_GAP_RECENT_ACTIVITY_MINUTES || '10', 10);
+const WS_HEARTBEAT_MS = parseInt(process.env.WS_HEARTBEAT_MS || '30000', 10);
+const WS_SESSION_SNAPSHOT_MS = parseInt(process.env.WS_SESSION_SNAPSHOT_MS || '60000', 10);
 const HEALTH_CHECK_TOKEN = process.env.HEALTH_CHECK_TOKEN || '';
 const ENABLE_DB_SESSION_SELF_HEALING = process.env.ENABLE_DB_SESSION_SELF_HEALING === 'true';
 
@@ -154,6 +164,7 @@ if (!isTest) {
 const sessions = new Map();
 // Store JWT tokens: sessionId -> token
 const sessionTokens = new Map();
+const outboundQueueWorkerId = `backend-${process.pid}-${crypto.randomUUID()}`;
 
 // Initialize Alert System with internal dependencies
 initAlertSystem(db, scheduleMessageSend, sessions);
@@ -708,6 +719,61 @@ const isTransientSendError = (error) => {
     return patterns.some((pattern) => message.includes(pattern));
 };
 
+function getGatewayResultMessageId(result) {
+    return result?.messageId
+        || result?.data?.msgid
+        || result?.data?.message_id
+        || result?.data?.messageId
+        || result?.key?.id
+        || result?.id
+        || null;
+}
+
+function isGatewaySendSuccess(result) {
+    return result?.status === true
+        || result?.status === 'success'
+        || Boolean(getGatewayResultMessageId(result));
+}
+
+function broadcastMessageStatus(message) {
+    if (!message?.id) return;
+    const status = message.delivery_status || message.status || 'sent';
+    const payload = JSON.stringify({
+        type: 'message-status',
+        data: {
+            db_id: message.id,
+            id: message.id,
+            chat_id: message.chat_id,
+            wa_message_id: message.wa_message_id || null,
+            status,
+            delivery_status: status,
+            sent_at: message.sent_at || null,
+            delivered_at: message.delivered_at || null,
+            read_at: message.read_at || null,
+            failed_at: message.failed_at || null,
+            delivery_error: message.delivery_error || null
+        }
+    });
+
+    wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+            client.send(payload);
+        }
+    });
+}
+
+function buildPersistentJobOptions(sessionId, options) {
+    const persistentJob = options?.persistentJob;
+    if (!persistentJob) return null;
+
+    return {
+        ...persistentJob,
+        sessionId,
+        provider: persistentJob.provider || 'whatsmeow',
+        maxAttempts: persistentJob.maxAttempts || OUTBOUND_QUEUE_MAX_ATTEMPTS
+    };
+}
+
 function ensureSessionQueueState(sessionId) {
     if (!sessions.has(sessionId)) {
         sessions.set(sessionId, {
@@ -751,6 +817,25 @@ async function processSessionQueue(sessionId) {
                 state.queue.unshift(job);
                 continue;
             }
+            if (job.persistentJobId) {
+                try {
+                    const retryableByWorker = job.shouldRetry(e);
+                    const updatedJob = retryableByWorker
+                        ? await db.rescheduleOutboundMessageJob(job.persistentJobId, e.message, 0)
+                        : await db.failOutboundMessageJob(job.persistentJobId, e.message);
+                    if (updatedJob?.status === 'failed' && job.persistentMessageId) {
+                        const updatedMessage = await db.updateMessageDelivery({
+                            messageId: job.persistentMessageId,
+                            status: 'failed',
+                            failedAt: new Date(),
+                            deliveryError: e.message
+                        });
+                        broadcastMessageStatus(updatedMessage);
+                    }
+                } catch (persistError) {
+                    logger.warn(`[Queue] Failed to mark persistent outbound job failed: ${persistError.message}`);
+                }
+            }
             job.reject(e);
         }
         await sleep(MESSAGE_SEND_QUEUE_DELAY_MS);
@@ -758,14 +843,57 @@ async function processSessionQueue(sessionId) {
     state.processing = false;
 }
 
-function scheduleMessageSend(sessionId, operation, options = {}) {
+async function scheduleMessageSend(sessionId, operation, options = {}) {
+    const persistentOptions = buildPersistentJobOptions(sessionId, options);
+    let persistentJob = null;
+    if (persistentOptions) {
+        persistentJob = await db.enqueueOutboundMessageJob(persistentOptions);
+        if (persistentOptions.messageId) {
+            const updatedMessage = await db.updateMessageDelivery({
+                messageId: persistentOptions.messageId,
+                status: 'queued',
+                outboundJobId: persistentJob.id
+            });
+            broadcastMessageStatus(updatedMessage);
+        }
+    }
+
     const state = ensureSessionQueueState(sessionId);
     return new Promise((resolve, reject) => {
         state.queue.push({
-            operation,
+            operation: async () => {
+                if (persistentJob?.id) {
+                    await db.markOutboundMessageJobProcessing(persistentJob.id, outboundQueueWorkerId);
+                    if (persistentOptions.messageId) {
+                        const processingMessage = await db.updateMessageDelivery({
+                            messageId: persistentOptions.messageId,
+                            status: 'sending',
+                            outboundJobId: persistentJob.id
+                        });
+                        broadcastMessageStatus(processingMessage);
+                    }
+                }
+
+                const result = await operation();
+                if (persistentJob?.id) {
+                    const resultMessageId = getGatewayResultMessageId(result);
+                    await db.markOutboundMessageJobSent(persistentJob.id, resultMessageId, result);
+                    if (persistentOptions.messageId) {
+                        try {
+                            const sentMessage = await db.markMessageOutboundSent(persistentOptions.messageId, resultMessageId);
+                            broadcastMessageStatus(sentMessage);
+                        } catch (messageUpdateError) {
+                            logger.warn(`[Queue] Failed to update sent message ${persistentOptions.messageId}: ${messageUpdateError.message}`);
+                        }
+                    }
+                }
+                return result;
+            },
             resolve,
             reject,
             attempts: 0,
+            persistentJobId: persistentJob?.id || null,
+            persistentMessageId: persistentOptions?.messageId || persistentOptions?.message_id || null,
             maxRetries: typeof options.maxRetries === 'number' ? options.maxRetries : MESSAGE_SEND_RETRIES,
             retryDelayMs: typeof options.retryDelayMs === 'number' ? options.retryDelayMs : MESSAGE_SEND_RETRY_DELAY_MS,
             retryBackoff: typeof options.retryBackoff === 'number' ? options.retryBackoff : MESSAGE_SEND_RETRY_BACKOFF,
@@ -773,6 +901,188 @@ function scheduleMessageSend(sessionId, operation, options = {}) {
         });
         processSessionQueue(sessionId);
     });
+}
+
+async function sendPersistedOutboundJob(job) {
+    const messageType = (job.message_type || 'text').toString().toLowerCase();
+    if (!job.session_id || !job.destination) {
+        throw new Error('Persistent outbound job is missing session_id or destination');
+    }
+
+    if (messageType === 'text') {
+        return waGateway.sendText(job.session_id, job.destination, job.body || '');
+    }
+    if (messageType === 'image') {
+        return waGateway.sendImage(job.session_id, job.destination, job.media_url, job.body || '', job.view_once);
+    }
+    if (messageType === 'video') {
+        return waGateway.sendVideo(job.session_id, job.destination, job.media_url, job.body || '', job.view_once);
+    }
+    if (messageType === 'audio') {
+        return waGateway.sendAudio(job.session_id, job.destination, job.media_url);
+    }
+    if (messageType === 'document') {
+        return waGateway.sendDocument(job.session_id, job.destination, job.media_url, job.filename || 'document');
+    }
+
+    throw new Error(`Unsupported persistent outbound message type: ${messageType}`);
+}
+
+let outboundQueueRunning = false;
+async function processPersistentOutboundQueue() {
+    if (outboundQueueRunning || isTest) return;
+    outboundQueueRunning = true;
+
+    try {
+        const jobs = await db.claimOutboundMessageJobs(
+            outboundQueueWorkerId,
+            OUTBOUND_QUEUE_BATCH_SIZE,
+            OUTBOUND_QUEUE_LOCK_STALE_SECONDS
+        );
+
+        for (const job of jobs) {
+            try {
+                if (job.message_id) {
+                    const processingMessage = await db.updateMessageDelivery({
+                        messageId: job.message_id,
+                        status: 'sending',
+                        outboundJobId: job.id
+                    });
+                    broadcastMessageStatus(processingMessage);
+                }
+
+                const result = await sendPersistedOutboundJob(job);
+                if (!isGatewaySendSuccess(result)) {
+                    throw new Error(result?.message || 'Gateway failed to send persistent outbound job');
+                }
+
+                const resultMessageId = getGatewayResultMessageId(result);
+                await db.markOutboundMessageJobSent(job.id, resultMessageId, result);
+                if (job.message_id) {
+                    const sentMessage = await db.markMessageOutboundSent(job.message_id, resultMessageId);
+                    broadcastMessageStatus(sentMessage);
+                }
+            } catch (error) {
+                const attempts = Number(job.attempts || 0);
+                const delaySeconds = Math.min(300, Math.max(10, Math.pow(2, attempts) * 10));
+                const updatedJob = isTransientSendError(error)
+                    ? await db.rescheduleOutboundMessageJob(job.id, error.message, delaySeconds)
+                    : await db.failOutboundMessageJob(job.id, error.message);
+                logger.warn(`[Queue] Persistent outbound job ${job.id} failed: ${error.message}`);
+
+                if (updatedJob?.status === 'failed' && job.message_id) {
+                    const failedMessage = await db.updateMessageDelivery({
+                        messageId: job.message_id,
+                        status: 'failed',
+                        failedAt: new Date(),
+                        deliveryError: error.message
+                    });
+                    broadcastMessageStatus(failedMessage);
+                }
+            }
+
+            await sleep(MESSAGE_SEND_QUEUE_DELAY_MS);
+        }
+    } catch (error) {
+        logger.warn(`[Queue] Persistent outbound queue loop failed: ${error.message}`);
+    } finally {
+        outboundQueueRunning = false;
+    }
+}
+
+function extractGatewayStatusData(statusResponse) {
+    return statusResponse?.data || statusResponse || {};
+}
+
+function unixSecondsToMs(value) {
+    const numberValue = Number(value || 0);
+    if (!Number.isFinite(numberValue) || numberValue <= 0) return 0;
+    return numberValue < 1000000000000 ? numberValue * 1000 : numberValue;
+}
+
+function buildPrivateMessageGapDiagnostic(statusResponse) {
+    const gatewayData = extractGatewayStatusData(statusResponse);
+    const stats = gatewayData?.eventStats || {};
+    const now = Date.now();
+    const lastPrivateMs = unixSecondsToMs(stats.lastPrivateMessageAt);
+    const lastAnyMs = unixSecondsToMs(stats.lastMessageAt);
+    const lastGroupMs = unixSecondsToMs(stats.lastGroupMessageAt);
+    const thresholdMs = PRIVATE_MESSAGE_GAP_THRESHOLD_MINUTES * 60 * 1000;
+    const recentMs = PRIVATE_MESSAGE_GAP_RECENT_ACTIVITY_MINUTES * 60 * 1000;
+
+    const connected = gatewayData.connected === true || gatewayData.loggedIn === true;
+    const privateGapMs = lastPrivateMs ? now - lastPrivateMs : Number.POSITIVE_INFINITY;
+    const hasRecentActivity = [lastAnyMs, lastGroupMs].some((value) => value > 0 && now - value <= recentMs);
+    const warning = connected && hasRecentActivity && privateGapMs > thresholdMs;
+
+    return {
+        warning,
+        connected,
+        lastPrivateMessageAt: lastPrivateMs ? new Date(lastPrivateMs).toISOString() : null,
+        lastMessageAt: lastAnyMs ? new Date(lastAnyMs).toISOString() : null,
+        lastGroupMessageAt: lastGroupMs ? new Date(lastGroupMs).toISOString() : null,
+        privateGapMinutes: Number.isFinite(privateGapMs) ? Math.round(privateGapMs / 60000) : null,
+        thresholdMinutes: PRIVATE_MESSAGE_GAP_THRESHOLD_MINUTES
+    };
+}
+
+let privateGapDetectorRunning = false;
+async function runPrivateMessageGapDetector() {
+    if (privateGapDetectorRunning || isTest) return;
+    privateGapDetectorRunning = true;
+
+    try {
+        const tenants = await db.getAllTenants();
+        for (const tenant of tenants) {
+            if (!tenant?.session_id) continue;
+
+            try {
+                const status = await waGateway.getSessionStatus(tenant.session_id);
+                const diagnostic = buildPrivateMessageGapDiagnostic(status);
+                if (!diagnostic.warning) continue;
+
+                const alertKey = `wa:alert:private_gap:${tenant.session_id}`;
+                if (!(await shouldSendAlert(alertKey))) continue;
+
+                logger.warn(`[Gap] Private message gap detected for ${tenant.company_name} (${tenant.session_id}): ${diagnostic.privateGapMinutes}m`);
+                await sendAlertWebhook('private_message_gap', {
+                    tenant_id: tenant.id,
+                    tenant_name: tenant.company_name,
+                    session_id: tenant.session_id,
+                    gateway_url: tenant.gateway_url || null,
+                    ...diagnostic
+                });
+            } catch (error) {
+                logger.warn(`[Gap] Failed to inspect session ${tenant.session_id}: ${error.message}`);
+            }
+        }
+    } finally {
+        privateGapDetectorRunning = false;
+    }
+}
+
+let webhookRecoveryRunning = false;
+async function recoverMissedGatewayEvents() {
+    if (webhookRecoveryRunning || isTest) return;
+    webhookRecoveryRunning = true;
+
+    try {
+        const tenants = await db.getAllTenants();
+        for (const tenant of tenants) {
+            if (!tenant?.session_id) continue;
+            try {
+                const result = await waGateway.retryFailedWebhooks(tenant.session_id);
+                const requeued = Number(result?.data?.requeued || 0);
+                if (requeued > 0) {
+                    logger.warn(`[Recovery] Requeued ${requeued} failed gateway webhook(s) for ${tenant.company_name}`);
+                }
+            } catch (error) {
+                logger.warn(`[Recovery] Failed gateway webhook recovery for ${tenant.session_id}: ${error.message}`);
+            }
+        }
+    } finally {
+        webhookRecoveryRunning = false;
+    }
 }
 
 // --- Session Management (via Go Gateway) ---
@@ -1150,7 +1460,10 @@ app.get('/api/v1/gateway/sessions/status', async (req, res) => {
                         tenant_name: tenant.company_name,
                         session_id: tenant.session_id,
                         gateway_url: tenant.gateway_url || null,
-                        status
+                        status,
+                        diagnostics: {
+                            private_message_gap: buildPrivateMessageGapDiagnostic(status)
+                        }
                     };
                 })
         );
@@ -1503,6 +1816,8 @@ if (!isTest) {
             await db.ensureSystemSettingsTable();
             await db.ensureUserPhoneColumn();
             await db.ensureInvitePhoneColumn();
+            await db.ensureMessageDeliveryColumns();
+            await db.ensureOutboundMessageJobsTable();
             await db.ensureContactSyncTrigger(); // Update Trigger Logic (Force Sync)
         } catch (err) {
             console.error('Database setup error:', err.message);
@@ -1546,7 +1861,34 @@ if (!isTest) {
             console.warn('Go Gateway not available:', err.message);
         }
 
+        void recoverMissedGatewayEvents();
+
         console.log(`CRM Backend running on port ${PORT}`);
+        setInterval(() => {
+            void processPersistentOutboundQueue();
+        }, OUTBOUND_QUEUE_TICK_MS);
+        console.log(`[Cron] Persistent outbound queue enabled (tick ${OUTBOUND_QUEUE_TICK_MS / 1000}s, batch ${OUTBOUND_QUEUE_BATCH_SIZE})`);
+        setInterval(() => {
+            void recoverMissedGatewayEvents();
+        }, WEBHOOK_RECOVERY_TICK_MS);
+        console.log(`[Cron] Gateway webhook recovery enabled (tick ${WEBHOOK_RECOVERY_TICK_MS / 1000}s)`);
+        setInterval(() => {
+            void runPrivateMessageGapDetector();
+        }, PRIVATE_MESSAGE_GAP_TICK_MS);
+        console.log(`[Cron] Private message gap detector enabled (tick ${PRIVATE_MESSAGE_GAP_TICK_MS / 1000}s, threshold ${PRIVATE_MESSAGE_GAP_THRESHOLD_MINUTES}m)`);
+        setInterval(() => {
+            const heartbeat = JSON.stringify({ type: 'heartbeat', timestamp: new Date().toISOString() });
+            wss.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    client.send(heartbeat);
+                }
+            });
+        }, WS_HEARTBEAT_MS);
+        console.log(`[Cron] WebSocket heartbeat enabled (tick ${WS_HEARTBEAT_MS / 1000}s)`);
+        setInterval(() => {
+            broadcastSessionUpdate();
+        }, WS_SESSION_SNAPSHOT_MS);
+        console.log(`[Cron] WebSocket session snapshot enabled (tick ${WS_SESSION_SNAPSHOT_MS / 1000}s)`);
         setInterval(() => {
             void runScheduledContactSync();
         }, CONTACT_SYNC_TICK_MS);

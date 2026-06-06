@@ -46,8 +46,23 @@ function buildMessagesRouter(deps) {
     } = deps;
     const unsupportedTypes = new Set(['button', 'list', 'template', 'contacts']);
 
+    function isDeferredSendError(error) {
+        const message = (error?.message || '').toLowerCase();
+        return [
+            'timeout',
+            'offline',
+            'disconnected',
+            'gateway',
+            'not connected',
+            'connection',
+            'socket',
+            'econnreset',
+            'econnrefused',
+        ].some((pattern) => message.includes(pattern));
+    }
+
     // Helper to send message using provider logic
-    async function sendMessageViaProvider(tenant, to, text, isGroup = false) {
+    async function sendMessageViaProvider(tenant, to, text, isGroup = false, persistentJob = null) {
         // 1. Get Provider
         const provider = ProviderFactory.getProvider(tenant);
         
@@ -81,13 +96,15 @@ function buildMessagesRouter(deps) {
             const session = sessions.get(sessionId);
             
             if (!session || session.status !== 'CONNECTED') {
-                throw new Error('WhatsApp Offline');
+                console.warn(`[Messages] Session ${sessionId} state is ${session?.status || 'UNKNOWN'}; trying gateway send anyway.`);
             }
 
             result = await scheduleMessageSend(sessionId, async () => {
                 // Ensure session is still valid inside queue
                 const activeSession = sessions.get(sessionId);
-                if (!activeSession?.sock) throw new Error('WhatsApp disconnected');
+                if (!activeSession?.sock) {
+                    console.warn(`[Messages] Session ${sessionId} has no local socket shim; gateway send will continue.`);
+                }
                 
                 // Use provider (which wraps legacy logic)
                 // Note: Provider methods might need updating to accept raw socket if we want full decouple,
@@ -98,13 +115,25 @@ function buildMessagesRouter(deps) {
                 // The driver calls legacyClient which handles axios call to Go Gateway.
                 // Go Gateway handles socket.
                 
-                await activeSession.sock.sendPresenceUpdate('composing', destination);
+                if (activeSession?.sock?.sendPresenceUpdate) {
+                    await activeSession.sock.sendPresenceUpdate('composing', destination);
+                }
                 await new Promise(r => setTimeout(r, 500));
                 
                 const response = await provider.sendText(destination, text);
                 
-                await activeSession.sock.sendPresenceUpdate('paused', destination);
+                if (activeSession?.sock?.sendPresenceUpdate) {
+                    await activeSession.sock.sendPresenceUpdate('paused', destination);
+                }
                 return response; 
+            }, {
+                persistentJob: persistentJob ? {
+                    ...persistentJob,
+                    provider: 'whatsmeow',
+                    destination,
+                    messageType: 'text',
+                    body: text,
+                } : null
             });
             
             // Result from scheduleMessageSend is the return value of callback
@@ -138,10 +167,6 @@ function buildMessagesRouter(deps) {
                 return res.status(400).json({ status: 'error', message: 'phone and message are required' });
             }
 
-            // Send via Provider
-            const result = await sendMessageViaProvider(tenant, rawPhone, messageText, false);
-
-            // Log to DB
             const destination = toWhatsAppFormat(formatPhoneNumber(rawPhone)); // Standardize for DB
             const chat = await db.getOrCreateChat(tenant.id, destination, rawPhone, false);
             const savedMsg = await db.logMessage({
@@ -151,15 +176,39 @@ function buildMessagesRouter(deps) {
                 senderName: 'API System',
                 messageType: 'text',
                 body: messageText,
-                waMessageId: result.messageId,
+                waMessageId: null,
+                status: 'queued',
                 isFromMe: true
             });
 
+            let result = null;
+            let sentMsg = null;
+            try {
+                // Send via Provider (persistent DB-backed queue)
+                result = await sendMessageViaProvider(tenant, rawPhone, messageText, false, {
+                    tenantId: tenant.id,
+                    chatId: chat.id,
+                    messageId: savedMsg.id,
+                    chatJid: destination,
+                });
+                sentMsg = await db.markMessageOutboundSent(savedMsg.id, result.messageId);
+            } catch (sendError) {
+                if (!isDeferredSendError(sendError)) throw sendError;
+                return res.status(202).json({
+                    status: 'queued',
+                    queued: true,
+                    message: 'Gateway belum siap, pesan disimpan di outbound queue dan akan dikirim otomatis.',
+                    messageId: savedMsg.id,
+                    provider: tenant.wa_provider || 'whatsmeow',
+                    data: savedMsg
+                });
+            }
+
             res.json({ 
                 status: 'success', 
-                messageId: result.messageId,
-                provider: result.provider,
-                data: savedMsg
+                messageId: result?.messageId,
+                provider: result?.provider,
+                data: sentMsg || savedMsg
             });
 
         } catch (error) {
@@ -208,13 +257,10 @@ function buildMessagesRouter(deps) {
             const tenant = await db.getTenantById(user.tenant_id);
             if (!tenant) return res.status(404).json({ status: 'error', message: 'Tenant not found' });
 
-            // Send via Provider
-            const result = await sendMessageViaProvider(tenant, rawPhone, messageText, isGroup);
-
             // DB Logging
             let chat = null;
             if (chatId) {
-                const chatRes = await db.query('SELECT * FROM chats WHERE id = $1', [chatId]);
+                const chatRes = await db.query('SELECT * FROM chats WHERE id = $1 AND tenant_id = $2', [chatId, tenant.id]);
                 chat = chatRes.rows[0];
             }
             if (!chat) {
@@ -229,15 +275,39 @@ function buildMessagesRouter(deps) {
                 senderName: user.name,
                 messageType: 'text',
                 body: messageText,
-                waMessageId: result.messageId,
+                waMessageId: null,
+                status: 'queued',
                 isFromMe: true
             });
 
+            let result = null;
+            let sentMsg = null;
+            try {
+                // Send via Provider (persistent DB-backed queue)
+                result = await sendMessageViaProvider(tenant, rawPhone, messageText, isGroup, {
+                    tenantId: tenant.id,
+                    chatId: chat.id,
+                    messageId: savedMsg.id,
+                    chatJid: chat.jid || (isGroup ? rawPhone : toWhatsAppFormat(formatPhoneNumber(rawPhone))),
+                });
+                sentMsg = await db.markMessageOutboundSent(savedMsg.id, result.messageId);
+            } catch (sendError) {
+                if (!isDeferredSendError(sendError)) throw sendError;
+                return res.status(202).json({
+                    status: 'queued',
+                    queued: true,
+                    message: 'Gateway belum siap, pesan disimpan di outbound queue dan akan dikirim otomatis.',
+                    messageId: savedMsg.id,
+                    provider: tenant.wa_provider || 'whatsmeow',
+                    db_message: savedMsg
+                });
+            }
+
             return res.status(200).json({ 
                 status: 'success', 
-                messageId: result.messageId,
-                provider: result.provider,
-                db_message: savedMsg
+                messageId: result?.messageId,
+                provider: result?.provider,
+                db_message: sentMsg || savedMsg
             });
 
         } catch (error) {

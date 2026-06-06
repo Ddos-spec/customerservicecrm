@@ -538,27 +538,39 @@ function initializeN8nApi(deps) {
                 return res.status(503).json({ success: false, error: 'Gateway service not initialized' });
             }
 
+            const message = await db.logMessage({
+                chatId: chat.id,
+                senderType: 'agent',
+                messageType: 'text',
+                body: message_text,
+                waMessageId: null,
+                status: 'queued',
+                isFromMe: true
+            });
+
             const result = await scheduleMessageSend(sessionId, async () => {
                 const response = await waGateway.sendText(sessionId, destination, message_text);
                 if (!(response?.status === true || response?.status === 'success')) {
                     throw new Error(response?.message || 'Gateway failed to send');
                 }
                 return response;
+            }, {
+                persistentJob: {
+                    tenantId: tenant.id,
+                    chatId: chat.id,
+                    messageId: message.id,
+                    messageType: 'text',
+                    destination,
+                    chatJid: recipient.chatJid || recipient.jid || null,
+                    body: message_text
+                }
             });
 
-            // 4. Log to Database
-            const message = await db.logMessage({
-                chatId: chat.id,
-                senderType: 'agent',
-                messageType: 'text',
-                body: message_text,
-                waMessageId: result.data?.msgid || null,
-                isFromMe: true
-            });
+            const sentMessage = await db.markMessageOutboundSent(message.id, result.data?.msgid || result.messageId || null);
 
             res.json({
                 success: true,
-                message_id: message.id,
+                message_id: (sentMessage || message).id,
                 tenant_id: tenant.id,
                 chat_id: chat.id,
                 gateway_response: result.data
@@ -634,27 +646,42 @@ function initializeN8nApi(deps) {
                 return res.status(503).json({ success: false, error: 'Gateway service not initialized' });
             }
 
-            const result = await scheduleMessageSend(sessionId, async () => {
-                const response = await waGateway.sendImage(sessionId, destination, imageSource, caption, viewOnce);
-                if (!(response?.status === true || response?.status === 'success')) {
-                    throw new Error(response?.message || 'Gateway failed to send image');
-                }
-                return response;
-            });
-
             const message = await db.logMessage({
                 chatId: chat.id,
                 senderType: 'agent',
                 messageType: 'image',
                 body: caption || '[Image]',
                 mediaUrl: imageSource,
-                waMessageId: result.data?.msgid || null,
+                waMessageId: null,
+                status: 'queued',
                 isFromMe: true
             });
 
+            const result = await scheduleMessageSend(sessionId, async () => {
+                const response = await waGateway.sendImage(sessionId, destination, imageSource, caption, viewOnce);
+                if (!(response?.status === true || response?.status === 'success')) {
+                    throw new Error(response?.message || 'Gateway failed to send image');
+                }
+                return response;
+            }, {
+                persistentJob: {
+                    tenantId: tenant.id,
+                    chatId: chat.id,
+                    messageId: message.id,
+                    messageType: 'image',
+                    destination,
+                    chatJid: recipient.chatJid || recipient.jid || null,
+                    body: caption || '[Image]',
+                    mediaUrl: imageSource,
+                    viewOnce
+                }
+            });
+
+            const sentMessage = await db.markMessageOutboundSent(message.id, result.data?.msgid || result.messageId || null);
+
             res.json({
                 success: true,
-                message_id: message.id,
+                message_id: (sentMessage || message).id,
                 tenant_id: tenant.id,
                 chat_id: chat.id,
                 media_url: imageSource,

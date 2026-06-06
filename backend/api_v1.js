@@ -159,11 +159,19 @@ function initializeApi(
                     wa_message_id   TEXT,
                     is_from_me      BOOLEAN DEFAULT false,
                     status          VARCHAR(20) DEFAULT 'sent',
+                    delivery_status VARCHAR(20) DEFAULT 'sent',
+                    sent_at         TIMESTAMP WITH TIME ZONE,
+                    delivered_at    TIMESTAMP WITH TIME ZONE,
+                    read_at         TIMESTAMP WITH TIME ZONE,
+                    failed_at       TIMESTAMP WITH TIME ZONE,
+                    delivery_error  TEXT,
+                    outbound_job_id UUID,
                     created_at      TIMESTAMP WITH TIME ZONE DEFAULT now()
                 )
             `);
             await client.query('CREATE INDEX IF NOT EXISTS idx_messages_chat_time ON public.messages (chat_id, created_at ASC)');
             await client.query('CREATE INDEX IF NOT EXISTS idx_messages_wa_id ON public.messages (wa_message_id)');
+            await client.query('CREATE UNIQUE INDEX IF NOT EXISTS messages_wa_message_id_key ON public.messages (wa_message_id)');
 
             // 3. Normalize Session IDs in existing Tenants/Users (Just in case)
             logs.push('Normalizing session IDs...');

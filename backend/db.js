@@ -59,6 +59,322 @@ async function messageExistsByWaId(waMessageId) {
     return result.rows.length > 0;
 }
 
+function normalizeDeliveryStatus(status, isFromMe = false) {
+    const normalized = (status || '').toString().trim().toLowerCase();
+    const allowed = new Set(['queued', 'processing', 'sending', 'sent', 'delivered', 'read', 'failed', 'received']);
+    if (allowed.has(normalized)) return normalized;
+    return isFromMe ? 'sent' : 'received';
+}
+
+function normalizeTimestamp(value) {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        // WhatsMeow receipts come as unix seconds, JS timestamps as millis.
+        return new Date(value < 1000000000000 ? value * 1000 : value);
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizeReceiptStatus(receiptType) {
+    const value = (receiptType || '').toString().trim().toLowerCase();
+    if (value.includes('read')) return 'read';
+    if (value.includes('delivered') || value.includes('delivery') || value.includes('server')) return 'delivered';
+    if (value.includes('error') || value.includes('failed')) return 'failed';
+    return 'sent';
+}
+
+async function ensureMessageDeliveryColumns() {
+    await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20)');
+    await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP WITH TIME ZONE');
+    await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE');
+    await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP WITH TIME ZONE');
+    await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS failed_at TIMESTAMP WITH TIME ZONE');
+    await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS delivery_error TEXT');
+    await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS outbound_job_id UUID');
+    await query(`
+        UPDATE messages
+        SET delivery_status = COALESCE(NULLIF(delivery_status, ''), NULLIF(status, ''), CASE WHEN is_from_me THEN 'sent' ELSE 'received' END)
+        WHERE delivery_status IS NULL OR trim(delivery_status) = ''
+    `);
+    await query("ALTER TABLE messages ALTER COLUMN delivery_status SET DEFAULT 'sent'");
+    await query(`
+        DO $$
+        BEGIN
+            IF to_regclass('public.messages_wa_message_id_key') IS NULL
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM (
+                        SELECT wa_message_id
+                        FROM messages
+                        WHERE wa_message_id IS NOT NULL
+                        GROUP BY wa_message_id
+                        HAVING COUNT(*) > 1
+                    ) duplicates
+               ) THEN
+                CREATE UNIQUE INDEX messages_wa_message_id_key ON messages (wa_message_id);
+            END IF;
+        END
+        $$;
+    `);
+    await query('CREATE INDEX IF NOT EXISTS idx_messages_delivery_status ON messages (delivery_status)');
+    await query('CREATE INDEX IF NOT EXISTS idx_messages_outbound_job ON messages (outbound_job_id)');
+}
+
+async function ensureOutboundMessageJobsTable() {
+    await query(`
+        CREATE TABLE IF NOT EXISTS outbound_message_jobs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+            session_id TEXT NOT NULL,
+            chat_id UUID REFERENCES chats(id) ON DELETE SET NULL,
+            message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+            provider TEXT DEFAULT 'whatsmeow',
+            message_type VARCHAR(20) DEFAULT 'text',
+            destination TEXT NOT NULL,
+            chat_jid TEXT,
+            body TEXT,
+            media_url TEXT,
+            filename TEXT,
+            view_once BOOLEAN DEFAULT false,
+            status VARCHAR(20) NOT NULL DEFAULT 'queued',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            next_attempt_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+            locked_at TIMESTAMP WITH TIME ZONE,
+            locked_by TEXT,
+            last_error TEXT,
+            result_message_id TEXT,
+            result_payload JSONB,
+            sent_at TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+        )
+    `);
+    await query('CREATE INDEX IF NOT EXISTS idx_outbound_jobs_due ON outbound_message_jobs (status, next_attempt_at, created_at)');
+    await query('CREATE INDEX IF NOT EXISTS idx_outbound_jobs_session ON outbound_message_jobs (session_id, status)');
+    await query('CREATE INDEX IF NOT EXISTS idx_outbound_jobs_message ON outbound_message_jobs (message_id)');
+}
+
+async function enqueueOutboundMessageJob(job) {
+    const result = await query(`
+        INSERT INTO outbound_message_jobs (
+            tenant_id, session_id, chat_id, message_id, provider, message_type,
+            destination, chat_jid, body, media_url, filename, view_once,
+            max_attempts, status, next_attempt_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'queued', now())
+        RETURNING *
+    `, [
+        job.tenantId || job.tenant_id || null,
+        job.sessionId || job.session_id,
+        job.chatId || job.chat_id || null,
+        job.messageId || job.message_id || null,
+        job.provider || 'whatsmeow',
+        job.messageType || job.message_type || 'text',
+        job.destination,
+        job.chatJid || job.chat_jid || null,
+        job.body || null,
+        job.mediaUrl || job.media_url || null,
+        job.filename || null,
+        Boolean(job.viewOnce || job.view_once),
+        Number.isFinite(Number(job.maxAttempts || job.max_attempts)) ? Number(job.maxAttempts || job.max_attempts) : 3,
+    ]);
+    return result.rows[0];
+}
+
+async function markOutboundMessageJobProcessing(id, workerId) {
+    const result = await query(`
+        UPDATE outbound_message_jobs
+        SET status = 'processing',
+            locked_at = now(),
+            locked_by = $2,
+            updated_at = now()
+        WHERE id = $1
+        RETURNING *
+    `, [id, workerId || null]);
+    return result.rows[0] || null;
+}
+
+async function claimOutboundMessageJobs(workerId, limit = 5, staleSeconds = 180) {
+    const result = await query(`
+        WITH picked AS (
+            SELECT id
+            FROM outbound_message_jobs
+            WHERE status IN ('queued', 'processing')
+              AND next_attempt_at <= now()
+              AND attempts < max_attempts
+              AND (
+                status = 'queued'
+                OR locked_at IS NULL
+                OR locked_at < now() - ($3::int * interval '1 second')
+              )
+            ORDER BY next_attempt_at ASC, created_at ASC
+            LIMIT $2
+            FOR UPDATE SKIP LOCKED
+        )
+        UPDATE outbound_message_jobs j
+        SET status = 'processing',
+            attempts = attempts + 1,
+            locked_at = now(),
+            locked_by = $1,
+            updated_at = now()
+        FROM picked
+        WHERE j.id = picked.id
+        RETURNING j.*
+    `, [workerId, limit, staleSeconds]);
+    return result.rows;
+}
+
+async function markOutboundMessageJobSent(id, resultMessageId, resultPayload = null) {
+    const result = await query(`
+        UPDATE outbound_message_jobs
+        SET status = 'sent',
+            result_message_id = COALESCE($2, result_message_id),
+            result_payload = COALESCE($3::jsonb, result_payload),
+            sent_at = now(),
+            locked_at = NULL,
+            locked_by = NULL,
+            last_error = NULL,
+            updated_at = now()
+        WHERE id = $1
+        RETURNING *
+    `, [id, resultMessageId || null, resultPayload ? JSON.stringify(resultPayload) : null]);
+    return result.rows[0] || null;
+}
+
+async function rescheduleOutboundMessageJob(id, errorMessage, delaySeconds = 30) {
+    const result = await query(`
+        UPDATE outbound_message_jobs
+        SET status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'queued' END,
+            next_attempt_at = CASE WHEN attempts >= max_attempts THEN next_attempt_at ELSE now() + ($3::int * interval '1 second') END,
+            locked_at = NULL,
+            locked_by = NULL,
+            last_error = $2,
+            updated_at = now()
+        WHERE id = $1
+        RETURNING *
+    `, [id, (errorMessage || '').toString().slice(0, 2000), delaySeconds]);
+    return result.rows[0] || null;
+}
+
+async function failOutboundMessageJob(id, errorMessage) {
+    const result = await query(`
+        UPDATE outbound_message_jobs
+        SET status = 'failed',
+            locked_at = NULL,
+            locked_by = NULL,
+            last_error = $2,
+            updated_at = now()
+        WHERE id = $1
+        RETURNING *
+    `, [id, (errorMessage || '').toString().slice(0, 2000)]);
+    return result.rows[0] || null;
+}
+
+async function updateMessageDelivery({ messageId, waMessageId, status, deliveredAt, readAt, failedAt, deliveryError, outboundJobId }) {
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (waMessageId !== undefined) {
+        fields.push(`wa_message_id = $${idx++}`);
+        values.push(waMessageId || null);
+    }
+    if (status !== undefined) {
+        fields.push(`delivery_status = $${idx}`);
+        fields.push(`status = $${idx++}`);
+        values.push(normalizeDeliveryStatus(status, true));
+    }
+    if (deliveredAt !== undefined) {
+        fields.push(`delivered_at = COALESCE($${idx++}, delivered_at)`);
+        values.push(normalizeTimestamp(deliveredAt));
+    }
+    if (readAt !== undefined) {
+        fields.push(`read_at = COALESCE($${idx++}, read_at)`);
+        values.push(normalizeTimestamp(readAt));
+    }
+    if (failedAt !== undefined) {
+        fields.push(`failed_at = COALESCE($${idx++}, failed_at)`);
+        values.push(normalizeTimestamp(failedAt));
+    }
+    if (deliveryError !== undefined) {
+        fields.push(`delivery_error = $${idx++}`);
+        values.push(deliveryError ? deliveryError.toString().slice(0, 2000) : null);
+    }
+    if (outboundJobId !== undefined) {
+        fields.push(`outbound_job_id = $${idx++}`);
+        values.push(outboundJobId || null);
+    }
+
+    if (!fields.length || !messageId) return null;
+    values.push(messageId);
+    const result = await query(`
+        UPDATE messages
+        SET ${fields.join(', ')}
+        WHERE id = $${idx}
+        RETURNING *
+    `, values);
+    return result.rows[0] || null;
+}
+
+async function markMessageOutboundSent(messageId, waMessageId) {
+    const result = await query(`
+        UPDATE messages
+        SET wa_message_id = COALESCE($2, wa_message_id),
+            delivery_status = 'sent',
+            status = 'sent',
+            sent_at = COALESCE(sent_at, now()),
+            delivery_error = NULL
+        WHERE id = $1
+        RETURNING *
+    `, [messageId, waMessageId || null]);
+    return result.rows[0] || null;
+}
+
+async function updateMessageReceiptByWaId(waMessageIds, receiptType, timestamp) {
+    const ids = Array.isArray(waMessageIds) ? waMessageIds : [waMessageIds];
+    const cleanedIds = ids
+        .map((id) => (id || '').toString().trim())
+        .filter(Boolean);
+    if (!cleanedIds.length) return [];
+
+    const status = normalizeReceiptStatus(receiptType);
+    const receiptAt = normalizeTimestamp(timestamp) || new Date();
+    const params = [cleanedIds, status, receiptAt];
+    let timestampSql = ', sent_at = COALESCE(sent_at, $3)';
+    if (status === 'read') {
+        timestampSql = ', read_at = COALESCE(read_at, $3), delivered_at = COALESCE(delivered_at, $3)';
+    } else if (status === 'delivered') {
+        timestampSql = ', delivered_at = COALESCE(delivered_at, $3)';
+    } else if (status === 'failed') {
+        timestampSql = ', failed_at = COALESCE(failed_at, $3)';
+    }
+
+    const result = await query(`
+        UPDATE messages
+        SET delivery_status = CASE
+                WHEN delivery_status = 'read' THEN 'read'
+                WHEN $2 = 'read' THEN 'read'
+                WHEN delivery_status = 'delivered' AND $2 = 'sent' THEN 'delivered'
+                ELSE $2
+            END,
+            status = CASE
+                WHEN status = 'read' THEN 'read'
+                WHEN $2 = 'read' THEN 'read'
+                WHEN status = 'delivered' AND $2 = 'sent' THEN 'delivered'
+                ELSE $2
+            END
+            ${timestampSql}
+        WHERE wa_message_id = ANY($1::text[])
+        RETURNING *
+    `, params);
+    return result.rows;
+}
+
 async function getTenantChatbotPairs(tenantId) {
     const result = await query(`
         SELECT id, tenant_id, question, answer, sort_order, created_at, updated_at
@@ -274,20 +590,26 @@ async function getOrCreateChat(tenantId, jid, pushName = null, isGroup = false) 
     return newChat.rows[0];
 }
 
-async function logMessage({ chatId, senderType, senderId, senderName, messageType, body, mediaUrl, waMessageId, isFromMe }) {
+async function logMessage({ chatId, senderType, senderId, senderName, messageType, body, mediaUrl, waMessageId, isFromMe, status, outboundJobId }) {
     // Upsert / Idempotency handling
     // If waMessageId exists, skip insert (return existing)
     // Note: Requires UNIQUE constraint on wa_message_id
     
     let message;
+    const deliveryStatus = normalizeDeliveryStatus(status, Boolean(isFromMe));
+    const sentAtSql = Boolean(isFromMe) && ['sent', 'delivered', 'read'].includes(deliveryStatus) ? 'now()' : 'NULL';
     
     if (waMessageId) {
         const insertRes = await query(`
-            INSERT INTO messages (chat_id, sender_type, sender_id, sender_name, message_type, body, media_url, wa_message_id, is_from_me)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+            INSERT INTO messages (
+                chat_id, sender_type, sender_id, sender_name, message_type, body,
+                media_url, wa_message_id, is_from_me, status, delivery_status,
+                sent_at, outbound_job_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, ${sentAtSql}, $11)
             ON CONFLICT (wa_message_id) DO NOTHING
             RETURNING *
-        `, [chatId, senderType, senderId, senderName, messageType || 'text', body, mediaUrl, waMessageId, isFromMe || false]);
+        `, [chatId, senderType, senderId, senderName, messageType || 'text', body, mediaUrl, waMessageId, isFromMe || false, deliveryStatus, outboundJobId || null]);
         
         message = insertRes.rows[0];
         
@@ -302,9 +624,13 @@ async function logMessage({ chatId, senderType, senderId, senderName, messageTyp
     } else {
         // Fallback for messages without ID (internal system messages)
         const res = await query(`
-            INSERT INTO messages (chat_id, sender_type, sender_id, sender_name, message_type, body, media_url, wa_message_id, is_from_me)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
-        `, [chatId, senderType, senderId, senderName, messageType || 'text', body, mediaUrl, waMessageId, isFromMe || false]);
+            INSERT INTO messages (
+                chat_id, sender_type, sender_id, sender_name, message_type, body,
+                media_url, wa_message_id, is_from_me, status, delivery_status,
+                sent_at, outbound_job_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, ${sentAtSql}, $11) RETURNING *
+        `, [chatId, senderType, senderId, senderName, messageType || 'text', body, mediaUrl, waMessageId, isFromMe || false, deliveryStatus, outboundJobId || null]);
         message = res.rows[0];
     }
 
@@ -585,6 +911,8 @@ module.exports = {
         await query('ALTER TABLE tenants DROP COLUMN IF EXISTS analysis_webhook_url');
         await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS business_category VARCHAR(50) DEFAULT \'general\'');
     },
+    ensureMessageDeliveryColumns,
+    ensureOutboundMessageJobsTable,
     ensureUserInvitesTable: async () => query('CREATE TABLE IF NOT EXISTS user_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE, email TEXT NOT NULL, token TEXT UNIQUE NOT NULL, role VARCHAR(50), status VARCHAR(20) DEFAULT \'pending\', created_by UUID, expires_at TIMESTAMP, phone_number TEXT, created_at TIMESTAMP DEFAULT now())'),
     ensureInviteErrorColumn: async () => query('ALTER TABLE user_invites ADD COLUMN IF NOT EXISTS last_error TEXT'),
     ensureSystemSettingsTable: async () => query('CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
@@ -673,6 +1001,15 @@ module.exports = {
     syncContacts, getContactsByTenant, getContactCountByTenant, getContactByJid, getPnByLid,
     // Chats & Messages
     getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead,
+    updateMessageDelivery,
+    markMessageOutboundSent,
+    updateMessageReceiptByWaId,
+    enqueueOutboundMessageJob,
+    markOutboundMessageJobProcessing,
+    claimOutboundMessageJobs,
+    markOutboundMessageJobSent,
+    rescheduleOutboundMessageJob,
+    failOutboundMessageJob,
     // System
     getSystemSetting: async (key) => {
         const res = await query('SELECT value FROM system_settings WHERE key = $1', [key]);

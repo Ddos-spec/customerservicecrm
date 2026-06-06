@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Send, Paperclip, Smile, MoreVertical, Search,
-  Info, CheckCheck, Clock, User, X, Loader2, Users, Image as ImageIcon, Video, Mic, FileText
+  Info, Check, CheckCheck, Clock, User, X, Loader2, Users, Image as ImageIcon, Video, Mic, FileText,
+  Wifi, WifiOff, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
@@ -33,8 +34,10 @@ interface Message {
   message_type: string;
   body: string;
   media_url?: string;
+  wa_message_id?: string;
   is_from_me: boolean;
-  status: 'sent' | 'delivered' | 'read' | 'failed';
+  status: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
+  delivery_status?: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
   created_at: string;
 }
 
@@ -44,16 +47,16 @@ const formatRelativeTime = (value?: string) => {
   if (Number.isNaN(date.getTime())) return '';
   const diffMs = Date.now() - date.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
-  
+
   if (diffMinutes < 1) return 'Baru saja';
   if (diffMinutes < 60) return `${diffMinutes}m`;
-  
+
   const diffHours = Math.floor(diffMinutes / 60);
   if (diffHours < 24) return `${diffHours}h`;
-  
+
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays}d`;
-  
+
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 };
 
@@ -103,6 +106,34 @@ const getMessageTypeMeta = (messageType?: string) => {
   }
 };
 
+const normalizeOutboundStatus = (value?: string): Message['status'] => {
+  const normalized = (value || '').toLowerCase();
+  if (['queued', 'processing'].includes(normalized)) return 'queued';
+  if (normalized === 'sending') return 'sending';
+  if (normalized === 'delivered') return 'delivered';
+  if (normalized === 'read') return 'read';
+  if (normalized === 'failed') return 'failed';
+  if (normalized === 'received') return 'received';
+  return 'sent';
+};
+
+const getReceiptStatus = (receiptType?: string): Message['status'] => {
+  const normalized = (receiptType || '').toLowerCase();
+  if (normalized.includes('read')) return 'read';
+  if (normalized.includes('delivered') || normalized.includes('delivery') || normalized.includes('server')) return 'delivered';
+  if (normalized.includes('failed') || normalized.includes('error')) return 'failed';
+  return 'sent';
+};
+
+const getMessageStatusIcon = (status?: Message['status']) => {
+  if (status === 'queued' || status === 'sending') return <Clock size={12} />;
+  if (status === 'sent') return <Check size={12} />;
+  if (status === 'delivered') return <CheckCheck size={12} />;
+  if (status === 'read') return <CheckCheck size={12} className="text-sky-200 dark:text-sky-300" />;
+  if (status === 'failed') return <AlertTriangle size={12} className="text-red-200 dark:text-red-300" />;
+  return <Clock size={12} />;
+};
+
 const CHAT_PAGE_SIZE = 100;
 
 const AgentWorkspace = () => {
@@ -111,13 +142,17 @@ const AgentWorkspace = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [realtimeState, setRealtimeState] = useState<'connecting' | 'connected' | 'reconnecting' | 'offline'>('connecting');
+  const [lastRealtimeAt, setLastRealtimeAt] = useState<number>(Date.now());
+  const [lastSessionUpdateAt, setLastSessionUpdateAt] = useState<number>(0);
+  const [timeTick, setTimeTick] = useState(Date.now());
 
   // Core Data
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [totalContacts, setTotalContacts] = useState<number | null>(null);
-  
+
   // Loading States
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isLoadingMoreChats, setIsLoadingMoreChats] = useState(false);
@@ -125,8 +160,10 @@ const AgentWorkspace = () => {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
-  
+
   const ws = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -143,6 +180,11 @@ const AgentWorkspace = () => {
         scrollToBottom();
     }
   }, [messages, isFetchingMore]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimeTick(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // --- 1. Fetch Chat List (Inbox) ---
   const fetchChats = useCallback(async ({ reset = false }: { reset?: boolean } = {}) => {
@@ -200,10 +242,13 @@ const AgentWorkspace = () => {
       // Use cursor-based pagination if beforeId is present
       const url = `/chats/${chatId}/messages?limit=50${beforeId ? `&before=${beforeId}` : ''}`;
       const res = await api.get(url);
-      
+
       if (res.data.status === 'success') {
-        const newMessages = res.data.data;
-        
+        const newMessages = (res.data.data || []).map((message: Message) => ({
+          ...message,
+          status: normalizeOutboundStatus(message.delivery_status || message.status),
+        }));
+
         // If we get fewer messages than limit, we reached the beginning of history
         if (newMessages.length < 50) {
             setHasMoreMessages(false);
@@ -253,87 +298,169 @@ const AgentWorkspace = () => {
 
   // --- 3. WebSocket Connection (Real-time) ---
   useEffect(() => {
+    let isUnmounted = false;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL 
-      ? new URL(import.meta.env.VITE_API_URL).host 
+    const host = import.meta.env.VITE_API_URL
+      ? new URL(import.meta.env.VITE_API_URL).host
       : window.location.host;
-    
     const wsUrl = `${protocol}//${host}`;
-    console.log('Connecting to WebSocket:', wsUrl);
-    
-    ws.current = new WebSocket(wsUrl);
 
-    ws.current.onopen = () => {
-      console.log('WebSocket Connected');
-    };
+    const connect = () => {
+      if (isUnmounted) return;
 
-    ws.current.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        
-        // Handle incoming message
-        if (payload.type === 'message') {
-           const msgData = payload.data;
-           
-           // Tenant Isolation Check
-           if (user?.tenant_id && msgData.tenant_id && user.tenant_id !== msgData.tenant_id) {
-             return;
-           }
-
-           const incomingChatId = msgData.chat_id; // V2 uses chat_id
-
-           // 1. Update Messages if current chat is open
-           setSelectedChat((current) => {
-             if (current?.id === incomingChatId) {
-                const newMsg: Message = {
-                    id: msgData.db_id || Date.now().toString(),
-                    chat_id: incomingChatId,
-                    sender_type: msgData.sender_type || (msgData.isFromMe ? 'agent' : 'customer'),
-                    sender_name: msgData.sender_name || msgData.pushName,
-                    message_type: msgData.type || 'text',
-                    body: msgData.body || msgData.caption || (msgData.type === 'image' ? '[Image]' : '[Media]'),
-                    is_from_me: msgData.isFromMe,
-                    status: 'read', // Auto-read if open
-                    created_at: new Date().toISOString()
-                };
-                setMessages((prev) => [...prev, newMsg]);
-             } else if (!msgData.isFromMe) {
-                // Toast for background messages
-                toast.info(`Pesan baru dari ${msgData.sender_name || msgData.pushName || msgData.from}`);
-             }
-             return current;
-           });
-
-           // 2. Update Chat List (Move to top, update preview)
-           setChats((prev) => {
-             const existingChatIndex = prev.findIndex(c => c.id === incomingChatId);
-             const newPreview = msgData.body || msgData.caption || (msgData.type === 'image' ? '[Image]' : '[Media]');
-             
-             if (existingChatIndex > -1) {
-                // Move existing chat to top
-                const updatedChat = { 
-                    ...prev[existingChatIndex], 
-                    last_message_preview: newPreview,
-                    last_message_time: new Date().toISOString(),
-                    unread_count: msgData.isFromMe ? prev[existingChatIndex].unread_count : (prev[existingChatIndex].unread_count + 1)
-                };
-                const newChats = [...prev];
-                newChats.splice(existingChatIndex, 1);
-                return [updatedChat, ...newChats];
-             } else {
-                // New Chat? Fetch list again to be safe/simple, or append if we had full chat object
-                // For V2 prototype, let's just re-fetch to get correct Contact/Chat data structure
-                void fetchChats({ reset: true });
-                return prev;
-             }
-           });
-        }
-      } catch (err) {
-        console.error('WebSocket message error:', err);
+      if (ws.current && (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)) {
+        return;
       }
+
+      setRealtimeState(reconnectAttemptRef.current > 0 ? 'reconnecting' : 'connecting');
+      ws.current = new WebSocket(wsUrl);
+
+      ws.current.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        setRealtimeState('connected');
+        setLastRealtimeAt(Date.now());
+      };
+
+      ws.current.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          setLastRealtimeAt(Date.now());
+
+          if (payload.type === 'session-update') {
+            setLastSessionUpdateAt(Date.now());
+          }
+
+          // Handle incoming message
+          if (payload.type === 'message') {
+             const msgData = payload.data;
+
+             // Tenant Isolation Check
+             if (user?.tenant_id && msgData.tenant_id && user.tenant_id !== msgData.tenant_id) {
+               return;
+             }
+
+             const incomingChatId = msgData.chat_id; // V2 uses chat_id
+
+             // 1. Update Messages if current chat is open
+             setSelectedChat((current) => {
+               if (current?.id === incomingChatId) {
+                  const newMsg: Message = {
+                      id: msgData.db_id || Date.now().toString(),
+                      chat_id: incomingChatId,
+                      sender_type: msgData.sender_type || (msgData.isFromMe ? 'agent' : 'customer'),
+                      sender_name: msgData.sender_name || msgData.pushName,
+                      message_type: msgData.type || 'text',
+                      body: msgData.body || msgData.caption || (msgData.type === 'image' ? '[Image]' : '[Media]'),
+                      media_url: msgData.mediaUrl || msgData.media_url || msgData.ephemeralMediaUrl,
+                      wa_message_id: msgData.id || msgData.wa_message_id,
+                      is_from_me: msgData.isFromMe,
+                      status: msgData.isFromMe ? normalizeOutboundStatus(msgData.delivery_status || msgData.status) : 'read',
+                      delivery_status: normalizeOutboundStatus(msgData.delivery_status || msgData.status),
+                      created_at: new Date().toISOString()
+                  };
+                  setMessages((prev) => {
+                    if (newMsg.wa_message_id && prev.some((msg) => msg.wa_message_id === newMsg.wa_message_id)) {
+                      return prev;
+                    }
+                    if (prev.some((msg) => msg.id === newMsg.id)) {
+                      return prev;
+                    }
+                    return [...prev, newMsg];
+                  });
+               } else if (!msgData.isFromMe) {
+                  // Toast for background messages
+                  toast.info(`Pesan baru dari ${msgData.sender_name || msgData.pushName || msgData.from}`);
+               }
+               return current;
+             });
+
+             // 2. Update Chat List (Move to top, update preview)
+             setChats((prev) => {
+               const existingChatIndex = prev.findIndex(c => c.id === incomingChatId);
+               const newPreview = msgData.body || msgData.caption || (msgData.type === 'image' ? '[Image]' : '[Media]');
+
+               if (existingChatIndex > -1) {
+                  // Move existing chat to top
+                  const updatedChat = {
+                      ...prev[existingChatIndex],
+                      last_message_preview: newPreview,
+                      last_message_time: new Date().toISOString(),
+                      unread_count: msgData.isFromMe ? prev[existingChatIndex].unread_count : (prev[existingChatIndex].unread_count + 1)
+                  };
+                  const newChats = [...prev];
+                  newChats.splice(existingChatIndex, 1);
+                  return [updatedChat, ...newChats];
+               } else {
+                  // New Chat? Fetch list again to be safe/simple, or append if we had full chat object
+                  // For V2 prototype, let's just re-fetch to get correct Contact/Chat data structure
+                  void fetchChats({ reset: true });
+                  return prev;
+               }
+             });
+          }
+
+          if (payload.type === 'receipt') {
+            const receiptStatus = getReceiptStatus(payload.data?.receiptType);
+            const receiptMessageIds = Array.isArray(payload.data?.messageId)
+              ? payload.data.messageId.map((id: unknown) => String(id))
+              : [payload.data?.messageId].filter(Boolean).map((id: unknown) => String(id));
+            const receiptDbIds = Array.isArray(payload.data?.messages)
+              ? payload.data.messages.map((msg: any) => msg.db_id).filter(Boolean)
+              : [];
+
+            setMessages((prev) => prev.map((msg) => {
+              const matched = receiptDbIds.includes(msg.id)
+                || (msg.wa_message_id && receiptMessageIds.includes(msg.wa_message_id));
+              if (!matched) return msg;
+              return {
+                ...msg,
+                status: receiptStatus,
+                delivery_status: receiptStatus,
+              };
+            }));
+          }
+
+          if (payload.type === 'message-status') {
+            const statusData = payload.data;
+            const nextStatus = normalizeOutboundStatus(statusData?.delivery_status || statusData?.status);
+            setMessages((prev) => prev.map((msg) => {
+              const matched = msg.id === statusData?.db_id
+                || msg.id === statusData?.id
+                || (msg.wa_message_id && msg.wa_message_id === statusData?.wa_message_id);
+              if (!matched) return msg;
+              return {
+                ...msg,
+                wa_message_id: statusData?.wa_message_id || msg.wa_message_id,
+                status: nextStatus,
+                delivery_status: nextStatus,
+              };
+            }));
+          }
+        } catch (err) {
+          console.error('WebSocket message error:', err);
+        }
+      };
+
+      ws.current.onerror = () => {
+        setRealtimeState('offline');
+      };
+
+      ws.current.onclose = () => {
+        if (isUnmounted) return;
+        reconnectAttemptRef.current += 1;
+        setRealtimeState('reconnecting');
+        const delay = Math.min(15000, 1000 * Math.pow(1.8, reconnectAttemptRef.current));
+        reconnectTimerRef.current = window.setTimeout(connect, delay);
+      };
     };
+
+    connect();
 
     return () => {
+      isUnmounted = true;
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+      }
       if (ws.current) ws.current.close();
     };
   }, [user, fetchChats]);
@@ -382,7 +509,7 @@ const AgentWorkspace = () => {
 
     setIsSending(true);
     const textToSend = messageText.trim();
-    
+
     try {
       // V2 Endpoint: POST /internal/messages
       const res = await api.post('/internal/messages', {
@@ -392,9 +519,9 @@ const AgentWorkspace = () => {
         is_group: selectedChat.is_group
       });
 
-      if (res.data.status === 'success') {
+      if (res.data.status === 'success' || res.data.status === 'queued') {
         const dbMsg = res.data.db_message;
-        
+
         // Optimistic Update
         const newMsg: Message = {
           id: dbMsg?.id || Date.now().toString(),
@@ -403,19 +530,21 @@ const AgentWorkspace = () => {
           sender_name: user?.name,
           message_type: 'text',
           body: textToSend,
+          wa_message_id: dbMsg?.wa_message_id || res.data.messageId,
           is_from_me: true,
-          status: 'sent',
+          status: normalizeOutboundStatus(dbMsg?.delivery_status || dbMsg?.status || 'sent'),
+          delivery_status: normalizeOutboundStatus(dbMsg?.delivery_status || dbMsg?.status || 'sent'),
           created_at: new Date().toISOString()
         };
 
         setMessages((prev) => [...prev, newMsg]);
-        
+
         // Update Chat List Preview
         setChats((prev) => {
             const index = prev.findIndex(c => c.id === selectedChat.id);
             if (index === -1) return prev;
-            const updated = { 
-                ...prev[index], 
+            const updated = {
+                ...prev[index],
                 last_message_preview: textToSend,
                 last_message_time: new Date().toISOString()
             };
@@ -423,8 +552,11 @@ const AgentWorkspace = () => {
             list.splice(index, 1);
             return [updated, ...list];
         });
-        
+
         setMessageText('');
+        if (res.data.status === 'queued') {
+          toast.info('Gateway belum siap. Pesan masuk antrian dan akan dikirim otomatis.');
+        }
       }
     } catch (error: any) {
       console.error('Failed to send message:', error);
@@ -434,17 +566,29 @@ const AgentWorkspace = () => {
     }
   };
 
-  const filteredChats = chats.filter(c => 
+  const filteredChats = chats.filter(c =>
     (c.display_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (c.phone_number || '').includes(searchQuery)
   );
   const openChatsCount = chats.filter((chat) => chat.status === 'open').length;
   const unreadChatsCount = chats.filter((chat) => chat.unread_count > 0).length;
   const totalUnreadMessages = chats.reduce((total, chat) => total + (chat.unread_count || 0), 0);
+  const isRealtimeStale = realtimeState === 'connected' && timeTick - lastRealtimeAt > 120000;
+  const isSessionStale = realtimeState === 'connected'
+    && lastSessionUpdateAt > 0
+    && timeTick - lastSessionUpdateAt > 5 * 60000;
+  const shouldShowRealtimeWarning = realtimeState !== 'connected' || isRealtimeStale || isSessionStale;
+  const realtimeLabel = realtimeState === 'connected'
+    ? isRealtimeStale || isSessionStale ? 'Realtime perlu dicek' : 'Realtime aktif'
+    : realtimeState === 'reconnecting'
+      ? 'Menyambung ulang'
+      : realtimeState === 'offline'
+        ? 'Realtime terputus'
+        : 'Menghubungkan realtime';
 
   return (
     <div className="flex min-h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden rounded-[28px] border border-gray-200/80 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] transition-colors duration-300 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none lg:h-[calc(100dvh-7rem)] lg:flex-row">
-      
+
       {/* LEFT SIDEBAR: CHAT LIST */}
       <div className="flex w-full min-h-0 shrink-0 flex-col border-b border-gray-200/80 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950 lg:h-full lg:w-[25rem] lg:max-h-none lg:border-b-0 lg:border-r xl:w-[26rem] max-h-[42svh]">
         {/* Search Header */}
@@ -635,8 +779,24 @@ const AgentWorkspace = () => {
                     </div>
                 </div>
 
+                {shouldShowRealtimeWarning && (
+                  <div className="shrink-0 border-b border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-900 backdrop-blur dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-100 sm:px-5 lg:px-6">
+                    <div className="flex items-center gap-3 text-xs font-semibold">
+                      {realtimeState === 'connected' ? <Wifi size={16} /> : <WifiOff size={16} />}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-black">{realtimeLabel}</p>
+                        <p className="mt-0.5 font-medium opacity-80">
+                          {realtimeState === 'connected'
+                            ? 'Koneksi hidup, tapi event status sudah lama tidak masuk. Kalau chat terasa telat, refresh halaman atau cek gateway.'
+                            : 'UI sedang reconnect otomatis. Pesan yang sudah terkirim tetap diamankan oleh outbound queue.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Messages Area */}
-                <div 
+                <div
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
                     className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-5"
@@ -654,7 +814,7 @@ const AgentWorkspace = () => {
                     ) : messages.length > 0 ? (
                         messages.map((msg) => (
                             <div key={msg.id} className={`mb-4 flex ${msg.is_from_me ? 'justify-end' : 'justify-start'}`}>
-                                <div 
+                                <div
                                     className={`group relative max-w-[82%] rounded-[24px] px-4 py-3 text-sm shadow-sm lg:max-w-[62%] ${
                                     msg.is_from_me
                                         ? 'rounded-tr-md bg-blue-600 text-white shadow-blue-500/15'
@@ -708,12 +868,10 @@ const AgentWorkspace = () => {
                                     ) : (
                                       <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
                                     )}
-                                    
+
                                     <div className={`mt-1.5 flex items-center justify-end space-x-1 text-[10px] opacity-70 ${msg.is_from_me ? 'text-blue-100' : 'text-gray-400'}`}>
                                         <span>{formatMessageTime(msg.created_at)}</span>
-                                        {msg.is_from_me && (
-                                            msg.status === 'read' ? <CheckCheck size={12} /> : <Clock size={12} />
-                                        )}
+                                        {msg.is_from_me && getMessageStatusIcon(msg.delivery_status || msg.status)}
                                     </div>
                                 </div>
                             </div>
@@ -736,7 +894,7 @@ const AgentWorkspace = () => {
                         <button className="rounded-full p-2.5 text-gray-400 transition-colors hover:bg-white/80 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400">
                             <Paperclip size={20} />
                         </button>
-                        
+
                         <div className="flex min-w-0 flex-1 items-center rounded-full bg-white px-4 py-2.5 shadow-sm dark:bg-slate-800 dark:shadow-none">
                              <input
                                 type="text"
@@ -781,7 +939,7 @@ const AgentWorkspace = () => {
                           </div>
                           <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedChat.display_name}</h2>
                           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selectedChat.phone_number}</p>
-                          
+
                           <div className="mt-8 w-full space-y-4 text-left">
                               <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                                   <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Status Chat</span>
@@ -790,7 +948,7 @@ const AgentWorkspace = () => {
                                       <span className="text-sm font-medium text-gray-700 dark:text-gray-200 capitalize">{selectedChat.status || 'Open'}</span>
                                   </div>
                               </div>
-                              
+
                               <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                                   <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Contact ID</span>
                                   <p className="mt-1 text-xs font-mono text-gray-600 dark:text-gray-300 break-all">

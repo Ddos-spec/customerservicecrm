@@ -24,5 +24,16 @@ export default defineConfig({
         secure: false,
       },
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['lucide-react', 'sonner'],
+        },
+      },
+    },
   }
 })

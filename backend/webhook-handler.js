@@ -347,6 +347,7 @@ async function handleMessage(req, sessionId, data) {
             body: messageText,
             mediaUrl: mediaUrl,
             waMessageId: message.id,
+            status: message.isFromMe ? 'sent' : 'received',
             isFromMe: message.isFromMe
         });
 
@@ -451,6 +452,12 @@ async function handleMessage(req, sessionId, data) {
  */
 async function handleReceipt(sessionId, data) {
     const { type, messageId, from, timestamp } = data;
+    let updatedMessages = [];
+    try {
+        updatedMessages = await db.updateMessageReceiptByWaId(messageId, type, timestamp);
+    } catch (error) {
+        console.warn(`[Webhook] Failed to persist receipt ${type} for ${messageId}: ${error.message}`);
+    }
 
     // Broadcast to WebSocket clients
     broadcast({
@@ -461,6 +468,15 @@ async function handleReceipt(sessionId, data) {
             messageId,
             from,
             timestamp,
+            messages: updatedMessages.map((message) => ({
+                db_id: message.id,
+                chat_id: message.chat_id,
+                wa_message_id: message.wa_message_id,
+                status: message.delivery_status || message.status,
+                delivered_at: message.delivered_at,
+                read_at: message.read_at,
+                failed_at: message.failed_at
+            })),
         },
     });
 

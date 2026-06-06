@@ -434,6 +434,18 @@ async function sendExternalMessage({
         receiver.isGroup
     );
 
+    const logBody = text.trim() || `[${mtype.toUpperCase()}]`;
+    const message = await db.logMessage({
+        chatId: chat.id,
+        senderType: 'agent',
+        messageType: mtype,
+        body: logBody,
+        mediaUrl: mtype === 'text' ? null : mediaUrl,
+        waMessageId: null,
+        status: 'queued',
+        isFromMe: true
+    });
+
     const result = await scheduleMessageSend(tenant.session_id, async () => {
         if (mtype === 'text') {
             return waGateway.sendText(tenant.session_id, receiver.destination, text.trim());
@@ -451,24 +463,28 @@ async function sendExternalMessage({
             return waGateway.sendDocument(tenant.session_id, receiver.destination, mediaUrl, filename);
         }
         throw new Error(`Unsupported mtype: ${mtype}`);
+    }, {
+        persistentJob: {
+            tenantId: tenant.id,
+            chatId: chat.id,
+            messageId: message.id,
+            messageType: mtype,
+            destination: receiver.destination,
+            chatJid: receiver.chatJid,
+            body: logBody,
+            mediaUrl: mtype === 'text' ? null : mediaUrl,
+            filename,
+            viewOnce
+        }
     });
 
     if (!(result?.status === true || result?.status === 'success')) {
         throw new Error(result?.message || 'Failed to send message');
     }
 
-    const logBody = text.trim() || `[${mtype.toUpperCase()}]`;
-    const message = await db.logMessage({
-        chatId: chat.id,
-        senderType: 'agent',
-        messageType: mtype,
-        body: logBody,
-        mediaUrl: mtype === 'text' ? null : mediaUrl,
-        waMessageId: result?.data?.msgid || null,
-        isFromMe: true
-    });
+    const sentMessage = await db.markMessageOutboundSent(message.id, result?.data?.msgid || result?.messageId || null);
 
-    return { chat, message, result };
+    return { chat, message: sentMessage || message, result };
 }
 
 function buildPublicMediaUrl(req, mediaId) {
