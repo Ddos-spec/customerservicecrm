@@ -1000,6 +1000,40 @@ function unixSecondsToMs(value) {
     return numberValue < 1000000000000 ? numberValue * 1000 : numberValue;
 }
 
+function normalizePhoneIdentity(value) {
+    const digits = (value || '').toString().replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.startsWith('0') ? `62${digits.slice(1)}` : digits;
+}
+
+function extractDevicePhone(value) {
+    const raw = (value || '').toString().trim();
+    if (!raw) return '';
+    return normalizePhoneIdentity(raw.split('@')[0].split(':')[0]);
+}
+
+function buildGatewayIdentityDiagnostic(requestedSessionId, statusResponse) {
+    const gatewayData = extractGatewayStatusData(statusResponse);
+    const requestedPhone = normalizePhoneIdentity(requestedSessionId);
+    const devicePhone = extractDevicePhone(gatewayData.deviceJid);
+    const gatewaySessionPhone = normalizePhoneIdentity(gatewayData.sessionId);
+    const detectedPhone = devicePhone || gatewaySessionPhone;
+    const connected = gatewayData.connected === true || gatewayData.loggedIn === true;
+    const mismatch = Boolean(connected && requestedPhone && detectedPhone && requestedPhone !== detectedPhone);
+
+    return {
+        mismatch,
+        requestedPhone,
+        detectedPhone: detectedPhone || null,
+        deviceJid: gatewayData.deviceJid || null,
+        gatewaySessionId: gatewayData.sessionId || null,
+        connected,
+        reason: mismatch
+            ? `Session ${requestedPhone} memakai device ${detectedPhone}; perlu logout dan scan ulang nomor yang benar.`
+            : null
+    };
+}
+
 function buildPrivateMessageGapDiagnostic(statusResponse) {
     const gatewayData = extractGatewayStatusData(statusResponse);
     const stats = gatewayData?.eventStats || {};
@@ -1102,7 +1136,12 @@ function getSessionsDetails() {
                 sessionId: id,
                 status: session?.status || 'UNKNOWN',
                 qr: session?.qr || null,
-                connectedNumber: session?.connectedNumber || null
+                connectedNumber: session?.connectedNumber || null,
+                identityMismatch: Boolean(session?.identityMismatch),
+                expectedNumber: session?.expectedNumber || null,
+                detectedNumber: session?.detectedNumber || null,
+                deviceJid: session?.deviceJid || null,
+                statusReason: session?.statusReason || null
             };
         })
         .filter(s => {
@@ -1110,6 +1149,7 @@ function getSessionsDetails() {
             // Filter out DISCONNECTED, LOGGED_OUT, and UNKNOWN without QR
             const isActive = s.status === 'CONNECTED' ||
                            s.status === 'CONNECTING' ||
+                           s.status === 'IDENTITY_MISMATCH' ||
                            s.status === 'SCAN_QR_CODE' ||
                            (s.qr && s.qr.length > 0);
             return isActive;
@@ -1162,6 +1202,25 @@ async function refreshSession(sessionId) {
             return;
         }
 
+        try {
+            const statusResp = await waGateway.getSessionStatus(sessionId);
+            const identity = buildGatewayIdentityDiagnostic(sessionId, statusResp);
+            if (identity.mismatch) {
+                logger.error(`[Refresh] Identity mismatch for session ${sessionId}: ${identity.reason}`);
+                updateSessionStatus(sessionId, 'IDENTITY_MISMATCH', null, {
+                    identityMismatch: true,
+                    expectedNumber: identity.requestedPhone,
+                    detectedNumber: identity.detectedPhone,
+                    connectedNumber: identity.detectedPhone,
+                    deviceJid: identity.deviceJid,
+                    statusReason: identity.reason
+                });
+                return;
+            }
+        } catch (statusErr) {
+            console.warn(`[Refresh] Session status pre-check failed for ${sessionId}: ${statusErr.message}`);
+        }
+
         // STRATEGY 1: Lightweight "Ping" via getGroups
         try {
             console.log(`[Refresh] Attempting Strategy 1 (Groups) for ${sessionId}...`);
@@ -1200,16 +1259,22 @@ async function refreshSession(sessionId) {
     }
 }
 
-function updateSessionStatus(sessionId, status, qr = null) {
+function updateSessionStatus(sessionId, status, qr = null, extras = {}) {
     let current = sessions.get(sessionId);
     if (!current) {
         current = { sessionId, sock: createCompatSocket(sessionId), status: 'UNKNOWN' };
     }
     
     // Only broadcast if changed
-    if (current.status !== status || current.qr !== qr) {
+    const hasExtraChange = Object.keys(extras || {}).some((key) => current[key] !== extras[key]);
+    if (current.status !== status || current.qr !== qr || hasExtraChange) {
         current.status = status;
         current.qr = qr;
+        Object.assign(current, extras || {});
+        if (status === 'CONNECTED') {
+            current.identityMismatch = false;
+            current.statusReason = null;
+        }
         sessions.set(sessionId, current);
         persistSessionStatus(sessionId, {
             status: current.status,
@@ -1462,6 +1527,7 @@ app.get('/api/v1/gateway/sessions/status', async (req, res) => {
                         gateway_url: tenant.gateway_url || null,
                         status,
                         diagnostics: {
+                            identity: buildGatewayIdentityDiagnostic(tenant.session_id, status),
                             private_message_gap: buildPrivateMessageGapDiagnostic(status)
                         }
                     };
@@ -1618,13 +1684,26 @@ webhookHandler.on('connection', (sessionId, data) => {
         data.status === 'disconnected' ? 'DISCONNECTED' :
         data.status === 'logged_out' ? 'LOGGED_OUT' : 'UNKNOWN';
 
-    session.status = newStatus;
+    const expectedPhone = normalizePhoneIdentity(sessionId);
+    const detectedPhone = normalizePhoneIdentity(data.connectedNumber);
+    const hasIdentityMismatch = newStatus === 'CONNECTED'
+        && expectedPhone
+        && detectedPhone
+        && expectedPhone !== detectedPhone;
+
+    session.status = hasIdentityMismatch ? 'IDENTITY_MISMATCH' : newStatus;
     session.qr = null;
+    session.identityMismatch = hasIdentityMismatch;
+    session.expectedNumber = hasIdentityMismatch ? expectedPhone : null;
+    session.detectedNumber = detectedPhone || null;
+    session.statusReason = hasIdentityMismatch
+        ? `Session ${expectedPhone} memakai device ${detectedPhone}; perlu logout dan scan ulang nomor yang benar.`
+        : null;
 
     // Store connected WhatsApp number
     if (data.connectedNumber) {
         session.connectedNumber = data.connectedNumber;
-    } else if (newStatus !== 'CONNECTED') {
+    } else if (session.status !== 'CONNECTED') {
         // Clear connected number when disconnected
         session.connectedNumber = null;
     }
@@ -1642,7 +1721,7 @@ webhookHandler.on('connection', (sessionId, data) => {
     
     // CRITICAL FIX: Persistence
     // If Gateway says "Connected" but we don't have it in file, SAVE IT!
-    if (newStatus === 'CONNECTED') {
+    if (session.status === 'CONNECTED') {
         if (!sessionTokens.has(sessionId)) {
             console.log(`[Auto-Recovery] Session ${sessionId} detected from Webhook. Saving to disk...`);
             // Generate a token so it can be managed via API later

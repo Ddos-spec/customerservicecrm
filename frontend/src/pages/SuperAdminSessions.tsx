@@ -14,9 +14,14 @@ interface Session {
   ownerType?: string;
   connectedNumber?: string;
   lastSeen?: string;
+  identityMismatch?: boolean;
+  expectedNumber?: string | null;
+  detectedNumber?: string | null;
+  deviceJid?: string | null;
+  statusReason?: string | null;
 }
 
-const SESSION_FILTERS = ['ALL', 'CONNECTED', 'SCAN_QR_CODE', 'CONNECTING', 'DISCONNECTED', 'UNKNOWN'] as const;
+const SESSION_FILTERS = ['ALL', 'CONNECTED', 'IDENTITY_MISMATCH', 'SCAN_QR_CODE', 'CONNECTING', 'DISCONNECTED', 'UNKNOWN'] as const;
 type SessionFilter = typeof SESSION_FILTERS[number];
 
 const getStatusMeta = (status?: string) => {
@@ -48,6 +53,13 @@ const getStatusMeta = (status?: string) => {
         helper: 'Session terputus atau sudah logout.',
         icon: WifiOff,
         chipClass: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-200 dark:border-rose-700',
+      };
+    case 'IDENTITY_MISMATCH':
+      return {
+        label: 'Identity mismatch',
+        helper: 'Session ID tidak sama dengan nomor device yang sedang login. Logout lalu scan ulang nomor yang benar.',
+        icon: ShieldAlert,
+        chipClass: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-700',
       };
     default:
       return {
@@ -176,7 +188,7 @@ const SuperAdminSessions = () => {
     },
     {
       label: 'Need Attention',
-      count: sessions.filter(s => s.status === 'DISCONNECTED' || s.status === 'UNKNOWN').length,
+      count: sessions.filter(s => s.status === 'DISCONNECTED' || s.status === 'UNKNOWN' || s.status === 'IDENTITY_MISMATCH').length,
       helper: 'Butuh pengecekan atau reconnect.',
       icon: ShieldAlert,
       accent: 'rose',
@@ -350,9 +362,19 @@ const SuperAdminSessions = () => {
 
                   <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-slate-700 dark:bg-slate-800/60">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Keterangan Status</p>
-                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{statusMeta.helper}</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{session.statusReason || statusMeta.helper}</p>
                     <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-400 dark:text-gray-500">
                       <span className="rounded-full bg-white px-2.5 py-1 dark:bg-slate-900">Last seen: {formatDetailedDate(session.lastSeen)}</span>
+                      {session.identityMismatch && (
+                        <>
+                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                            Expected: {session.expectedNumber || session.sessionId}
+                          </span>
+                          <span className="rounded-full bg-red-50 px-2.5 py-1 text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                            Detected: {session.detectedNumber || session.connectedNumber || '-'}
+                          </span>
+                        </>
+                      )}
                       {session.ownerType && (
                         <span className="rounded-full bg-white px-2.5 py-1 dark:bg-slate-900">
                           {session.ownerType === 'tenant' ? 'Tenant-owned' : 'Internal owner'}
