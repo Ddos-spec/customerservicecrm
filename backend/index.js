@@ -51,7 +51,10 @@ const ENABLE_DB_SESSION_SELF_HEALING = process.env.ENABLE_DB_SESSION_SELF_HEALIN
 const app = express();
 // Detect production if NODE_ENV is set OR if FRONTEND_URL is https (common in deployments)
 // On Easypanel, NODE_ENV is usually 'production'.
-const isProd = process.env.NODE_ENV === 'production' || (process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith('https'));
+const isProd = !isTest && (
+    process.env.NODE_ENV === 'production'
+    || (process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith('https'))
+);
 
 console.log(`[System] Environment: NODE_ENV=${process.env.NODE_ENV}, isProd=${isProd}`);
 

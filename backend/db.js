@@ -602,8 +602,10 @@ module.exports = {
               v_lid TEXT;
               v_pn TEXT;
             BEGIN
-              -- Extract phone number from our_jid (e.g., 6289xxx@s.whatsapp.net → 6289xxx)
-              v_our_phone := split_part(NEW.our_jid, '@', 1);
+              -- Extract phone number from our_jid.
+              -- Whatsmeow stores device JIDs like 6289xxx:74@s.whatsapp.net,
+              -- while tenants.session_id stores only 6289xxx.
+              v_our_phone := split_part(split_part(NEW.our_jid, '@', 1), ':', 1);
 
               -- Match our_jid with tenant's session_id for proper tenant isolation
               SELECT id INTO v_tenant_id FROM tenants
@@ -639,7 +641,6 @@ module.exports = {
               END IF;
 
               RETURN NEW;
-            END IF;
             END;
             $$;
         `;
@@ -649,10 +650,17 @@ module.exports = {
         await query(`
             DO $$
             BEGIN
-              IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_sync_wm_contacts') THEN
-                CREATE TRIGGER trg_sync_wm_contacts
-                AFTER INSERT OR UPDATE ON "public"."whatsmeow_contacts"
-                FOR EACH ROW EXECUTE FUNCTION sync_whatsmeow_to_crm_contact();
+              IF to_regclass('public.whatsmeow_contacts') IS NOT NULL THEN
+                IF NOT EXISTS (
+                  SELECT 1
+                  FROM pg_trigger
+                  WHERE tgname = 'trg_sync_wm_contacts'
+                    AND tgrelid = 'public.whatsmeow_contacts'::regclass
+                ) THEN
+                  CREATE TRIGGER trg_sync_wm_contacts
+                  AFTER INSERT OR UPDATE ON "public"."whatsmeow_contacts"
+                  FOR EACH ROW EXECUTE FUNCTION sync_whatsmeow_to_crm_contact();
+                END IF;
               END IF;
             END
             $$;

@@ -301,7 +301,12 @@ func GetContactsFromDB(c echo.Context) error {
 
 	contacts, err := database.GetContactsFromDB(ctx, sessionId)
 	if err != nil {
-		return router.ResponseInternalError(c, err.Error())
+		memoryContacts, memoryErr := pkgWhatsApp.WhatsAppContactsGet(jid)
+		if memoryErr != nil {
+			return router.ResponseInternalError(c, err.Error())
+		}
+
+		return router.ResponseSuccessWithData(c, "Successfully List Contacts from Client Store", memoryContacts)
 	}
 
 	// Transform to match existing API format
