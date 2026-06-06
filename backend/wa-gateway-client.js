@@ -94,6 +94,46 @@ function normalizeJid(jid) {
     return clean;
 }
 
+function decodeJwtPayload(token) {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+
+    try {
+        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+        return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    } catch (_error) {
+        return null;
+    }
+}
+
+function getTokenJid(token) {
+    const payload = decodeJwtPayload(token);
+    return payload?.dat?.jid || payload?.data?.jid || payload?.jid || null;
+}
+
+function isTokenForSession(token, jid) {
+    const tokenJid = getTokenJid(token);
+    if (!tokenJid) return true;
+    return normalizeJid(tokenJid) === normalizeJid(jid);
+}
+
+function extractGatewaySessionId(payload) {
+    return payload?.data?.sessionId || payload?.sessionId || null;
+}
+
+function assertGatewaySessionMatches(jid, payload) {
+    const gatewaySessionId = extractGatewaySessionId(payload);
+    if (!gatewaySessionId) return;
+
+    const expected = normalizeJid(jid);
+    const actual = normalizeJid(gatewaySessionId);
+    if (expected && actual && expected !== actual) {
+        throw new Error(`Gateway session identity mismatch: requested ${expected}, got ${actual}`);
+    }
+}
+
 /**
  * Set the gateway URL for a session
  */
@@ -136,6 +176,10 @@ function resolveGatewayUrl(jid) {
  */
 function setSessionToken(jid, token) {
     const cleanJid = normalizeJid(jid);
+    if (!isTokenForSession(token, jid)) {
+        const tokenJid = getTokenJid(token);
+        throw new Error(`Gateway token identity mismatch: requested ${cleanJid}, token is for ${normalizeJid(tokenJid) || tokenJid}`);
+    }
     
     // Collision Detection (Security Critical)
     if (sessionJidMap.has(cleanJid)) {
@@ -155,7 +199,14 @@ function setSessionToken(jid, token) {
  * Get the JWT token for a session
  */
 function getSessionToken(jid) {
-    return sessionTokens.get(normalizeJid(jid));
+    const token = sessionTokens.get(normalizeJid(jid));
+    if (!token) return null;
+    if (!isTokenForSession(token, jid)) {
+        console.warn(`[Gateway-Client] Dropping stale token for ${jid}: JWT belongs to ${getTokenJid(token)}`);
+        removeSessionToken(jid);
+        return null;
+    }
+    return token;
 }
 
 /**
@@ -247,7 +298,7 @@ async function reauthAndReconnect(jid) {
  */
 function getAuthHeader(jid) {
     const cleanJid = normalizeJid(jid);
-    const token = sessionTokens.get(cleanJid);
+    const token = getSessionToken(jid);
     if (!token) {
         throw new Error(`No token found for session ${jid} (normalized: ${cleanJid})`);
     }
@@ -379,6 +430,14 @@ async function authenticate(username, password) {
         const client = getGatewayClient(resolveGatewayUrl(username));
         const response = await client.get('/auth', {
             auth: { username, password },
+            params: {
+                session_id: normalizeJid(username),
+                _: Date.now(),
+            },
+            headers: {
+                'Cache-Control': 'no-store',
+                Pragma: 'no-cache',
+            },
         });
         const payload = unwrap(response);
         if (!payload.status || !payload.data?.token) {
@@ -870,13 +929,19 @@ async function withGatewayAuthOnly(jid, operation) {
 
     await ensureToken();
     try {
-        return await operation();
+        const result = await operation();
+        assertGatewaySessionMatches(jid, result);
+        return result;
     } catch (error) {
-        const shouldRetry = error?.response?.status === 401 || error?.response?.status === 403;
+        const shouldRetry = error?.response?.status === 401
+            || error?.response?.status === 403
+            || (error?.message || '').includes('Gateway session identity mismatch');
         if (!shouldRetry) throw error;
         removeSessionToken(jid);
         await ensureToken();
-        return await operation();
+        const retryResult = await operation();
+        assertGatewaySessionMatches(jid, retryResult);
+        return retryResult;
     }
 }
 
