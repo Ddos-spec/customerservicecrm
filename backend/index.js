@@ -249,17 +249,7 @@ async function prunePersistedSessions() {
         waGateway.setSessionGatewayUrl(sessionId, null);
         removedCount += 1;
 
-        if (redisClient?.isOpen) {
-            await Promise.allSettled([
-                redisClient.del(`wa:contacts:${sessionId}`),
-                redisClient.del(`wa:settings:${sessionId}`),
-                redisClient.del(`wa:session_status:${sessionId}`),
-                redisClient.del(`wa:sync:last:${sessionId}`),
-                redisClient.del(`wa:sync:next:${sessionId}`),
-                redisClient.del(`wa:sync:fail:${sessionId}`),
-                redisClient.zRem(CONTACT_SYNC_QUEUE_NAME, sessionId),
-            ]);
-        }
+        await clearRedisSessionState(sessionId);
     }
 
     if (removedCount > 0) {
@@ -388,6 +378,7 @@ async function acquireSessionLock(sessionId) {
 }
 
 async function releaseSessionLock(sessionId) {
+    if (!redisClient?.isOpen) return;
     await redisClient.del(`wa:lock:${sessionId}`);
 }
 
@@ -456,9 +447,24 @@ async function clearContactSyncState(sessionId) {
     if (!redisClient?.isOpen) return;
     const normalized = normalizeSyncSessionId(sessionId);
     if (!normalized) return;
+    await redisClient.del(`wa:sync:last:${normalized}`);
     await redisClient.del(`wa:sync:fail:${normalized}`);
     await redisClient.del(`wa:sync:next:${normalized}`);
     await redisClient.zRem(CONTACT_SYNC_QUEUE_NAME, normalized);
+}
+
+async function clearRedisSessionState(sessionId) {
+    if (!redisClient?.isOpen) return;
+    const normalized = normalizeSyncSessionId(sessionId);
+    if (!normalized) return;
+
+    await Promise.allSettled([
+        redisClient.del(`wa:contacts:${normalized}`),
+        redisClient.del(`wa:settings:${normalized}`),
+        redisClient.del(`wa:session_status:${normalized}`),
+        redisClient.del(`wa:lock:${normalized}`),
+        clearContactSyncState(normalized)
+    ]);
 }
 
 async function seedContactSyncQueue(force = false) {
@@ -1372,29 +1378,49 @@ async function createSession(sessionId) {
  */
 async function deleteSession(sessionId) {
     try {
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId) {
+            throw new Error('Session ID is required');
+        }
+
         // Try to logout via Go gateway
         try {
-            await waGateway.logout(sessionId);
+            await waGateway.logout(normalizedSessionId);
         } catch (error) {
-            logger.warn(`Gateway logout error for ${sessionId}: ${error.message}`);
+            logger.warn(`Gateway logout error for ${normalizedSessionId}: ${error.message}`);
         }
 
         // Clean up local state
-        sessions.delete(sessionId);
-        sessionTokens.delete(sessionId);
-        waGateway.removeSessionToken(sessionId);
-        waGateway.setSessionGatewayUrl(sessionId, null);
+        sessions.delete(normalizedSessionId);
+        sessionTokens.delete(normalizedSessionId);
+        waGateway.removeSessionToken(normalizedSessionId);
+        waGateway.setSessionGatewayUrl(normalizedSessionId, null);
         saveTokens();
 
-        await releaseSessionLock(sessionId);
+        await releaseSessionLock(normalizedSessionId);
+
+        const references = await db.clearSessionReferences(normalizedSessionId);
+        const unlinkedTenantNames = references.tenants.map((tenant) => tenant.company_name || tenant.id);
+        if (references.tenants.length || references.users.length || references.systemSettings.length) {
+            logger.info({
+                sessionId: normalizedSessionId,
+                tenants: unlinkedTenantNames,
+                users: references.users.length,
+                systemSettings: references.systemSettings.length
+            }, 'Session references unlinked from database');
+        }
 
         // Clear session data from Redis
-        await redisClient.del(`wa:contacts:${sessionId}`);
-        await redisClient.del(`wa:settings:${sessionId}`);
-        await redisClient.del(`wa:session_status:${sessionId}`);
+        await clearRedisSessionState(normalizedSessionId);
 
-        logger.info(`Session ${sessionId} deleted and cleaned up`);
+        logger.info(`Session ${normalizedSessionId} deleted and cleaned up`);
         broadcastSessionUpdate();
+        return {
+            sessionId: normalizedSessionId,
+            unlinkedTenants: references.tenants,
+            unlinkedUsers: references.users.length,
+            clearedSystemSettings: references.systemSettings.length
+        };
     } catch (error) {
         logger.error(`Error deleting session ${sessionId}: ${error.message}`);
         throw error;

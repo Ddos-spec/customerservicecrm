@@ -109,9 +109,9 @@ function buildSessionsRouter(deps) {
         } : null;
 
         try {
-            await deleteSession(sessionId);
-            log('Session deleted', sessionId, { event: 'session-deleted', sessionId });
-            res.status(200).json({ status: 'success', message: `Session ${sessionId} deleted.` });
+            const cleanup = await deleteSession(sessionId);
+            log('Session deleted', sessionId, { event: 'session-deleted', sessionId, cleanup });
+            res.status(200).json({ status: 'success', message: `Session ${sessionId} deleted.`, cleanup });
         } catch (error) {
             log('API error', 'SYSTEM', { event: 'api-error', error: error.message, endpoint: req.originalUrl });
             res.status(500).json({ status: 'error', message: `Failed to delete session: ${error.message}` });

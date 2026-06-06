@@ -49,6 +49,67 @@ async function getTenantBySessionId(sessionId) {
     return result.rows[0] || null;
 }
 
+async function clearSessionReferences(sessionId) {
+    const normalized = String(sessionId || '').trim();
+    if (!normalized) {
+        return { tenants: [], users: [], systemSettings: [] };
+    }
+
+    const client = await getClient();
+    try {
+        await client.query('BEGIN');
+
+        const tenants = await client.query(
+            `UPDATE tenants
+             SET session_id = NULL,
+                 gateway_url = CASE WHEN session_id = $1 THEN NULL ELSE gateway_url END
+             WHERE session_id = $1
+             RETURNING id, company_name`,
+            [normalized]
+        );
+
+        const systemSettings = await client.query(
+            `DELETE FROM system_settings
+             WHERE key = 'notifier_session_id'
+               AND value = $1
+             RETURNING key`,
+            [normalized]
+        );
+
+        const hasUserSessionColumn = await client.query(`
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'users'
+              AND column_name = 'session_id'
+            LIMIT 1
+        `);
+
+        let users = { rows: [] };
+        if (hasUserSessionColumn.rowCount > 0) {
+            users = await client.query(
+                `UPDATE users
+                 SET session_id = NULL
+                 WHERE session_id = $1
+                 RETURNING id, email`,
+                [normalized]
+            );
+        }
+
+        await client.query('COMMIT');
+        return {
+            tenants: tenants.rows,
+            users: users.rows,
+            systemSettings: systemSettings.rows
+        };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
 function normalizeChatbotPrompt(text) {
     return (text || '').toString().trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -808,7 +869,7 @@ async function getSuperAdminStats(range = null) {
 module.exports = {
     query, getClient, pool,
     // Users & Tenants
-    findUserByEmail, findUserById, getTenantById, getTenantBySessionId, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
+    findUserByEmail, findUserById, getTenantById, getTenantBySessionId, clearSessionReferences, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
     messageExistsByWaId,
     getTenantChatbotPairs,
     replaceTenantChatbotPairs,
