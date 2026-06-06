@@ -444,6 +444,7 @@ async function handleMessage(req, sessionId, data) {
 
     } catch (error) {
         console.error('[Webhook] Error handling message persistence:', error);
+        throw error;
     }
 }
 

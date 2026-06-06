@@ -219,6 +219,8 @@ async function getAllowedPersistedSessionIds() {
     const allowed = new Set();
     const tenants = await db.getAllTenants();
     tenants.forEach((tenant) => {
+        const provider = tenant?.wa_provider || 'whatsmeow';
+        if (provider !== 'whatsmeow') return;
         if (tenant?.session_id && typeof tenant.session_id === 'string' && tenant.session_id.trim()) {
             allowed.add(tenant.session_id.trim());
         }
@@ -1879,6 +1881,7 @@ async function syncSessionsWithDatabase() {
         let restoredCount = 0;
 
         for (const tenant of tenants) {
+            if ((tenant.wa_provider || 'whatsmeow') !== 'whatsmeow') continue;
             if (!tenant.session_id) continue;
             
             // If session is already known and has token, skip

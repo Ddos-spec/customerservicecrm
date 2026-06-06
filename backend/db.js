@@ -39,6 +39,24 @@ async function findUserById(id) {
     return result.rows[0] || null;
 }
 
+async function getUserBySessionId(sessionId) {
+    const normalized = String(sessionId || '').trim();
+    if (!normalized) return null;
+
+    const hasUserSessionColumn = await query(`
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = 'session_id'
+        LIMIT 1
+    `);
+    if (hasUserSessionColumn.rowCount === 0) return null;
+
+    const result = await query('SELECT * FROM users WHERE session_id = $1 LIMIT 1', [normalized]);
+    return result.rows[0] || null;
+}
+
 async function getTenantById(id) {
     const result = await query('SELECT * FROM tenants WHERE id = $1', [id]);
     return result.rows[0] || null;
@@ -869,7 +887,7 @@ async function getSuperAdminStats(range = null) {
 module.exports = {
     query, getClient, pool,
     // Users & Tenants
-    findUserByEmail, findUserById, getTenantById, getTenantBySessionId, clearSessionReferences, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
+    findUserByEmail, findUserById, getUserBySessionId, getTenantById, getTenantBySessionId, clearSessionReferences, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
     messageExistsByWaId,
     getTenantChatbotPairs,
     replaceTenantChatbotPairs,

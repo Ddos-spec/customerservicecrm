@@ -63,6 +63,16 @@ function normalizeWebhookEventsConfig(rawConfig) {
     };
 }
 
+
+function normalizeWhatsmeowSessionId(rawSessionId) {
+    let sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+    if (sessionId) {
+        sessionId = sessionId.replace(/\D/g, '');
+        if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
+    }
+    return sessionId === '' ? null : sessionId;
+}
+
 function normalizeAiMode(value) {
     const normalized = (value || 'agent').toString().trim().toLowerCase();
     return VALID_AI_MODES.has(normalized) ? normalized : 'agent';
@@ -701,15 +711,7 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
         const hasGatewayUrl = typeof gatewayUrlRaw !== 'undefined';
         
         // Normalize Session ID (Force 62 format)
-        let sessionId = typeof sessionIdRaw === 'string' ? sessionIdRaw.trim() : '';
-        if (sessionId) {
-            sessionId = sessionId.replace(/\D/g, ''); // Remove non-digits
-            if (sessionId.startsWith('0')) {
-                sessionId = '62' + sessionId.slice(1);
-            }
-        }
-        
-        const normalizedSessionId = sessionId === '' ? null : sessionId;
+        const normalizedSessionId = normalizeWhatsmeowSessionId(sessionIdRaw);
         const gatewayUrl = typeof gatewayUrlRaw === 'string' ? gatewayUrlRaw.trim() : '';
         const normalizedGatewayUrl = gatewayUrl === '' ? null : gatewayUrl;
 
@@ -907,23 +909,20 @@ router.patch('/tenants/:id/session', requireRole('super_admin'), async (req, res
             if (meta_waba_id !== undefined) updates.meta_waba_id = meta_waba_id ? meta_waba_id.trim() : null;
             if (meta_token !== undefined) updates.meta_token = meta_token ? meta_token.trim() : null;
             
-            // Clear legacy session if switching to Meta (optional, but cleaner)
-            // updates.session_id = null; 
+            // Meta does not use Whatsmeow runtime sessions. Leaving this set lets
+            // stale Whatsmeow tokens survive pruning/self-healing as DB-owned sessions.
+            updates.session_id = null;
+            updates.gateway_url = null;
         }
 
         // 3. Whatsmeow Configuration
-        if (effectiveProvider === 'whatsmeow' || rawSessionId !== undefined || rawGatewayUrl !== undefined) {
+        if (effectiveProvider === 'whatsmeow') {
             const hasSessionId = typeof rawSessionId !== 'undefined';
             const hasGatewayUrl = typeof rawGatewayUrl !== 'undefined';
 
             let normalizedSessionId = existingTenant.session_id;
             if (hasSessionId) {
-                let sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
-                if (sessionId) {
-                    sessionId = sessionId.replace(/\D/g, '');
-                    if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
-                }
-                normalizedSessionId = sessionId === '' ? null : sessionId;
+                normalizedSessionId = normalizeWhatsmeowSessionId(rawSessionId);
                 updates.session_id = normalizedSessionId;
             }
 
@@ -1892,9 +1891,12 @@ router.post('/notifier-session', requireRole('super_admin'), async (req, res) =>
         if (!session_id || typeof session_id !== 'string') {
             return res.status(400).json({ success: false, error: 'session_id is required' });
         }
-        const trimmed = session_id.trim();
-        await db.setSystemSetting('notifier_session_id', trimmed);
-        res.json({ success: true, notifier_session_id: trimmed });
+        const normalizedSessionId = normalizeWhatsmeowSessionId(session_id);
+        if (!normalizedSessionId) {
+            return res.status(400).json({ success: false, error: 'session_id is invalid' });
+        }
+        await db.setSystemSetting('notifier_session_id', normalizedSessionId);
+        res.json({ success: true, notifier_session_id: normalizedSessionId });
     } catch (error) {
         console.error('Error setting notifier session:', error);
         res.status(500).json({ success: false, error: 'Failed to set notifier session' });
