@@ -142,9 +142,25 @@ app.use(cors(corsOptions));
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+function buildRedisClient() {
+    return createClient({
+        url: process.env.REDIS_URL || 'redis://localhost:6379',
+        socket: {
+            reconnectStrategy: (retries) => Math.min(1000 * retries, 10000)
+        }
+    });
+}
+
+function isRedisUsable(client) {
+    return Boolean(client?.isOpen && client?.isReady);
+}
+
 // Redis clients
-const redisClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
-const redisSessionClient = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
+const redisClient = buildRedisClient();
+const redisSessionClient = buildRedisClient();
+
+redisClient.on('error', (err) => logger.warn(`[Redis] cache client error: ${err.message}`));
+redisSessionClient.on('error', (err) => logger.warn(`[Redis] session client error: ${err.message}`));
 
 // Connect Redis
 if (!isTest) {
@@ -1515,8 +1531,76 @@ app.use(helmet({
 //     legacyHeaders: false,
 // }));
 
+function createResilientSessionStore(redisSessionStore, memorySessionStore) {
+    class ResilientSessionStore extends session.Store {
+        get(sid, callback) {
+            if (!isRedisUsable(redisSessionClient)) {
+                logger.warn('[Session] Redis unavailable, reading session from memory fallback');
+                return memorySessionStore.get(sid, callback);
+            }
+
+            return redisSessionStore.get(sid, (error, sessionData) => {
+                if (!error) return callback(null, sessionData);
+                logger.warn(`[Session] Redis get failed, falling back to memory: ${error.message}`);
+                return memorySessionStore.get(sid, callback);
+            });
+        }
+
+        set(sid, sessionData, callback) {
+            const done = typeof callback === 'function' ? callback : () => {};
+            if (!isRedisUsable(redisSessionClient)) {
+                logger.warn('[Session] Redis unavailable, saving session to memory fallback');
+                return memorySessionStore.set(sid, sessionData, done);
+            }
+
+            return redisSessionStore.set(sid, sessionData, (error) => {
+                if (!error) return done(null);
+                logger.warn(`[Session] Redis set failed, saving to memory fallback: ${error.message}`);
+                return memorySessionStore.set(sid, sessionData, done);
+            });
+        }
+
+        destroy(sid, callback) {
+            const done = typeof callback === 'function' ? callback : () => {};
+            memorySessionStore.destroy(sid, () => {});
+            if (!isRedisUsable(redisSessionClient)) return done(null);
+
+            return redisSessionStore.destroy(sid, (error) => {
+                if (error) logger.warn(`[Session] Redis destroy failed: ${error.message}`);
+                return done(null);
+            });
+        }
+
+        touch(sid, sessionData, callback) {
+            const done = typeof callback === 'function' ? callback : () => {};
+            if (!isRedisUsable(redisSessionClient)) {
+                if (typeof memorySessionStore.touch === 'function') {
+                    return memorySessionStore.touch(sid, sessionData, done);
+                }
+                return memorySessionStore.set(sid, sessionData, done);
+            }
+
+            return redisSessionStore.touch(sid, sessionData, (error) => {
+                if (!error) return done(null);
+                logger.warn(`[Session] Redis touch failed, touching memory fallback: ${error.message}`);
+                if (typeof memorySessionStore.touch === 'function') {
+                    return memorySessionStore.touch(sid, sessionData, done);
+                }
+                return memorySessionStore.set(sid, sessionData, done);
+            });
+        }
+    }
+
+    return new ResilientSessionStore();
+}
+
+const sessionStore = createResilientSessionStore(
+    new RedisStore({ client: redisSessionClient }),
+    new session.MemoryStore()
+);
+
 app.use(session({
-    store: new RedisStore({ client: redisSessionClient }),
+    store: sessionStore,
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -1543,7 +1627,7 @@ async function checkPostgresHealth() {
 }
 
 async function checkRedisHealth(client) {
-    if (!client?.isOpen) {
+    if (!isRedisUsable(client)) {
         return { status: 'error', message: 'Redis not connected' };
     }
     try {
