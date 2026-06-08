@@ -323,6 +323,7 @@ async function handleMessage(req, sessionId, data) {
             await alertUnknownSessionMessage(sessionId, message);
             return;
         }
+        console.log(`[Webhook] Processing message ${message.id || 'no-id'} for tenant ${tenant.company_name || tenant.id} (${tenant.id}) session ${sessionId}`);
 
         // 2. Identify Target Chat
         // For groups: message.to = group JID, message.from = sender in group
@@ -336,10 +337,19 @@ async function handleMessage(req, sessionId, data) {
         const targetJid = await resolveCanonicalJid(rawTargetJid, { isGroup });
 
         // Ensure we have a valid JID
-        if (!targetJid) return;
+        if (!targetJid) {
+            console.warn(`[Webhook] Ignored message ${message.id || 'no-id'} for session ${sessionId}: no target JID`, {
+                from: message.from || null,
+                to: message.to || null,
+                isGroup,
+                isFromMe: Boolean(message.isFromMe),
+            });
+            return;
+        }
 
         // --- FILTER: Ignore Status Updates ---
         if (targetJid === 'status@broadcast' || targetJid.includes('@broadcast')) {
+            console.log(`[Webhook] Ignored status/broadcast message ${message.id || 'no-id'} for session ${sessionId} target ${targetJid}`);
             return;
         }
 
@@ -365,6 +375,9 @@ async function handleMessage(req, sessionId, data) {
         const senderType = message.isFromMe ? 'agent' : 'customer';
         const senderJid = await resolveCanonicalJid(message.from, { isGroup: false });
         const messageAlreadyExists = await db.messageExistsByWaId(message.id);
+        if (messageAlreadyExists) {
+            console.log(`[Webhook] Message ${message.id} already exists; refreshing/broadcasting existing chat path`);
+        }
         let senderName = message.pushName;
         if (!senderName && senderJid) {
             const contact = await db.getContactByJid(tenant.id, senderJid);
@@ -387,7 +400,7 @@ async function handleMessage(req, sessionId, data) {
             isFromMe: message.isFromMe
         });
 
-        console.log(`[Webhook] Saved ${senderType} message ID ${savedMessage.id} for Chat ${chat.id} (${targetJid})`);
+        console.log(`[Webhook] Saved ${senderType} message ID ${savedMessage.id} for Chat ${chat.id} (${targetJid}) body="${messageText.slice(0, 120)}"`);
 
         const { publicMediaUrl, forwardedMessage } = buildForwardableMedia(req, sessionId, message);
 

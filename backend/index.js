@@ -57,6 +57,7 @@ const WS_HEARTBEAT_MS = parseInt(process.env.WS_HEARTBEAT_MS || '30000', 10);
 const WS_SESSION_SNAPSHOT_MS = parseInt(process.env.WS_SESSION_SNAPSHOT_MS || '60000', 10);
 const HEALTH_CHECK_TOKEN = process.env.HEALTH_CHECK_TOKEN || '';
 const ENABLE_DB_SESSION_SELF_HEALING = process.env.ENABLE_DB_SESSION_SELF_HEALING === 'true';
+const SESSION_IDENTITY_MISMATCH_LOG_TTL_MS = parseInt(process.env.SESSION_IDENTITY_MISMATCH_LOG_TTL_MS || `${60 * 60 * 1000}`, 10);
 
 const app = express();
 // Detect production if NODE_ENV is set OR if FRONTEND_URL is https (common in deployments)
@@ -181,6 +182,7 @@ const sessions = new Map();
 // Store JWT tokens: sessionId -> token
 const sessionTokens = new Map();
 const outboundQueueWorkerId = `backend-${process.pid}-${crypto.randomUUID()}`;
+const sessionIdentityMismatchLogCache = new Map();
 
 // Initialize Alert System with internal dependencies
 initAlertSystem(db, scheduleMessageSend, sessions);
@@ -1095,6 +1097,43 @@ function buildGatewayIdentityDiagnostic(requestedSessionId, statusResponse) {
     };
 }
 
+function shouldLogSessionIdentityMismatch(sessionId, purpose) {
+    const key = `${purpose}:${sessionId}`;
+    const now = Date.now();
+    const lastAt = sessionIdentityMismatchLogCache.get(key) || 0;
+    if (lastAt && now - lastAt < SESSION_IDENTITY_MISMATCH_LOG_TTL_MS) return false;
+
+    sessionIdentityMismatchLogCache.set(key, now);
+    for (const [cachedKey, cachedAt] of sessionIdentityMismatchLogCache.entries()) {
+        if (now - cachedAt > SESSION_IDENTITY_MISMATCH_LOG_TTL_MS * 2) {
+            sessionIdentityMismatchLogCache.delete(cachedKey);
+        }
+    }
+    return true;
+}
+
+function isWhatsmeowTenant(tenant) {
+    return (tenant?.wa_provider || 'whatsmeow') === 'whatsmeow';
+}
+
+async function inspectTenantGatewayIdentity(tenant, purpose) {
+    if (!tenant?.session_id || !isWhatsmeowTenant(tenant)) {
+        return { ok: false, skipped: true, reason: 'missing_session_or_not_whatsmeow' };
+    }
+
+    const status = await waGateway.getSessionStatus(tenant.session_id);
+    const identity = buildGatewayIdentityDiagnostic(tenant.session_id, status);
+    if (identity.mismatch) {
+        if (shouldLogSessionIdentityMismatch(tenant.session_id, purpose)) {
+            logger.warn(`[${purpose}] Skipping ${tenant.company_name || tenant.id} (${tenant.session_id}): ${identity.reason}`);
+        }
+        waGateway.removeSessionToken(tenant.session_id);
+        return { ok: false, skipped: true, status, identity, reason: 'identity_mismatch' };
+    }
+
+    return { ok: true, status, identity };
+}
+
 function buildPrivateMessageGapDiagnostic(statusResponse) {
     const gatewayData = extractGatewayStatusData(statusResponse);
     const stats = gatewayData?.eventStats || {};
@@ -1129,11 +1168,13 @@ async function runPrivateMessageGapDetector() {
     try {
         const tenants = await db.getAllTenants();
         for (const tenant of tenants) {
-            if (!tenant?.session_id) continue;
+            if (!tenant?.session_id || !isWhatsmeowTenant(tenant)) continue;
 
             try {
-                const status = await waGateway.getSessionStatus(tenant.session_id);
-                const diagnostic = buildPrivateMessageGapDiagnostic(status);
+                const inspection = await inspectTenantGatewayIdentity(tenant, 'Gap');
+                if (!inspection.ok) continue;
+
+                const diagnostic = buildPrivateMessageGapDiagnostic(inspection.status);
                 if (!diagnostic.warning) continue;
 
                 const alertKey = `wa:alert:private_gap:${tenant.session_id}`;
@@ -1164,8 +1205,11 @@ async function recoverMissedGatewayEvents() {
     try {
         const tenants = await db.getAllTenants();
         for (const tenant of tenants) {
-            if (!tenant?.session_id) continue;
+            if (!tenant?.session_id || !isWhatsmeowTenant(tenant)) continue;
             try {
+                const inspection = await inspectTenantGatewayIdentity(tenant, 'Recovery');
+                if (!inspection.ok) continue;
+
                 const result = await waGateway.retryFailedWebhooks(tenant.session_id);
                 const requeued = Number(result?.data?.requeued || 0);
                 if (requeued > 0) {
