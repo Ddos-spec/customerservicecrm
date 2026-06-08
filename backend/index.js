@@ -1264,6 +1264,20 @@ function getSessionsDetails() {
 const refreshCooldowns = new Map();
 const REFRESH_COOLDOWN_MS = 60000; // 60 seconds between refresh attempts per session
 
+function summarizeGatewayPayload(payload) {
+    const data = payload?.data;
+    return {
+        status: payload?.status ?? null,
+        code: payload?.code ?? null,
+        message: payload?.message || null,
+        dataType: Array.isArray(data) ? 'array' : (data && typeof data === 'object' ? 'object' : typeof data),
+        itemCount: Array.isArray(data) ? data.length : null,
+        sessionId: data?.sessionId || payload?.sessionId || null,
+        connected: data?.connected ?? data?.loggedIn ?? null,
+        hasQr: Boolean(data?.qrcode),
+    };
+}
+
 async function refreshSession(sessionId) {
     // Only refresh if we have a token (known session)
     if (!sessionTokens.has(sessionId)) {
@@ -1330,7 +1344,7 @@ async function refreshSession(sessionId) {
         try {
             console.log(`[Refresh] Attempting Strategy 1 (Groups) for ${sessionId}...`);
             const groupResp = await waGateway.getGroups(sessionId);
-            console.log(`[Refresh] Strategy 1 Result for ${sessionId}:`, JSON.stringify(groupResp));
+            console.log(`[Refresh] Strategy 1 Summary for ${sessionId}: ${JSON.stringify(summarizeGatewayPayload(groupResp))}`);
             
             if (groupResp && (groupResp.status === true || groupResp.status === 'success')) {
                 console.log(`[Refresh] Strategy 1 Success! Marking ${sessionId} as CONNECTED`);
@@ -1344,7 +1358,7 @@ async function refreshSession(sessionId) {
         // STRATEGY 2: Login (Heavy Check / QR Gen)
         console.log(`[Refresh] Attempting Strategy 2 (Login) for ${sessionId}...`);
         const response = await waGateway.login(sessionId);
-        console.log(`[Refresh] Strategy 2 Result for ${sessionId}:`, JSON.stringify(response));
+        console.log(`[Refresh] Strategy 2 Summary for ${sessionId}: ${JSON.stringify(summarizeGatewayPayload(response))}`);
         
         const msg = (response.message || '').toLowerCase();
         
