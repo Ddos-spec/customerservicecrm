@@ -19,6 +19,7 @@ import (
 )
 
 const groupNameCacheTTL = 10 * time.Minute
+const statusBroadcastJID = "status@broadcast"
 
 type groupNameCacheEntry struct {
 	name      string
@@ -100,19 +101,23 @@ func (h *Handler) handleMessage(evt *events.Message) {
 	}
 
 	fromJID, toJID := h.resolveMessageParties(evt)
+	isGroup := isRealGroupJID(evt.Info.Chat)
+	isBroadcast := isBroadcastJID(evt.Info.Chat)
 
 	// Build message payload
 	msg := webhook.MessagePayload{
 		ID:        evt.Info.ID,
 		From:      fromJID,
 		To:        toJID,
-		IsGroup:   evt.Info.IsGroup,
+		IsGroup:   isGroup,
 		IsFromMe:  evt.Info.IsFromMe,
 		PushName:  evt.Info.PushName,
 		Timestamp: evt.Info.Timestamp.Unix(),
 		Raw: map[string]interface{}{
-			"chat":   evt.Info.Chat.String(),
-			"sender": evt.Info.Sender.String(),
+			"chat":        evt.Info.Chat.String(),
+			"sender":      evt.Info.Sender.String(),
+			"isGroup":     evt.Info.IsGroup,
+			"isBroadcast": isBroadcast,
 		},
 	}
 
@@ -145,6 +150,8 @@ func (h *Handler) handleMessage(evt *events.Message) {
 	chatType := "private"
 	if msg.IsGroup {
 		chatType = "group"
+	} else if isBroadcast {
+		chatType = "broadcast"
 	}
 	log.Print(nil).Infof("[%s] [%s] %s | from: %s | type: %s | session: %s",
 		direction, chatType, msg.PushName, msg.From, msg.Type, h.sessionID)
@@ -162,7 +169,7 @@ func (h *Handler) resolveMessageParties(evt *events.Message) (from string, to st
 	sender := evt.Info.Sender.String()
 	ownJID := h.ownJID()
 
-	if evt.Info.IsGroup {
+	if isRealGroupJID(evt.Info.Chat) {
 		if sender == "" {
 			sender = chat
 		}
@@ -180,6 +187,15 @@ func (h *Handler) resolveMessageParties(evt *events.Message) (from string, to st
 	}
 	to = ownJID
 	return from, to
+}
+
+func isRealGroupJID(jid types.JID) bool {
+	return strings.HasSuffix(jid.String(), "@g.us")
+}
+
+func isBroadcastJID(jid types.JID) bool {
+	raw := jid.String()
+	return raw == statusBroadcastJID || strings.HasSuffix(raw, "@broadcast")
 }
 
 func (h *Handler) ownJID() string {
