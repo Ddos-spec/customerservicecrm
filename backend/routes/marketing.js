@@ -170,10 +170,19 @@ function buildMarketingRouter(deps) {
                   AND cg.id = ANY($3::uuid[])
                   AND c.phone_number IS NOT NULL
                   AND c.phone_number <> ''
-                  AND c.jid NOT LIKE '%@g.us'
+                  AND COALESCE(c.jid, '') NOT LIKE '%@g.us'
+                  AND COALESCE(c.jid, '') NOT LIKE '%@broadcast'
             `, [campaign.id, ctx.tenantId, groupIds]);
 
             const totalTargets = queueRes.rowCount || 0;
+            if (totalTargets === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Target valid kosong. Pastikan group berisi kontak pribadi dengan nomor WhatsApp.'
+                });
+            }
+
             await client.query(`
                 UPDATE campaigns
                 SET total_targets = $1
