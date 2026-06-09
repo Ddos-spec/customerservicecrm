@@ -20,6 +20,8 @@ import (
 
 const groupNameCacheTTL = 10 * time.Minute
 const statusBroadcastJID = "status@broadcast"
+const restoredMessageStartupWindow = 10 * time.Minute
+const restoredMessageGracePeriod = 2 * time.Minute
 
 type groupNameCacheEntry struct {
 	name      string
@@ -50,6 +52,7 @@ var (
 type Handler struct {
 	sessionID        string
 	client           *whatsmeow.Client
+	startedAt        time.Time
 	groupNameCache   map[string]groupNameCacheEntry
 	groupNameCacheMu sync.RWMutex
 }
@@ -59,6 +62,7 @@ func NewHandler(sessionID string, client *whatsmeow.Client) *Handler {
 	return &Handler{
 		sessionID:      sessionID,
 		client:         client,
+		startedAt:      time.Now(),
 		groupNameCache: make(map[string]groupNameCacheEntry),
 	}
 }
@@ -103,6 +107,11 @@ func (h *Handler) handleMessage(evt *events.Message) {
 	fromJID, toJID := h.resolveMessageParties(evt)
 	isGroup := isRealGroupJID(evt.Info.Chat)
 	isBroadcast := isBroadcastJID(evt.Info.Chat)
+	if h.isLikelyRestoredMessage(evt.Info.Timestamp) {
+		log.Print(nil).Debugf("[MESSAGE] Ignored restored old message %s | chat: %s | messageAt: %s | session: %s",
+			evt.Info.ID, evt.Info.Chat.String(), evt.Info.Timestamp.Format(time.RFC3339), h.sessionID)
+		return
+	}
 
 	// Build message payload
 	msg := webhook.MessagePayload{
@@ -202,6 +211,16 @@ func isRealGroupJID(jid types.JID) bool {
 func isBroadcastJID(jid types.JID) bool {
 	raw := jid.String()
 	return raw == statusBroadcastJID || strings.HasSuffix(raw, "@broadcast")
+}
+
+func (h *Handler) isLikelyRestoredMessage(messageAt time.Time) bool {
+	if messageAt.IsZero() {
+		return false
+	}
+	if time.Since(h.startedAt) > restoredMessageStartupWindow {
+		return false
+	}
+	return messageAt.Before(h.startedAt.Add(-restoredMessageGracePeriod))
 }
 
 func (h *Handler) ownJID() string {
