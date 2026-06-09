@@ -4,7 +4,21 @@ const WhatsmeowDriver = require('../whatsapp/drivers/whatsmeow');
 const { formatPhoneNumber, toWhatsAppFormat } = require('../../phone-utils');
 
 let isProcessing = false;
-const THROTTLE_MS = Math.ceil(60_000 / 50);
+const MESSAGES_PER_MINUTE = Math.max(1, parseInt(process.env.MARKETING_MESSAGES_PER_MINUTE || '50', 10));
+const BATCH_LIMIT = Math.max(1, parseInt(process.env.MARKETING_BATCH_LIMIT || `${MESSAGES_PER_MINUTE}`, 10));
+const THROTTLE_MS = Math.ceil(60_000 / MESSAGES_PER_MINUTE);
+
+function renderTemplate(template, contact) {
+    const fullName = (contact.full_name || '').toString().trim();
+    const phoneNumber = (contact.phone_number || '').toString().trim();
+    const fallbackName = fullName || phoneNumber || 'Pelanggan';
+
+    return (template || '').toString()
+        .replace(/\{\{\s*full_name\s*\}\}/gi, fallbackName)
+        .replace(/\{\{\s*name\s*\}\}/gi, fallbackName)
+        .replace(/\{\{\s*phone_number\s*\}\}/gi, phoneNumber)
+        .replace(/\{\{\s*phone\s*\}\}/gi, phoneNumber);
+}
 
 async function processBatch() {
     if (isProcessing) return;
@@ -23,9 +37,9 @@ async function processBatch() {
                 JOIN campaigns c ON c.id = cm.campaign_id
                 WHERE cm.status = 'pending'
                   AND c.scheduled_at <= NOW()
-                  AND c.status != 'paused'
+                  AND c.status IN ('scheduled', 'processing')
                 ORDER BY cm.created_at ASC
-                LIMIT 50
+                LIMIT ${BATCH_LIMIT}
                 FOR UPDATE SKIP LOCKED
             ),
             updated AS (
@@ -43,6 +57,8 @@ async function processBatch() {
                 c.tenant_id,
                 c.message_template,
                 c.name AS campaign_name,
+                con.full_name,
+                con.jid,
                 t.wa_provider,
                 t.session_id,
                 t.meta_phone_id,
@@ -50,6 +66,7 @@ async function processBatch() {
                 t.company_name
             FROM updated u
             JOIN campaigns c ON c.id = u.campaign_id
+            LEFT JOIN contacts con ON con.id = u.contact_id
             JOIN tenants t ON t.id = c.tenant_id
         `);
 
@@ -89,7 +106,12 @@ async function processBatch() {
                 if (provider instanceof WhatsmeowDriver) {
                     destination = toWhatsAppFormat(destination);
                 }
-                const result = await provider.sendText(destination, row.message_template);
+                const renderedMessage = renderTemplate(row.message_template, {
+                    full_name: row.full_name,
+                    phone_number: row.phone_number,
+                    jid: row.jid
+                });
+                const result = await provider.sendText(destination, renderedMessage);
                 await markSent(row.id, row.campaign_id, result?.messageId || null);
             } catch (error) {
                 await markFailed(row.id, row.campaign_id, error.message);
@@ -99,6 +121,8 @@ async function processBatch() {
             await new Promise((resolve) => setTimeout(resolve, THROTTLE_MS));
         }
     } finally {
+        const campaignIds = Array.from(new Set(rows.map((row) => row.campaign_id).filter(Boolean)));
+        await Promise.all(campaignIds.map(finalizeCampaignIfDone));
         isProcessing = false;
     }
 }
@@ -136,6 +160,41 @@ async function markFailed(messageId, campaignId, errorMessage) {
     `, [campaignId]);
 }
 
+async function finalizeCampaignIfDone(campaignId) {
+    const result = await db.query(`
+        WITH stats AS (
+            SELECT
+                COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE status = 'sent')::int AS sent,
+                COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+                COUNT(*) FILTER (WHERE status IN ('pending', 'processing'))::int AS active
+            FROM campaign_messages
+            WHERE campaign_id = $1
+        )
+        UPDATE campaigns c
+        SET
+            status = CASE
+                WHEN stats.total = 0 THEN 'failed'
+                WHEN stats.active = 0 AND stats.failed > 0 AND stats.sent = 0 THEN 'failed'
+                WHEN stats.active = 0 THEN 'completed'
+                ELSE 'processing'
+            END,
+            completed_at = CASE WHEN stats.active = 0 THEN now() ELSE c.completed_at END,
+            total_targets = stats.total,
+            success_count = stats.sent,
+            failed_count = stats.failed,
+            updated_at = now()
+        FROM stats
+        WHERE c.id = $1
+          AND c.status IN ('scheduled', 'processing')
+        RETURNING c.id
+    `, [campaignId]);
+
+    return result.rowCount > 0;
+}
+
 module.exports = {
-    processBatch
+    processBatch,
+    renderTemplate,
+    finalizeCampaignIfDone
 };

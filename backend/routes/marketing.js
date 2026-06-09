@@ -1,4 +1,5 @@
 const express = require('express');
+const marketingProcessor = require('../services/marketing/processor');
 
 function buildMarketingRouter(deps) {
     const router = express.Router();
@@ -227,6 +228,190 @@ function buildMarketingRouter(deps) {
                 page,
                 limit
             });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    router.get('/campaigns/:id', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+
+        const campaignId = req.params.id;
+
+        try {
+            await marketingProcessor.finalizeCampaignIfDone(campaignId);
+            const result = await db.query(`
+                SELECT
+                    c.*,
+                    COALESCE(cm.total_messages, 0)::int AS queued_count,
+                    COALESCE(cm.pending_count, 0)::int AS pending_count,
+                    COALESCE(cm.processing_count, 0)::int AS processing_count,
+                    COALESCE(cm.sent_count, 0)::int AS sent_count,
+                    COALESCE(cm.failed_count, 0)::int AS failed_message_count,
+                    COALESCE(cm.last_error, NULL) AS last_error
+                FROM campaigns c
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(*) AS total_messages,
+                        COUNT(*) FILTER (WHERE status = 'pending') AS pending_count,
+                        COUNT(*) FILTER (WHERE status = 'processing') AS processing_count,
+                        COUNT(*) FILTER (WHERE status = 'sent') AS sent_count,
+                        COUNT(*) FILTER (WHERE status = 'failed') AS failed_count,
+                        MAX(error_message) FILTER (WHERE error_message IS NOT NULL) AS last_error
+                    FROM campaign_messages
+                    WHERE campaign_id = c.id
+                ) cm ON true
+                WHERE c.id = $1 AND c.tenant_id = $2
+                LIMIT 1
+            `, [campaignId, ctx.tenantId]);
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ status: 'error', message: 'Campaign tidak ditemukan' });
+            }
+
+            res.json({ status: 'success', data: result.rows[0] });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    router.get('/campaigns/:id/messages', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+
+        const campaignId = req.params.id;
+        const status = (req.query.status || '').toString().trim().toLowerCase();
+        const allowedStatuses = new Set(['pending', 'processing', 'sent', 'failed']);
+        const limitRaw = parseInt(req.query.limit, 10);
+        const pageRaw = parseInt(req.query.page, 10);
+        const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
+        const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+        const offset = (page - 1) * limit;
+
+        try {
+            const campaign = await db.query('SELECT id FROM campaigns WHERE id = $1 AND tenant_id = $2', [campaignId, ctx.tenantId]);
+            if (campaign.rows.length === 0) {
+                return res.status(404).json({ status: 'error', message: 'Campaign tidak ditemukan' });
+            }
+
+            const params = [campaignId];
+            let statusClause = '';
+            if (allowedStatuses.has(status)) {
+                params.push(status);
+                statusClause = `AND cm.status = $${params.length}`;
+            }
+            params.push(limit, offset);
+
+            const listQuery = `
+                SELECT
+                    cm.id,
+                    cm.contact_id,
+                    cm.phone_number,
+                    cm.status,
+                    cm.error_message,
+                    cm.sent_at,
+                    cm.wa_message_id,
+                    cm.created_at,
+                    cm.updated_at,
+                    con.full_name,
+                    con.jid
+                FROM campaign_messages cm
+                LEFT JOIN contacts con ON con.id = cm.contact_id
+                WHERE cm.campaign_id = $1
+                  ${statusClause}
+                ORDER BY cm.created_at DESC
+                LIMIT $${params.length - 1} OFFSET $${params.length}
+            `;
+
+            const countParams = params.slice(0, params.length - 2);
+            const [listRes, countRes] = await Promise.all([
+                db.query(listQuery, params),
+                db.query(`
+                    SELECT COUNT(*) AS total
+                    FROM campaign_messages cm
+                    WHERE cm.campaign_id = $1
+                      ${statusClause}
+                `, countParams)
+            ]);
+
+            res.json({
+                status: 'success',
+                data: listRes.rows,
+                total: Number.parseInt(countRes.rows[0]?.total, 10) || 0,
+                page,
+                limit
+            });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    router.post('/campaigns/:id/retry-failed', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+
+        const campaignId = req.params.id;
+
+        try {
+            const campaign = await db.query('SELECT id, status FROM campaigns WHERE id = $1 AND tenant_id = $2', [campaignId, ctx.tenantId]);
+            if (campaign.rows.length === 0) {
+                return res.status(404).json({ status: 'error', message: 'Campaign tidak ditemukan' });
+            }
+
+            const retryRes = await db.query(`
+                UPDATE campaign_messages
+                SET status = 'pending',
+                    error_message = NULL,
+                    updated_at = now()
+                WHERE campaign_id = $1
+                  AND status = 'failed'
+                RETURNING id
+            `, [campaignId]);
+
+            if (retryRes.rowCount > 0) {
+                await db.query(`
+                    UPDATE campaigns
+                    SET status = 'scheduled',
+                        failed_count = GREATEST(failed_count - $2, 0),
+                        completed_at = NULL,
+                        updated_at = now()
+                    WHERE id = $1
+                `, [campaignId, retryRes.rowCount]);
+            }
+
+            res.json({
+                status: 'success',
+                retried: retryRes.rowCount,
+                message: retryRes.rowCount > 0 ? 'Pesan gagal masuk ulang ke queue' : 'Tidak ada pesan gagal untuk di-retry'
+            });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    router.post('/campaigns/:id/resume', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+
+        const campaignId = req.params.id;
+
+        try {
+            const result = await db.query(`
+                UPDATE campaigns
+                SET status = 'scheduled',
+                    updated_at = now()
+                WHERE id = $1
+                  AND tenant_id = $2
+                  AND status = 'paused'
+                RETURNING *
+            `, [campaignId, ctx.tenantId]);
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ status: 'error', message: 'Campaign tidak ditemukan atau tidak sedang paused' });
+            }
+
+            res.json({ status: 'success', data: result.rows[0], message: 'Campaign dilanjutkan' });
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });
         }

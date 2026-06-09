@@ -24,6 +24,7 @@ const BillingPage = lazy(() => import('./pages/BillingPage'));
 const CampaignList = lazy(() => import('./pages/marketing/CampaignList'));
 const CreateCampaign = lazy(() => import('./pages/marketing/CreateCampaign'));
 const ContactGroups = lazy(() => import('./pages/marketing/ContactGroups'));
+const CampaignDetail = lazy(() => import('./pages/marketing/CampaignDetail'));
 const DebugAnalytics = lazy(() => import('./pages/DebugAnalytics')); // TEMP DEBUG
 
 const RouteLoader = () => (
@@ -120,6 +121,7 @@ function App() {
                 <Route path="billing" element={<BillingPage />} />
                 <Route path="marketing" element={<CampaignList />} />
                 <Route path="marketing/create" element={<CreateCampaign />} />
+                <Route path="marketing/:id" element={<CampaignDetail />} />
                 <Route path="marketing/groups" element={<ContactGroups />} />
               </Route>
             </Route>

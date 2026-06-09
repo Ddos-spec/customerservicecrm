@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Megaphone, Plus, Users, PauseCircle, Trash2 } from 'lucide-react';
+import { Eye, Megaphone, PlayCircle, Plus, RotateCcw, Trash2, Users, PauseCircle } from 'lucide-react';
 import api from '../../lib/api';
 import { toast } from 'sonner';
 
@@ -72,6 +72,31 @@ const CampaignList = () => {
     }
   };
 
+  const handleResume = async (id: string) => {
+    try {
+      const res = await api.post(`/marketing/campaigns/${id}/resume`);
+      if (res.data?.status === 'success') {
+        toast.success('Campaign dilanjutkan');
+        void fetchCampaigns();
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Gagal resume campaign');
+    }
+  };
+
+  const handleRetryFailed = async (id: string) => {
+    if (!confirm('Retry semua pesan gagal campaign ini?')) return;
+    try {
+      const res = await api.post(`/marketing/campaigns/${id}/retry-failed`);
+      if (res.data?.status === 'success') {
+        toast.success(res.data.message || 'Retry dijalankan');
+        void fetchCampaigns();
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Gagal retry failed');
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   return (
@@ -139,6 +164,7 @@ const CampaignList = () => {
                 const progressLabel = totalTargets > 0 ? `${success}/${totalTargets}` : '0/0';
                 const canCancel = ['scheduled', 'processing'].includes(campaign.status || '');
                 const canDelete = ['draft', 'paused', 'failed', 'completed'].includes(campaign.status || '');
+                const failed = Number(campaign.failed_count || 0);
 
                 return (
                   <tr key={campaign.id} className="border-t border-gray-100 dark:border-slate-700">
@@ -165,6 +191,19 @@ const CampaignList = () => {
                       {new Date(campaign.created_at).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 text-right flex justify-end gap-2">
+                        <button onClick={() => navigate(`/admin/marketing/${campaign.id}`)} className="text-blue-500 hover:text-blue-700 p-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Detail Report">
+                            <Eye size={18} />
+                        </button>
+                        {campaign.status === 'paused' && (
+                            <button onClick={() => handleResume(campaign.id)} className="text-emerald-500 hover:text-emerald-700 p-2 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20" title="Resume Campaign">
+                                <PlayCircle size={18} />
+                            </button>
+                        )}
+                        {failed > 0 && (
+                            <button onClick={() => handleRetryFailed(campaign.id)} className="text-amber-500 hover:text-amber-700 p-2 rounded hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Retry Failed">
+                                <RotateCcw size={18} />
+                            </button>
+                        )}
                         {canCancel && (
                             <button onClick={() => handleCancel(campaign.id)} className="text-red-500 hover:text-red-700 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Pause Campaign">
                                 <PauseCircle size={18} />
