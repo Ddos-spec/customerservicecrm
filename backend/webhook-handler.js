@@ -370,6 +370,10 @@ async function handleMessage(req, sessionId, data) {
              // mediaUrl = message.url; // Optional: if provided by gateway
         } else if (message.type === 'sticker') {
             messageText = '[STICKER]';
+        } else if (!messageText.trim()) {
+            messageText = message.type === 'unknown'
+                ? '[Pesan tidak didukung atau belum bisa ditampilkan]'
+                : '[Pesan kosong]';
         }
 
         const senderType = message.isFromMe ? 'agent' : 'customer';
