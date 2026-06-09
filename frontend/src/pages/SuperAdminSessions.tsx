@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Smartphone, Search, RefreshCw, Wifi, WifiOff,
-  QrCode, User, Building2, Trash2, Plus, Activity, ChevronDown, ShieldAlert
+  QrCode, User, Building2, Trash2, Plus, Activity, ChevronDown, ShieldAlert, Power
 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -91,6 +91,7 @@ const SuperAdminSessions = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<SessionFilter>('ALL');
   const [expandedQrSessionId, setExpandedQrSessionId] = useState<string | null>(null);
+  const [disconnectingSessionId, setDisconnectingSessionId] = useState<string | null>(null);
   const ws = useRef<WebSocket | null>(null);
 
   const fetchSessions = async () => {
@@ -150,6 +151,21 @@ const SuperAdminSessions = () => {
     } catch (error) {
       console.error('Failed to delete session:', error);
       alert('Gagal menghapus session');
+    }
+  };
+
+  const handleDisconnectSession = async (sessionId: string) => {
+    if (!confirm(`Disconnect session ${sessionId}? Tenant tetap tersimpan, tapi device WA akan logout dan perlu scan/pair ulang untuk aktif lagi.`)) return;
+
+    setDisconnectingSessionId(sessionId);
+    try {
+      await api.post(`/sessions/${sessionId}/disconnect`);
+      await fetchSessions();
+    } catch (error) {
+      console.error('Failed to disconnect session:', error);
+      alert('Gagal disconnect session');
+    } finally {
+      setDisconnectingSessionId(null);
     }
   };
 
@@ -335,12 +351,29 @@ const SuperAdminSessions = () => {
                         {statusMeta.label}
                       </span>
                     </div>
-                    <button
-                      onClick={() => handleDeleteSession(session.sessionId)}
-                      className="rounded-2xl p-2.5 text-rose-600 transition-colors hover:bg-rose-50 dark:hover:bg-rose-900/20"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {session.status !== 'DISCONNECTED' && (
+                        <button
+                          onClick={() => handleDisconnectSession(session.sessionId)}
+                          disabled={disconnectingSessionId === session.sessionId}
+                          title="Disconnect WhatsApp device tanpa menghapus mapping tenant"
+                          className="rounded-2xl p-2.5 text-amber-600 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-amber-900/20"
+                        >
+                          {disconnectingSessionId === session.sessionId ? (
+                            <RefreshCw size={18} className="animate-spin" />
+                          ) : (
+                            <Power size={18} />
+                          )}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteSession(session.sessionId)}
+                        title="Hapus session dan bersihkan referensi"
+                        className="rounded-2xl p-2.5 text-rose-600 transition-colors hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">

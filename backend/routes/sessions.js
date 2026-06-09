@@ -118,6 +118,31 @@ function buildSessionsRouter(deps) {
         }
     });
 
+    router.post('/sessions/:sessionId/disconnect', async (req, res) => {
+        log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
+
+        const { sessionId } = req.params;
+        if (!sessionId) {
+            return res.status(400).json({ status: 'error', message: 'sessionId parameter is required' });
+        }
+
+        try {
+            const cleanup = await deleteSession(sessionId, {
+                unlinkReferences: false,
+                reason: 'manual-disconnect'
+            });
+            log('Session disconnected', sessionId, { event: 'session-disconnected', sessionId, cleanup });
+            res.status(200).json({
+                status: 'success',
+                message: `Session ${sessionId} disconnected.`,
+                cleanup
+            });
+        } catch (error) {
+            log('API error', 'SYSTEM', { event: 'api-error', error: error.message, endpoint: req.originalUrl });
+            res.status(500).json({ status: 'error', message: `Failed to disconnect session: ${error.message}` });
+        }
+    });
+
     router.get('/sessions/:sessionId/qr', async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl });
 
