@@ -351,27 +351,29 @@ const SuperAdminSessions = () => {
                         {statusMeta.label}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 flex-col items-end gap-2">
                       {session.status !== 'DISCONNECTED' && (
                         <button
                           onClick={() => handleDisconnectSession(session.sessionId)}
                           disabled={disconnectingSessionId === session.sessionId}
                           title="Disconnect WhatsApp device tanpa menghapus mapping tenant"
-                          className="rounded-2xl p-2.5 text-amber-600 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-amber-900/20"
+                          className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-amber-700 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40"
                         >
                           {disconnectingSessionId === session.sessionId ? (
                             <RefreshCw size={18} className="animate-spin" />
                           ) : (
                             <Power size={18} />
                           )}
+                          <span>Disconnect</span>
                         </button>
                       )}
                       <button
                         onClick={() => handleDeleteSession(session.sessionId)}
                         title="Hapus session dan bersihkan referensi"
-                        className="rounded-2xl p-2.5 text-rose-600 transition-colors hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                        className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-rose-600 transition-colors hover:bg-rose-50 dark:hover:bg-rose-900/20"
                       >
                         <Trash2 size={18} />
+                        <span>Delete</span>
                       </button>
                     </div>
                   </div>
