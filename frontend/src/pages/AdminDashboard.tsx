@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, MessageSquare, Shield, Settings,
-  ExternalLink, ArrowUpRight, Wifi, Smartphone, X, RefreshCw, MessageCircle
+  ExternalLink, ArrowUpRight, Wifi, Smartphone, X, RefreshCw, MessageCircle, Power
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/api';
@@ -55,6 +55,7 @@ const AdminDashboard = () => {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [connectMode, setConnectMode] = useState<'qr' | 'pair'>('qr');
   const [pairCode, setPairCode] = useState('');
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const ws = useRef<WebSocket | null>(null);
 
   const fetchStats = useCallback(async () => {
@@ -169,6 +170,32 @@ const AdminDashboard = () => {
     } catch (error: any) {
       console.error('Failed to request pair code:', error);
       toast.error(error?.response?.data?.message || 'Gagal mendapatkan kode. Coba lagi.');
+    }
+  };
+
+  const handleDisconnectWhatsApp = async () => {
+    if (!sessionId) {
+      toast.error('Session WA belum diatur oleh Super Admin');
+      return;
+    }
+    if (!confirm('Disconnect WhatsApp sekarang? Setelah disconnect, perangkat perlu QR/pair ulang untuk aktif.')) return;
+
+    setIsDisconnecting(true);
+    const toastId = toast.loading('Memutus koneksi WhatsApp...');
+    try {
+      await api.post(`/sessions/${sessionId}/disconnect`);
+      setWaStatus('disconnected');
+      setConnectedNumber('');
+      setQrUrl('');
+      setPairCode('');
+      setIsQrModalOpen(false);
+      toast.success('WhatsApp berhasil disconnect', { id: toastId });
+      await fetchSessionStatus();
+    } catch (error: any) {
+      console.error('Failed to disconnect WhatsApp:', error);
+      toast.error(error?.response?.data?.message || 'Gagal disconnect WhatsApp', { id: toastId });
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -303,14 +330,25 @@ const AdminDashboard = () => {
             )}
           </div>
           {waStatus === 'connected' && (
-            <button
-              onClick={handleSyncContacts}
-              className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 font-bold rounded-full hover:bg-gray-50 dark:hover:bg-slate-700 transition-all text-xs"
-              title="Sync Contacts & Groups from WhatsApp"
-            >
-              <RefreshCw size={14} />
-              <span>Sync Kontak</span>
-            </button>
+            <>
+              <button
+                onClick={handleDisconnectWhatsApp}
+                disabled={isDisconnecting}
+                className="flex items-center space-x-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 text-amber-700 dark:text-amber-300 font-bold rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all text-xs disabled:opacity-60"
+                title="Disconnect WhatsApp device"
+              >
+                {isDisconnecting ? <RefreshCw size={14} className="animate-spin" /> : <Power size={14} />}
+                <span>Disconnect</span>
+              </button>
+              <button
+                onClick={handleSyncContacts}
+                className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 font-bold rounded-full hover:bg-gray-50 dark:hover:bg-slate-700 transition-all text-xs"
+                title="Sync Contacts & Groups from WhatsApp"
+              >
+                <RefreshCw size={14} />
+                <span>Sync Kontak</span>
+              </button>
+            </>
           )}
           <button
             onClick={() => navigate('/admin/chat')}

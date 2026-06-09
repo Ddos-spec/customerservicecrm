@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Wifi, Settings, MessageSquare, Smartphone, Activity,
-  Users, RefreshCw, X, LogOut, Send, MessageCircle
+  Users, RefreshCw, X, LogOut, Send, MessageCircle, Power
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
@@ -59,6 +59,7 @@ const AgentDashboard = () => {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   
   const ws = useRef<WebSocket | null>(null);
 
@@ -207,6 +208,36 @@ const AgentDashboard = () => {
     } catch (error) {
       console.error('Failed to request QR:', error);
       toast.error('Gagal meminta QR. Coba lagi.');
+    }
+  };
+
+  const handleDisconnectWhatsApp = async () => {
+    if (!canManageSession) {
+      toast.error('Hanya Owner yang bisa disconnect nomor');
+      return;
+    }
+    if (!sessionId) {
+      toast.error('Session WA belum diatur oleh Super Admin');
+      return;
+    }
+    if (!confirm('Disconnect WhatsApp sekarang? Setelah disconnect, perangkat perlu QR ulang untuk aktif.')) return;
+
+    setIsDisconnecting(true);
+    const toastId = toast.loading('Memutus koneksi WhatsApp...');
+    try {
+      await api.post(`/sessions/${sessionId}/disconnect`);
+      setWaStatus('disconnected');
+      setConnectedNumber('');
+      setQrUrl('');
+      setIsSettingsOpen(false);
+      setIsQrModalOpen(false);
+      toast.success('WhatsApp berhasil disconnect', { id: toastId });
+      await fetchSessionStatus();
+    } catch (error: any) {
+      console.error('Failed to disconnect WhatsApp:', error);
+      toast.error(error?.response?.data?.message || 'Gagal disconnect WhatsApp', { id: toastId });
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -512,13 +543,25 @@ Terima kasih.`);
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={handleRequestQr}
-                    disabled={!canManageSession || !sessionId}
-                    className="px-4 py-2 bg-blue-600 disabled:bg-gray-200 disabled:text-gray-500 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors"
-                  >
-                    {canManageSession ? (waStatus === 'connected' ? 'Reconnect' : 'Connect') : 'Hanya Owner'}
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    {canManageSession && waStatus === 'connected' && (
+                      <button
+                        onClick={handleDisconnectWhatsApp}
+                        disabled={!sessionId || isDisconnecting}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 text-amber-700 dark:text-amber-300 text-xs font-bold rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-60"
+                      >
+                        {isDisconnecting ? <RefreshCw size={14} className="animate-spin" /> : <Power size={14} />}
+                        <span>Disconnect</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={handleRequestQr}
+                      disabled={!canManageSession || !sessionId}
+                      className="px-4 py-2 bg-blue-600 disabled:bg-gray-200 disabled:text-gray-500 text-white text-xs font-bold rounded-xl hover:bg-blue-700 transition-colors"
+                    >
+                      {canManageSession ? (waStatus === 'connected' ? 'Reconnect' : 'Connect') : 'Hanya Owner'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
