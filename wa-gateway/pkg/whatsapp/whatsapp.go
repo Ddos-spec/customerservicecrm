@@ -342,11 +342,14 @@ func WhatsAppIsClientOK(jid string) error {
 
 func WhatsAppGetJID(jid string, id string) types.JID {
 	if WhatsAppClient[jid] != nil {
-		var ids []string
+		candidate := WhatsAppDecomposeJID(id)
+		if candidate == "" {
+			return types.EmptyJID
+		}
 
-		ids = append(ids, "+"+id)
+		ids := []string{"+" + candidate}
 		infos, err := WhatsAppClient[jid].IsOnWhatsApp(context.Background(), ids)
-		if err == nil {
+		if err == nil && len(infos) > 0 {
 			// If WhatsApp ID is Registered Then
 			// Return ID Information
 			if infos[0].IsIn {
@@ -379,12 +382,17 @@ func WhatsAppCheckJID(jid string, id string) (types.JID, error) {
 }
 
 func WhatsAppComposeJID(id string) types.JID {
-	// Decompose WhatsApp ID First Before Recomposing
-	id = WhatsAppDecomposeJID(id)
+	rawID := strings.TrimSpace(id)
+	isGroup := strings.HasSuffix(rawID, "@"+types.GroupServer) || strings.ContainsRune(rawID, '-')
 
-	// Check if ID is Group or Not By Detecting '-' for Old Group ID
-	// Or By ID Length That Should be 18 Digits or More
-	if strings.ContainsRune(id, '-') || len(id) >= 18 {
+	// Decompose WhatsApp ID First Before Recomposing
+	id = WhatsAppDecomposeJID(rawID)
+
+	// Check if ID is Group or Not By Detecting explicit group JID suffix
+	// or '-' for old group IDs. Do not infer group from numeric length:
+	// LID/long phone-like identifiers can be 18+ digits and must not be sent
+	// through group-member lookup paths.
+	if isGroup {
 		// Return New Group User JID
 		return types.NewJID(id, types.GroupServer)
 	}
