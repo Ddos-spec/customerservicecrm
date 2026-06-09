@@ -325,6 +325,17 @@ async function handleMessage(req, sessionId, data) {
         }
         console.log(`[Webhook] Processing message ${message.id || 'no-id'} for tenant ${tenant.company_name || tenant.id} (${tenant.id}) session ${sessionId}`);
 
+        const rawChat = typeof message?.raw?.chat === 'string' ? message.raw.chat : '';
+        const isBroadcast = Boolean(message?.raw?.isBroadcast)
+            || rawChat === 'status@broadcast'
+            || rawChat.endsWith('@broadcast')
+            || message.from === 'status@broadcast'
+            || message.to === 'status@broadcast';
+        if (isBroadcast) {
+            console.log(`[Webhook] Ignored broadcast/status message ${message.id || 'no-id'} for session ${sessionId} rawChat ${rawChat || '-'}`);
+            return;
+        }
+
         // 2. Identify Target Chat
         // For groups: message.to = group JID, message.from = sender in group
         // For private: message.to = recipient, message.from = sender

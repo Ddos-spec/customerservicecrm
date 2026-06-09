@@ -156,6 +156,12 @@ func (h *Handler) handleMessage(evt *events.Message) {
 	log.Print(nil).Infof("[%s] [%s] %s | from: %s | type: %s | session: %s",
 		direction, chatType, msg.PushName, msg.From, msg.Type, h.sessionID)
 
+	if isBroadcast {
+		log.Print(nil).Debugf("[MESSAGE] Ignored broadcast/status event %s | chat: %s | session: %s",
+			msg.ID, evt.Info.Chat.String(), h.sessionID)
+		return
+	}
+
 	recordMessageStats(h.sessionID, msg)
 
 	// Queue webhook
