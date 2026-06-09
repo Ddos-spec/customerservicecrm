@@ -3,32 +3,65 @@ function buildContactsRouter(deps) {
     const router = express.Router();
     // deps: { sessions, validateToken, waGateway, db, ... }
     const { validateToken, waGateway, db } = deps;
+    const runTokenValidation = (req, res) => new Promise((resolve) => {
+        validateToken(req, res, (err) => {
+            if (err) return resolve(false);
+            return resolve(!res.headersSent);
+        });
+    });
+
+    async function resolveContactAccess(req, res) {
+        const user = req.session?.user;
+        if (user?.tenant_id) {
+            return {
+                tenantId: user.tenant_id,
+                sessionId: user.session_id || req.query.sessionId || req.body.sessionId || null,
+                source: 'session'
+            };
+        }
+
+        const validToken = await runTokenValidation(req, res);
+        if (!validToken) return null;
+
+        const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
+        if (!sessionId) {
+            res.status(400).json({ status: 'error', message: 'Session ID tidak ditemukan.' });
+            return null;
+        }
+
+        const tenant = await db.getTenantBySessionId(sessionId);
+        return {
+            tenantId: tenant?.id || null,
+            sessionId,
+            source: 'token'
+        };
+    }
 
     /**
      * GET /api/v1/contacts
      * Priority: Local DB (Unified) -> Gateway API (Fallback/Sync)
      */
-    router.get('/contacts', validateToken, async (req, res) => {
-        const sessionId = req.sessionId || req.query.sessionId || req.body.sessionId;
+    router.get('/contacts', async (req, res) => {
         const forceSync = req.query.force === 'true';
 
-        if (!sessionId) {
-            return res.status(400).json({ status: 'error', message: 'Session ID tidak ditemukan.' });
-        }
-
         try {
-            // 1. Ambil Tenant ID dari Session
-            const tenant = await db.getTenantBySessionId(sessionId);
+            const access = await resolveContactAccess(req, res);
+            if (!access) return;
+            const { tenantId, sessionId } = access;
             
             // 2. Cek Database Lokal dulu (jika tenant ada & tidak dipaksa sync)
-            if (tenant && !forceSync) {
+            if (tenantId && !forceSync) {
                 // Query langsung ke tabel 'contacts' (yang sudah diisi oleh Trigger Sync)
-                const dbContacts = await db.getContactsByTenant(tenant.id);
+                const dbContacts = await db.getContactsByTenant(tenantId);
                 
                 if (dbContacts && dbContacts.length > 0) {
-                    console.log(`[Contacts] Served ${dbContacts.length} contacts from Local DB for ${sessionId}`);
+                    console.log(`[Contacts] Served ${dbContacts.length} contacts from Local DB for tenant ${tenantId}`);
                     return res.json({ success: true, contacts: dbContacts, source: 'db' });
                 }
+            }
+
+            if (!sessionId) {
+                return res.json({ success: true, contacts: [], source: 'db', message: 'Session WA belum diatur.' });
             }
 
             // 3. Fallback: Ambil dari Gateway API (jika DB kosong atau forceSync)
@@ -49,11 +82,11 @@ function buildContactsRouter(deps) {
                 }));
 
                 // Trigger manual sync ke DB (untuk memastikan data masuk jika Trigger DB belum jalan)
-                if (tenant && formattedContacts.length > 0) {
+                if (tenantId && formattedContacts.length > 0) {
                     // Kita panggil db.syncContacts, tapi sebenarnya Trigger di DB 'whatsmeow_contacts'
                     // harusnya sudah menangani ini secara otomatis saat Gateway menyimpan data session.
                     // Fungsi ini sekarang jadi double-cover (aman).
-                    db.syncContacts(tenant.id, formattedContacts).catch(err => 
+                    db.syncContacts(tenantId, formattedContacts).catch(err => 
                         console.warn('[Sync] Manual sync warning:', err.message)
                     );
                 }
