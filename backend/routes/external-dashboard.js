@@ -1221,6 +1221,40 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
         }
     });
 
+    router.put('/chats/:chatId/read', async (req, res) => {
+        const tenantId = req.externalTenant.id;
+        const chatId = req.params.chatId;
+
+        if (!chatId) {
+            return res.status(400).json({ error: 'chatId is required' });
+        }
+
+        try {
+            const result = await db.query(
+                `UPDATE chats
+                 SET unread_count = 0,
+                     updated_at = now()
+                 WHERE id = $1
+                   AND tenant_id = $2
+                 RETURNING id, tenant_id, unread_count, updated_at`,
+                [chatId, tenantId]
+            );
+
+            const chat = result.rows[0];
+            if (!chat) {
+                return res.status(404).json({ error: 'Chat not found for this tenant' });
+            }
+
+            return res.json({
+                status: 'success',
+                data: chat,
+            });
+        } catch (error) {
+            console.error('[External Dashboard API] Mark chat read error:', error.message);
+            return res.status(500).json({ error: 'Failed to mark chat as read' });
+        }
+    });
+
     return router;
 }
 
