@@ -22,14 +22,26 @@ const eventHandlers = new Map();
 let wss = null;
 
 const RAJA_BOT_WEBHOOK_URL = process.env.RAJA_BOT_WEBHOOK_URL || 'https://filter-bot-crmcutting.qk6yxt.easypanel.host/api/bot/raja-metal/incoming';
-const RAJA_GROUP_JIDS = (process.env.RAJA_BOT_GROUP_JIDS || '120363039888626641@g.us')
+const DEFAULT_RAJA_GROUP_JIDS = [
+    '120363039888626641@g.us', // WS Raja Metal Cutting
+    '120363421578507033@g.us', // Tim service
+];
+const DEFAULT_RAJA_GROUP_NAMES = [
+    'WS Raja Metal Cutting',
+    'Tim service',
+];
+const parseRajaList = (value) => String(value || '')
     .split(',')
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
-const RAJA_GROUP_NAMES = (process.env.RAJA_BOT_GROUP_NAMES || 'WS Raja Metal Cutting')
-    .split(',')
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
+const RAJA_GROUP_JIDS = Array.from(new Set([
+    ...DEFAULT_RAJA_GROUP_JIDS.map((item) => item.toLowerCase()),
+    ...parseRajaList(process.env.RAJA_BOT_GROUP_JIDS),
+]));
+const RAJA_GROUP_NAMES = Array.from(new Set([
+    ...DEFAULT_RAJA_GROUP_NAMES.map((item) => item.toLowerCase()),
+    ...parseRajaList(process.env.RAJA_BOT_GROUP_NAMES),
+]));
 
 function isRajaHashCommandPayload(payload) {
     const chatJid = String(payload?.chatJid || '').toLowerCase();
