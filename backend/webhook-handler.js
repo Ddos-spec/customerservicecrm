@@ -20,6 +20,41 @@ const eventHandlers = new Map();
 
 // WebSocket server reference (will be set by index.js)
 let wss = null;
+
+const RAJA_BOT_WEBHOOK_URL = process.env.RAJA_BOT_WEBHOOK_URL || 'https://filter-bot-crmcutting.qk6yxt.easypanel.host/api/bot/raja-metal/incoming';
+const RAJA_GROUP_JIDS = (process.env.RAJA_BOT_GROUP_JIDS || '120363039888626641@g.us')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+const RAJA_GROUP_NAMES = (process.env.RAJA_BOT_GROUP_NAMES || 'WS Raja Metal Cutting')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
+function isRajaHashCommandPayload(payload) {
+    const chatJid = String(payload?.chatJid || '').toLowerCase();
+    const chatName = String(payload?.chatName || '').trim().toLowerCase();
+    const text = String(payload?.messageText || '').trim();
+    if (!payload?.isGroup || !text.startsWith('#')) return false;
+    return RAJA_GROUP_JIDS.includes(chatJid) || RAJA_GROUP_NAMES.includes(chatName);
+}
+
+async function forwardRajaHashCommand(payload) {
+    if (!RAJA_BOT_WEBHOOK_URL || !isRajaHashCommandPayload(payload)) return;
+    const axios = require('axios');
+    try {
+        await axios.post(RAJA_BOT_WEBHOOK_URL, payload, {
+            timeout: 8000,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Webhook-Source': 'customerservice-crm-raja-direct',
+            },
+        });
+    } catch (error) {
+        console.error('[Webhook] Failed forwarding Raja hash command:', error.message);
+    }
+}
+
 const DEFAULT_WEBHOOK_EVENTS = {
     groups: true,
     private: true,
@@ -492,6 +527,32 @@ async function handleMessage(req, sessionId, data) {
                 await forwardToTenantWebhooks(webhooks, payload);
             }
         }
+
+        // Raja Metal Cutting commands must reach the sheet bot even when generic
+        // tenant webhook filters are not enabled for self/group messages.
+        await forwardRajaHashCommand({
+            event: 'message',
+            sessionId,
+            tenantId: tenant.id,
+            tenantName: tenant.company_name,
+            provider: 'whatsmeow',
+            chatId: chat.id,
+            chatJid: targetJid,
+            chatName: displayName,
+            messageId: message.id,
+            dbMessageId: savedMessage.id,
+            messageType: message.type,
+            messageText,
+            receivedAt: new Date().toISOString(),
+            isFromMe: Boolean(message.isFromMe),
+            isGroup,
+            senderName,
+            from: message.from,
+            fromCanonical: senderJid || null,
+            fromPhone: senderJid ? getJidUser(senderJid) : null,
+            to: message.to || null,
+            message: forwardedMessage,
+        });
 
         const isChatbotTenant = (tenant.ai_mode || 'agent') === 'chatbot';
         const canAutoReply = !message.isFromMe && !isGroup && !messageAlreadyExists && message.type === 'text';
