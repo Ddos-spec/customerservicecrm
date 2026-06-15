@@ -70,10 +70,18 @@ function initializeApi(
 
     const apiLimiter = rateLimit({
         windowMs: 1 * 60 * 1000,
-        max: 100,
+        // External dashboard performs multiple parallel/polling reads while CS operators work.
+        // 100 RPM was causing chat history and mark-read calls to fail with 429.
+        max: 2000,
         message: { status: 'error', message: 'Too many requests, please try again later.' },
         skip: (req) => {
-            return req.session && req.session.adminAuthed;
+            if (req.session && req.session.adminAuthed) return true;
+
+            // Keep Raja CRM dashboard read-state/history responsive; these routes are still
+            // protected by the tenant API key middleware inside the external dashboard router.
+            if (/^\/external\/dashboard\/chats\/[^/]+\/(read|messages)$/.test(req.path)) return true;
+
+            return false;
         },
         // trustProxy: true, // REMOVED: Managed globally via app.set('trust proxy', 1)
         standardHeaders: true,
@@ -240,3 +248,4 @@ function initializeApi(
 }
 
 module.exports = { initializeApi };
+
