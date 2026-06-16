@@ -46,7 +46,7 @@ const RAJA_GROUP_NAMES = Array.from(new Set([
 function isRajaHashCommandPayload(payload) {
     const chatJid = String(payload?.chatJid || '').toLowerCase();
     const chatName = String(payload?.chatName || '').trim().toLowerCase();
-    const text = String(payload?.messageText || '').trim();
+    const text = String(payload?.messageText || payload?.message?.body || payload?.message?.caption || '').trim();
     if (!payload?.isGroup || !text.startsWith('#')) return false;
     return RAJA_GROUP_JIDS.includes(chatJid) || RAJA_GROUP_NAMES.includes(chatName);
 }
@@ -554,7 +554,13 @@ async function handleMessage(req, sessionId, data) {
             messageId: message.id,
             dbMessageId: savedMessage.id,
             messageType: message.type,
-            messageText,
+            messageText: messageText || message.body || message.caption || '',
+            mediaUrl: publicMediaUrl,
+            ephemeralMediaUrl: publicMediaUrl,
+            ephemeralMediaToken: message.ephemeralMediaToken || null,
+            ephemeralMediaExpiresAt: message.ephemeralMediaExpiresAt || null,
+            mediaMimeType: message.mediaMimeType || null,
+            fileName: message.fileName || message.filename || forwardedMessage?.fileName || forwardedMessage?.filename || null,
             receivedAt: new Date().toISOString(),
             isFromMe: Boolean(message.isFromMe),
             isGroup,
