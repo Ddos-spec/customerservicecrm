@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"mime/multipart"
 	"strconv"
@@ -38,6 +39,33 @@ func convertFileToBytes(file multipart.File) ([]byte, error) {
 	}
 
 	return buffer.Bytes(), nil
+}
+
+func parseMentions(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+
+	var jsonMentions []string
+	if err := json.Unmarshal([]byte(value), &jsonMentions); err == nil {
+		result := make([]string, 0, len(jsonMentions))
+		for _, mention := range jsonMentions {
+			if cleaned := strings.TrimSpace(mention); cleaned != "" {
+				result = append(result, cleaned)
+			}
+		}
+		return result
+	}
+
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if cleaned := strings.TrimSpace(part); cleaned != "" {
+			result = append(result, cleaned)
+		}
+	}
+	return result
 }
 
 // Login
@@ -333,6 +361,7 @@ func GetContactsFromDB(c echo.Context) error {
 // @Produce     json
 // @Param       msisdn    formData  string  true  "Destination WhatsApp Personal ID or Group ID"
 // @Param       message   formData  string  true  "Text Message"
+// @Param       mentions  formData  string  false "Mentioned phone/JID list, JSON array or comma-separated"
 // @Success     200
 // @Security    BearerAuth
 // @Router      /send/text [post]
@@ -343,6 +372,7 @@ func SendText(c echo.Context) error {
 	var reqSendMessage typWhatsApp.RequestSendMessage
 	reqSendMessage.RJID = strings.TrimSpace(c.FormValue("msisdn"))
 	reqSendMessage.Message = strings.Replace(strings.TrimSpace(c.FormValue("message")), "\\n", "\n", -1)
+	mentions := parseMentions(c.FormValue("mentions"))
 
 	if len(reqSendMessage.RJID) == 0 {
 		return router.ResponseBadRequest(c, "Missing Form Value MSISDN")
@@ -353,7 +383,7 @@ func SendText(c echo.Context) error {
 	}
 
 	var resSendMessage typWhatsApp.ResponseSendMessage
-	resSendMessage.MsgID, err = pkgWhatsApp.WhatsAppSendText(jid, reqSendMessage.RJID, reqSendMessage.Message)
+	resSendMessage.MsgID, err = pkgWhatsApp.WhatsAppSendTextWithMentions(jid, reqSendMessage.RJID, reqSendMessage.Message, mentions)
 	if err != nil {
 		return router.ResponseInternalError(c, err.Error())
 	}

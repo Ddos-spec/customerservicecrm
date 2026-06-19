@@ -492,6 +492,45 @@ func WhatsAppCheckRegistered(jid string, id string) error {
 }
 
 func WhatsAppSendText(jid string, rjid string, message string) (string, error) {
+	return WhatsAppSendTextWithMentions(jid, rjid, message, nil)
+}
+
+func normalizeMentionJIDs(mentions []string) []string {
+	result := make([]string, 0, len(mentions))
+	seen := make(map[string]bool)
+	for _, mention := range mentions {
+		cleaned := strings.TrimSpace(mention)
+		if cleaned == "" {
+			continue
+		}
+		if strings.HasPrefix(cleaned, "@") {
+			cleaned = strings.TrimPrefix(cleaned, "@")
+		}
+		if strings.Contains(cleaned, "@") {
+			cleaned = strings.Split(cleaned, "@")[0]
+		}
+		cleaned = strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return r
+			}
+			return -1
+		}, cleaned)
+		if cleaned == "" {
+			continue
+		}
+		if strings.HasPrefix(cleaned, "0") {
+			cleaned = "62" + strings.TrimPrefix(cleaned, "0")
+		}
+		mentionedJID := cleaned + "@" + types.DefaultUserServer
+		if !seen[mentionedJID] {
+			seen[mentionedJID] = true
+			result = append(result, mentionedJID)
+		}
+	}
+	return result
+}
+
+func WhatsAppSendTextWithMentions(jid string, rjid string, message string, mentions []string) (string, error) {
 	if WhatsAppClient[jid] != nil {
 		var err error
 
@@ -519,8 +558,17 @@ func WhatsAppSendText(jid string, rjid string, message string) (string, error) {
 		msgExtra := whatsmeow.SendRequestExtra{
 			ID: WhatsAppClient[jid].GenerateMessageID(),
 		}
-		msgContent := &waE2E.Message{
-			Conversation: proto.String(message),
+		mentionJIDs := normalizeMentionJIDs(mentions)
+		msgContent := &waE2E.Message{}
+		if len(mentionJIDs) > 0 {
+			msgContent.ExtendedTextMessage = &waE2E.ExtendedTextMessage{
+				Text: proto.String(message),
+				ContextInfo: &waE2E.ContextInfo{
+					MentionedJID: mentionJIDs,
+				},
+			}
+		} else {
+			msgContent.Conversation = proto.String(message)
 		}
 
 		// Send WhatsApp Message Proto

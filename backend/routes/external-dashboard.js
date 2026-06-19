@@ -413,6 +413,10 @@ async function sendExternalMessage({
     const mtype = (payload?.mtype || 'text').toString().trim().toLowerCase();
     const receiver = normalizeReceiver(payload?.receiver || payload?.phone || payload?.to);
     const text = (payload?.text || payload?.message || '').toString();
+    const rawMentions = payload?.mentions || payload?.mention_phones || [];
+    const mentions = Array.isArray(rawMentions)
+        ? rawMentions.map((value) => String(value || '').trim()).filter(Boolean)
+        : String(rawMentions || '').split(',').map((value) => value.trim()).filter(Boolean);
     const mediaUrl = (payload?.url || payload?.image_url || payload?.media_url || '').toString().trim();
     const filename = (payload?.filename || payload?.file_name || 'document').toString().trim() || 'document';
     const viewOnce = parseBooleanFlag(payload?.view_once, false);
@@ -448,7 +452,7 @@ async function sendExternalMessage({
 
     const result = await scheduleMessageSend(tenant.session_id, async () => {
         if (mtype === 'text') {
-            return waGateway.sendText(tenant.session_id, receiver.destination, text.trim());
+            return waGateway.sendText(tenant.session_id, receiver.destination, text.trim(), mentions);
         }
         if (mtype === 'image') {
             return waGateway.sendImage(tenant.session_id, receiver.destination, mediaUrl, text || '', viewOnce);

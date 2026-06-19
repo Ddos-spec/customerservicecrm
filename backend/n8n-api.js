@@ -486,12 +486,20 @@ function initializeN8nApi(deps) {
      * {
      *   "tenant_id": "optional-tenant-uuid",
      *   "phone_number": "628123456789",
-     *   "message_text": "Hello world"
+     *   "message_text": "Hello world",
+     *   "mentions": ["628123456789"]
      * }
      */
     router.post('/send-message', async (req, res) => {
         try {
-            const { tenant_id, phone_number, message_text } = req.body;   
+            const { tenant_id, phone_number, message_text } = req.body;
+            const rawMentions = req.body.mentions || req.body.mention_phones || [];
+            const mentions = Array.isArray(rawMentions)
+                ? rawMentions.map((value) => String(value || '').trim()).filter(Boolean)
+                : String(rawMentions || '')
+                    .split(',')
+                    .map((value) => value.trim())
+                    .filter(Boolean);
 
             if (!phone_number || !message_text) {
                 return res.status(400).json({
@@ -549,7 +557,7 @@ function initializeN8nApi(deps) {
             });
 
             const result = await scheduleMessageSend(sessionId, async () => {
-                const response = await waGateway.sendText(sessionId, destination, message_text);
+                const response = await waGateway.sendText(sessionId, destination, message_text, mentions);
                 if (!(response?.status === true || response?.status === 'success')) {
                     throw new Error(response?.message || 'Gateway failed to send');
                 }

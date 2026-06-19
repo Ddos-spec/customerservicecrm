@@ -513,10 +513,18 @@ async function checkRegistered(jid, phone) {
  * @param {string} jid - Session JID
  * @param {string} to - Recipient phone number / JID
  * @param {string} message - Message text
+ * @param {string[]} mentions - Optional phone numbers/JIDs to mention in WhatsApp context
  */
-async function sendText(jid, to, message) {
+async function sendText(jid, to, message, mentions = []) {
     try {
-        const form = buildUrlEncoded({ msisdn: to, message });
+        const cleanMentions = Array.isArray(mentions)
+            ? mentions.map((value) => String(value || '').trim()).filter(Boolean)
+            : [];
+        const form = buildUrlEncoded({
+            msisdn: to,
+            message,
+            ...(cleanMentions.length ? { mentions: JSON.stringify(cleanMentions) } : {})
+        });
         return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
     } catch (error) {
         // RETRY LOGIC: If 500 (Client not logged in) or 401 (Unauthorized)
@@ -526,7 +534,14 @@ async function sendText(jid, to, message) {
                 const recovered = await reauthAndReconnect(jid);
                 if (recovered) {
                     console.log(`[Gateway-Retry] Recovery successful for ${jid}. Retrying send...`);
-                    const form = buildUrlEncoded({ msisdn: to, message });
+                    const cleanMentions = Array.isArray(mentions)
+                        ? mentions.map((value) => String(value || '').trim()).filter(Boolean)
+                        : [];
+                    const form = buildUrlEncoded({
+                        msisdn: to,
+                        message,
+                        ...(cleanMentions.length ? { mentions: JSON.stringify(cleanMentions) } : {})
+                    });
                     return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
                 }
             } catch (retryErr) {
