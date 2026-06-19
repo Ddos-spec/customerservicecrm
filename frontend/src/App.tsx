@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useThemeStore } from './store/useThemeStore';
+import { useAuthStore } from './store/useAuthStore';
 
 const Login = lazy(() => import('./pages/Login'));
 const MainLayout = lazy(() => import('./layouts/MainLayout'));
@@ -37,6 +38,7 @@ const RouteLoader = () => (
 
 function App() {
   const isDarkMode = useThemeStore((state) => state.isDarkMode);
+  const checkSession = useAuthStore((state) => state.checkSession);
 
   // --- CONTENT PROTECTION LOGIC (DISABLED FOR DEBUGGING) ---
   // useEffect(() => {
@@ -76,6 +78,11 @@ function App() {
   //     document.removeEventListener('dragstart', handleDragStart);
   //   };
   // }, []);
+
+
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);

@@ -1269,7 +1269,13 @@ router.post('/impersonate/:tenantId', requireRole('super_admin'), async (req, re
             }
         };
 
-        res.json({ success: true, user: req.session.user });
+        req.session.save((err) => {
+            if (err) {
+                console.error('Impersonate session save error:', err);
+                return res.status(500).json({ success: false, error: 'Session error' });
+            }
+            res.json({ success: true, user: req.session.user });
+        });
     } catch (error) {
         console.error('Impersonate error:', error);
         res.status(500).json({ success: false, error: 'Failed to impersonate' });
@@ -1312,7 +1318,13 @@ router.post('/stop-impersonate', async (req, res) => {
             session_id: sessionId
         };
 
-        res.json({ success: true, user: req.session.user });
+        req.session.save((err) => {
+            if (err) {
+                console.error('Stop impersonate session save error:', err);
+                return res.status(500).json({ success: false, error: 'Session error' });
+            }
+            res.json({ success: true, user: req.session.user });
+        });
     } catch (error) {
         console.error('Stop impersonate error:', error);
         res.status(500).json({ success: false, error: 'Failed to restore session' });

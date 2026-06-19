@@ -124,20 +124,33 @@ export const useAuthStore = create<AuthState>()(
       checkSession: async () => {
         const { user } = get();
 
-        // Skip check for demo users
+        // Demo users never call backend.
         if (user?.isDemo) return;
 
-        // Skip if not authenticated
-        if (!user) return;
-
+        set({ isLoading: true });
         try {
-          const response = await api.get('/admin/check');
-          if (!response.data.authenticated) {
-            // Session expired
-            set({ user: null, isAuthenticated: false });
+          // Backend session is the single source of truth. This prevents a hard
+          // refresh from trusting stale localStorage while impersonating a tenant.
+          const response = await api.get('/admin/me');
+          if (response.data?.success && response.data?.user) {
+            set({
+              user: { ...response.data.user, isDemo: false },
+              isAuthenticated: true,
+              isLoading: false,
+            });
+            return;
           }
-        } catch {
-          // Network error - keep local state for now
+
+          set({ user: null, isAuthenticated: false, isLoading: false });
+        } catch (error: any) {
+          const status = error?.response?.status;
+          if (status === 401 || status === 403) {
+            set({ user: null, isAuthenticated: false, isLoading: false });
+            return;
+          }
+
+          // Network hiccup: keep current local state, but stop blocking UI.
+          set({ isLoading: false });
         }
       },
 
