@@ -25,6 +25,8 @@ const RAJA_BOT_WEBHOOK_URL = process.env.RAJA_BOT_WEBHOOK_URL || 'https://filter
 const DEFAULT_RAJA_GROUP_JIDS = [
     '120363039888626641@g.us', // WS Raja Metal Cutting
     '120363421578507033@g.us', // Tim service
+    '120363408192453965@g.us', // ESKALASI
+    '120363425470092878@g.us', // PURHASING
 ];
 const DEFAULT_RAJA_GROUP_NAMES = [
     'WS Raja Metal Cutting',
