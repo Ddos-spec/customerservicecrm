@@ -498,6 +498,268 @@ function buildPublicMediaUrl(req, mediaId) {
     return `${proto}://${host}${req.baseUrl}/media/${mediaId}`;
 }
 
+function normalizePhoneDigits(value) {
+    if (!value) return '';
+    let digits = value.toString().replace(/\D/g, '');
+    if (digits.startsWith('0')) digits = `62${digits.slice(1)}`;
+    return digits;
+}
+
+function pickFirstString(source, paths) {
+    for (const pathKey of paths) {
+        const value = pathKey.split('.').reduce((current, key) => {
+            if (current && Object.prototype.hasOwnProperty.call(current, key)) {
+                return current[key];
+            }
+            return undefined;
+        }, source);
+        if (typeof value === 'string' && value.trim()) return value.trim();
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    }
+    return null;
+}
+
+function pickFirstBoolean(source, paths) {
+    for (const pathKey of paths) {
+        const value = pathKey.split('.').reduce((current, key) => {
+            if (current && Object.prototype.hasOwnProperty.call(current, key)) {
+                return current[key];
+            }
+            return undefined;
+        }, source);
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'string') {
+            const normalized = value.trim().toLowerCase();
+            if (['true', 'connected', 'logged_in', 'loggedin', 'valid', 'ok', 'success'].includes(normalized)) return true;
+            if (['false', 'disconnected', 'logged_out', 'loggedout', 'invalid', 'error', 'failed'].includes(normalized)) return false;
+        }
+    }
+    return null;
+}
+
+function parseMismatchPhones(message) {
+    const text = (message || '').toString();
+    const match = text.match(/requested\s+(\d+),\s+got\s+(\d+)/i);
+    if (!match) return { expected: null, detected: null };
+    return { expected: match[1], detected: match[2] };
+}
+
+function buildRecommendedAction(status, identityMismatch, hasSession) {
+    if (!hasSession) return 'Configure WhatsApp session for this tenant.';
+    if (identityMismatch) return 'Scan ulang nomor Raja / tenant ini; session gateway terhubung ke nomor berbeda.';
+    if (status === 'disconnected') return 'Login ulang WhatsApp session dan cek koneksi gateway.';
+    if (status === 'degraded') return 'Cek gateway token/password dan endpoint session status.';
+    if (status === 'not_configured') return 'Lengkapi session_id dan gateway configuration.';
+    if (status === 'healthy') return 'No action required; keep monitoring.';
+    return 'Review gateway telemetry; no decisive status was returned.';
+}
+
+function classifyGatewayStatus({ hasSession, statusPayload, webhookPayload, statusError, webhookError, expectedPhone, detectedPhone }) {
+    if (!hasSession) {
+        return {
+            status: 'not_configured',
+            connected: false,
+            loggedIn: false,
+            clientValid: false,
+            reason: 'Tenant has no WhatsApp session configured.'
+        };
+    }
+
+    const mismatchFromError = statusError && statusError.includes('Gateway session identity mismatch');
+    const parsedMismatch = parseMismatchPhones(statusError);
+    const finalDetectedPhone = detectedPhone || parsedMismatch.detected;
+    const identityMismatch = Boolean(
+        mismatchFromError ||
+        (expectedPhone && finalDetectedPhone && normalizePhoneDigits(expectedPhone) !== normalizePhoneDigits(finalDetectedPhone))
+    );
+
+    if (identityMismatch) {
+        return {
+            status: 'mismatch',
+            connected: false,
+            loggedIn: false,
+            clientValid: false,
+            detectedPhone: finalDetectedPhone,
+            reason: `Gateway identity mismatch: expected ${expectedPhone || parsedMismatch.expected || '-'}, detected ${finalDetectedPhone || '-'}.`
+        };
+    }
+
+    if (statusError) {
+        return {
+            status: 'degraded',
+            connected: false,
+            loggedIn: false,
+            clientValid: false,
+            reason: `Gateway status check failed: ${statusError}`
+        };
+    }
+
+    const connected = pickFirstBoolean(statusPayload, [
+        'connected', 'loggedIn', 'logged_in', 'clientValid', 'client_valid',
+        'data.connected', 'data.loggedIn', 'data.logged_in', 'data.clientValid', 'data.client_valid'
+    ]);
+    const loggedIn = pickFirstBoolean(statusPayload, ['loggedIn', 'logged_in', 'data.loggedIn', 'data.logged_in']) ?? connected;
+    const clientValid = pickFirstBoolean(statusPayload, ['clientValid', 'client_valid', 'data.clientValid', 'data.client_valid']) ?? connected;
+    const rawStatus = (pickFirstString(statusPayload, ['status', 'data.status', 'state', 'data.state']) || '').toLowerCase();
+    const disconnected = rawStatus.includes('disconnect') || rawStatus.includes('logout') || connected === false || loggedIn === false || clientValid === false;
+
+    if (disconnected) {
+        return {
+            status: 'disconnected',
+            connected: Boolean(connected),
+            loggedIn: Boolean(loggedIn),
+            clientValid: Boolean(clientValid),
+            reason: pickFirstString(statusPayload, ['reason', 'message', 'data.reason', 'data.message']) || 'Gateway reports the client is not connected/logged in.'
+        };
+    }
+
+    if (webhookError) {
+        return {
+            status: 'degraded',
+            connected: connected ?? true,
+            loggedIn: loggedIn ?? true,
+            clientValid: clientValid ?? true,
+            reason: `Session is reachable, but webhook stats failed: ${webhookError}`
+        };
+    }
+
+    if (connected === true || loggedIn === true || clientValid === true || ['ok', 'success', 'connected'].includes(rawStatus)) {
+        return {
+            status: 'healthy',
+            connected: connected ?? true,
+            loggedIn: loggedIn ?? true,
+            clientValid: clientValid ?? true,
+            reason: 'Gateway session is connected and identity matches expected tenant session.'
+        };
+    }
+
+    if (statusPayload || webhookPayload) {
+        return {
+            status: 'unknown',
+            connected: connected ?? null,
+            loggedIn: loggedIn ?? null,
+            clientValid: clientValid ?? null,
+            reason: 'Gateway returned telemetry, but no decisive connected/logged-in status was present.'
+        };
+    }
+
+    return {
+        status: 'unknown',
+        connected: null,
+        loggedIn: null,
+        clientValid: null,
+        reason: 'No gateway telemetry available.'
+    };
+}
+
+function mapWebhookStats(webhookPayload) {
+    return {
+        queueCount: asNumber(pickFirstString(webhookPayload, ['queueCount', 'queue_count', 'data.queueCount', 'data.queue_count', 'queued', 'data.queued'])),
+        failedCount: asNumber(pickFirstString(webhookPayload, ['failedCount', 'failed_count', 'data.failedCount', 'data.failed_count', 'failed', 'data.failed'])),
+        lastMessageAt: pickFirstString(webhookPayload, ['lastMessageAt', 'last_message_at', 'data.lastMessageAt', 'data.last_message_at']),
+        lastPrivateMessageAt: pickFirstString(webhookPayload, ['lastPrivateMessageAt', 'last_private_message_at', 'data.lastPrivateMessageAt', 'data.last_private_message_at']),
+        lastGroupMessageAt: pickFirstString(webhookPayload, ['lastGroupMessageAt', 'last_group_message_at', 'data.lastGroupMessageAt', 'data.last_group_message_at'])
+    };
+}
+
+async function getTenantMessageActivity(db, tenantId) {
+    const result = await db.query(`
+        SELECT
+            MAX(m.created_at) as last_message_at,
+            MAX(m.created_at) FILTER (WHERE COALESCE(c.is_group, con.jid LIKE '%@g.us') = false) as last_private_message_at,
+            MAX(m.created_at) FILTER (WHERE COALESCE(c.is_group, con.jid LIKE '%@g.us') = true) as last_group_message_at
+        FROM messages m
+        JOIN chats c ON c.id = m.chat_id
+        LEFT JOIN contacts con ON con.id = c.contact_id
+        WHERE c.tenant_id = $1
+    `, [tenantId]);
+    const row = result.rows[0] || {};
+    return {
+        lastMessageAt: row.last_message_at || null,
+        lastPrivateMessageAt: row.last_private_message_at || null,
+        lastGroupMessageAt: row.last_group_message_at || null
+    };
+}
+
+async function buildTenantGatewayHealth({ tenant, db, waGateway }) {
+    const expectedPhone = normalizePhoneDigits(tenant.session_id);
+    const hasSession = Boolean(expectedPhone);
+    const provider = tenant.wa_provider || 'whatsmeow';
+    const gatewayUrlPresent = Boolean(tenant.gateway_url);
+    const previousGatewayUrl = hasSession && waGateway.getSessionGatewayUrl ? waGateway.getSessionGatewayUrl(expectedPhone) : null;
+    if (hasSession && tenant.gateway_url && waGateway.setSessionGatewayUrl) {
+        waGateway.setSessionGatewayUrl(expectedPhone, tenant.gateway_url);
+    }
+
+    let statusPayload = null;
+    let webhookPayload = null;
+    let statusError = null;
+    let webhookError = null;
+
+    if (hasSession) {
+        try {
+            statusPayload = await waGateway.getSessionStatus(expectedPhone);
+        } catch (error) {
+            statusError = (error?.message || 'Unknown gateway status error').slice(0, 240);
+        }
+
+        try {
+            webhookPayload = await waGateway.getWebhookStats(expectedPhone);
+        } catch (error) {
+            webhookError = (error?.message || 'Unknown webhook stats error').slice(0, 240);
+        }
+    }
+
+    if (hasSession && tenant.gateway_url && !previousGatewayUrl && waGateway.setSessionGatewayUrl) {
+        waGateway.setSessionGatewayUrl(expectedPhone, null);
+    }
+
+    const detectedPhone = normalizePhoneDigits(pickFirstString(statusPayload, [
+        'deviceJid', 'device_jid', 'detectedPhone', 'detected_phone', 'sessionId',
+        'data.deviceJid', 'data.device_jid', 'data.detectedPhone', 'data.detected_phone', 'data.sessionId'
+    ]));
+    const deviceJid = pickFirstString(statusPayload, ['deviceJid', 'device_jid', 'jid', 'data.deviceJid', 'data.device_jid', 'data.jid']);
+    const classification = classifyGatewayStatus({
+        hasSession,
+        statusPayload,
+        webhookPayload,
+        statusError,
+        webhookError,
+        expectedPhone,
+        detectedPhone
+    });
+    const webhookStats = mapWebhookStats(webhookPayload);
+    const dbActivity = await getTenantMessageActivity(db, tenant.id).catch(() => ({
+        lastMessageAt: null,
+        lastPrivateMessageAt: null,
+        lastGroupMessageAt: null
+    }));
+    const identityMismatch = classification.status === 'mismatch';
+
+    return {
+        tenant_id: tenant.id,
+        tenant_name: tenant.company_name || null,
+        session_id: tenant.session_id || null,
+        expected_phone: expectedPhone || null,
+        provider,
+        gateway_url_present: gatewayUrlPresent,
+        connected: classification.connected,
+        loggedIn: classification.loggedIn,
+        clientValid: classification.clientValid,
+        deviceJid: deviceJid || null,
+        detectedPhone: classification.detectedPhone || detectedPhone || null,
+        identityMismatch,
+        reason: classification.reason,
+        lastMessageAt: webhookStats.lastMessageAt || dbActivity.lastMessageAt,
+        lastPrivateMessageAt: webhookStats.lastPrivateMessageAt || dbActivity.lastPrivateMessageAt,
+        lastGroupMessageAt: webhookStats.lastGroupMessageAt || dbActivity.lastGroupMessageAt,
+        webhookQueueCount: webhookStats.queueCount,
+        webhookFailedCount: webhookStats.failedCount,
+        status: classification.status,
+        recommendedAction: buildRecommendedAction(classification.status, identityMismatch, hasSession)
+    };
+}
+
 function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
     const router = express.Router();
 
@@ -519,6 +781,38 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
         } catch (error) {
             console.error('[External Dashboard API] Tenant auth failed:', error.message);
             return res.status(500).json({ status: 'error', message: 'Failed to validate tenant key' });
+        }
+    });
+
+    router.get('/gateway-health', async (req, res) => {
+        try {
+            const session = await buildTenantGatewayHealth({
+                tenant: req.externalTenant,
+                db,
+                waGateway
+            });
+            const sessions = [session];
+            const summary = {
+                total: sessions.length,
+                healthy: sessions.filter((item) => item.status === 'healthy').length,
+                disconnected: sessions.filter((item) => item.status === 'disconnected').length,
+                mismatch: sessions.filter((item) => item.status === 'mismatch').length,
+                degraded: sessions.filter((item) => item.status === 'degraded').length,
+                not_configured: sessions.filter((item) => item.status === 'not_configured').length,
+                unknown: sessions.filter((item) => item.status === 'unknown').length,
+                checked_at: new Date().toISOString()
+            };
+
+            return res.json({
+                status: 'success',
+                data: {
+                    summary,
+                    sessions
+                }
+            });
+        } catch (error) {
+            console.error('[External Dashboard API] Gateway health error:', error.message);
+            return res.status(500).json({ error: 'Failed to load gateway health' });
         }
     });
 
