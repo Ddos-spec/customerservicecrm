@@ -29,6 +29,11 @@ const DEFAULT_RAJA_GROUP_JIDS = [
 const DEFAULT_RAJA_GROUP_NAMES = [
     'WS Raja Metal Cutting',
     'Tim service',
+    'Eskalasi',
+    'Escalation',
+    'Purchasing',
+    'Purchase',
+    'Purhasing',
 ];
 const parseRajaList = (value) => String(value || '')
     .split(',')
