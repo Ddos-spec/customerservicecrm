@@ -43,16 +43,23 @@ const RAJA_GROUP_NAMES = Array.from(new Set([
     ...parseRajaList(process.env.RAJA_BOT_GROUP_NAMES),
 ]));
 
-function isRajaHashCommandPayload(payload) {
+function isRajaBotPayload(payload) {
     const chatJid = String(payload?.chatJid || '').toLowerCase();
     const chatName = String(payload?.chatName || '').trim().toLowerCase();
     const text = String(payload?.messageText || payload?.message?.body || payload?.message?.caption || '').trim();
-    if (!payload?.isGroup || !text.startsWith('#')) return false;
-    return RAJA_GROUP_JIDS.includes(chatJid) || RAJA_GROUP_NAMES.includes(chatName);
+    const isRajaGroup = RAJA_GROUP_JIDS.includes(chatJid) || RAJA_GROUP_NAMES.includes(chatName);
+    if (!payload?.isGroup || !isRajaGroup) return false;
+    if (/^#?RajaManager\b/i.test(text)) return false;
+
+    // Let every real Raja group message reach the operations bot. Natural
+    // language commands are handled/ignored by the CRM bot itself, while this
+    // explicit bypass prevents generic tenant webhook filters from hiding group
+    // messages and media from the manager/purchasing agent.
+    return true;
 }
 
-async function forwardRajaHashCommand(payload) {
-    if (!RAJA_BOT_WEBHOOK_URL || !isRajaHashCommandPayload(payload)) return;
+async function forwardRajaBotMessage(payload) {
+    if (!RAJA_BOT_WEBHOOK_URL || !isRajaBotPayload(payload)) return;
     const axios = require('axios');
     try {
         await axios.post(RAJA_BOT_WEBHOOK_URL, payload, {
@@ -63,7 +70,7 @@ async function forwardRajaHashCommand(payload) {
             },
         });
     } catch (error) {
-        console.error('[Webhook] Failed forwarding Raja hash command:', error.message);
+        console.error('[Webhook] Failed forwarding Raja bot message:', error.message);
     }
 }
 
@@ -540,9 +547,9 @@ async function handleMessage(req, sessionId, data) {
             }
         }
 
-        // Raja Metal Cutting commands must reach the sheet bot even when generic
-        // tenant webhook filters are not enabled for self/group messages.
-        await forwardRajaHashCommand({
+        // Raja Metal Cutting messages must reach the sheet/manager bot even when
+        // generic tenant webhook filters are not enabled for self/group messages.
+        await forwardRajaBotMessage({
             event: 'message',
             sessionId,
             tenantId: tenant.id,
