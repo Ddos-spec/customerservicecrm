@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"customerservicecrm/wa-gateway/pkg/ephemeralmedia"
 	"customerservicecrm/wa-gateway/pkg/log"
@@ -367,8 +369,78 @@ func (h *Handler) extractMessageContent(msg *waE2E.Message, payload *webhook.Mes
 		payload.Body = msg.GetPollCreationMessage().GetName()
 
 	default:
+		if fallbackType, fallbackText := extractFallbackMessageContent(msg); fallbackText != "" {
+			payload.Type = fallbackType
+			payload.Body = fallbackText
+			return
+		}
 		payload.Type = "unknown"
+		log.Print(nil).Warnf("[MESSAGE] Unknown message payload for session %s: %s", h.sessionID, compactProtoJSON(msg, 1200))
 	}
+}
+
+func compactProtoJSON(msg *waE2E.Message, maxLen int) string {
+	raw, err := protojson.MarshalOptions{EmitUnpopulated: false, UseProtoNames: true}.Marshal(msg)
+	if err != nil {
+		return err.Error()
+	}
+	text := strings.ReplaceAll(string(raw), "\n", "")
+	if len(text) > maxLen {
+		return text[:maxLen] + "..."
+	}
+	return text
+}
+
+func extractFallbackMessageContent(msg *waE2E.Message) (string, string) {
+	raw, err := protojson.MarshalOptions{EmitUnpopulated: false, UseProtoNames: true}.Marshal(msg)
+	if err != nil {
+		return "", ""
+	}
+
+	var decoded interface{}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return "", ""
+	}
+
+	if text := findFirstStringField(decoded, map[string]bool{
+		"conversation": true,
+		"text":         true,
+		"caption":      true,
+		"name":         true,
+	}); text != "" {
+		return "text", text
+	}
+
+	return "", ""
+}
+
+func findFirstStringField(value interface{}, keys map[string]bool) string {
+	switch current := value.(type) {
+	case map[string]interface{}:
+		preferred := []string{"conversation", "text", "caption", "name"}
+		for _, key := range preferred {
+			if !keys[key] {
+				continue
+			}
+			if raw, ok := current[key]; ok {
+				if text, ok := raw.(string); ok && strings.TrimSpace(text) != "" {
+					return text
+				}
+			}
+		}
+		for _, raw := range current {
+			if text := findFirstStringField(raw, keys); text != "" {
+				return text
+			}
+		}
+	case []interface{}:
+		for _, raw := range current {
+			if text := findFirstStringField(raw, keys); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
 }
 
 func (h *Handler) attachEphemeralMediaReference(msg *waE2E.Message, messageID string, payload *webhook.MessagePayload) {
