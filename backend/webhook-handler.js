@@ -42,6 +42,28 @@ const RAJA_GROUP_NAMES = Array.from(new Set([
     ...DEFAULT_RAJA_GROUP_NAMES.map((item) => item.toLowerCase()),
     ...parseRajaList(process.env.RAJA_BOT_GROUP_NAMES),
 ]));
+const RAJA_FORWARD_DEDUPE_TTL_MS = parseInt(process.env.RAJA_FORWARD_DEDUPE_TTL_MS || `${5 * 60 * 1000}`, 10);
+const rajaForwardDedupe = new Map();
+
+function shouldSkipDuplicateRajaForward(payload) {
+    const messageId = String(payload?.messageId || payload?.dbMessageId || payload?.message?.id || '').trim();
+    if (!messageId) return false;
+
+    const key = [
+        payload?.sessionId || '',
+        payload?.chatJid || '',
+        messageId,
+    ].join('|');
+    const now = Date.now();
+    const existing = rajaForwardDedupe.get(key);
+    if (existing && existing > now) return true;
+
+    rajaForwardDedupe.set(key, now + RAJA_FORWARD_DEDUPE_TTL_MS);
+    for (const [cachedKey, expiresAt] of rajaForwardDedupe.entries()) {
+        if (expiresAt <= now) rajaForwardDedupe.delete(cachedKey);
+    }
+    return false;
+}
 
 function isRajaBotPayload(payload) {
     const chatJid = String(payload?.chatJid || '').toLowerCase();
@@ -60,6 +82,7 @@ function isRajaBotPayload(payload) {
 
 async function forwardRajaBotMessage(payload) {
     if (!RAJA_BOT_WEBHOOK_URL || !isRajaBotPayload(payload)) return;
+    if (shouldSkipDuplicateRajaForward(payload)) return;
     const axios = require('axios');
     try {
         await axios.post(RAJA_BOT_WEBHOOK_URL, payload, {
