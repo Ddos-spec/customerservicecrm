@@ -500,7 +500,11 @@ function buildPublicMediaUrl(req, mediaId) {
 
 function normalizePhoneDigits(value) {
     if (!value) return '';
-    let digits = value.toString().replace(/\D/g, '');
+    let raw = value.toString().trim();
+    // WA device JIDs can look like 6282121292937:29@s.whatsapp.net.
+    // Only the part before ':' or '@' is the account phone; the suffix is device id/domain.
+    raw = raw.split('@')[0].split(':')[0];
+    let digits = raw.replace(/\D/g, '');
     if (digits.startsWith('0')) digits = `62${digits.slice(1)}`;
     return digits;
 }
