@@ -13,6 +13,27 @@ const api = axios.create({
   timeout: 60000, // 10 second timeout
 });
 
+const getStoredAuthToken = () => {
+  try {
+    const raw = localStorage.getItem('auth-storage');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const token = parsed?.state?.authToken;
+    return typeof token === 'string' && token.trim() ? token.trim() : null;
+  } catch {
+    return null;
+  }
+};
+
+api.interceptors.request.use((config: any) => {
+  const token = getStoredAuthToken();
+  if (token && !config.headers?.Authorization) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   (response: any) => response,
   (error: any) => {

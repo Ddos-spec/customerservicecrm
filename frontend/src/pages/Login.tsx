@@ -11,6 +11,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showAgents, setShowAgents] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const showDemoAccess = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_LOGIN === 'true';
 
   const adminAgentUser = {
     email: 'admin@tokomaju.com',
@@ -141,6 +142,7 @@ const Login = () => {
           </form>
 
           {/* HIERARCHY DEMO SECTION */}
+          {showDemoAccess && (
           <div className="mt-8">
             <div className="relative">
               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200 dark:border-slate-700"></div></div>
@@ -200,6 +202,7 @@ const Login = () => {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

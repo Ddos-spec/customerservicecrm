@@ -8,6 +8,7 @@ const db = require('../db');
 const bcrypt = require('bcryptjs');
 
 let superAdminCookie;
+let superAdminToken;
 let tenantId;
 let ownerId;
 let dbAvailable = false;
@@ -96,17 +97,19 @@ describe('SaaS Workflow E2E', () => {
 
         expect(res.statusCode).toEqual(200);
         expect(res.body.success).toBe(true);
+        expect(res.body.token).toBeDefined();
         superAdminCookie = getCookie(res);
+        superAdminToken = res.body.token;
     });
 
     // 2. Create Tenant
     it('should create a new Tenant', async () => {
         if (!requireDb()) return;
-        if (!superAdminCookie) throw new Error('No cookie from previous test');
+        if (!superAdminToken) throw new Error('No token from previous test');
 
         const res = await request(app)
             .post('/api/v1/admin/tenants')
-            .set('Cookie', superAdminCookie)
+            .set('Authorization', `Bearer ${superAdminToken}`)
             .send({
                 company_name: 'Test Corp',
                 admin_name: 'Owner Test',

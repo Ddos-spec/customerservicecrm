@@ -24,6 +24,7 @@ export interface User {
 
 interface AuthState {
   user: User | null;
+  authToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 
@@ -39,10 +40,13 @@ interface AuthState {
   loginDemo: (user: User) => void;
 }
 
+const isDemoLoginEnabled = () => import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_LOGIN === 'true';
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
+      authToken: null,
       isAuthenticated: false,
       isLoading: false,
 
@@ -68,7 +72,11 @@ export const useAuthStore = create<AuthState>()(
               originalUser: response.data.user.originalUser
             };
 
-            set({ user: userData, isAuthenticated: true, isLoading: false });
+            const token = typeof response.data.token === 'string' ? response.data.token : null;
+            if (token) {
+              api.defaults.headers.common.Authorization = `Bearer ${token}`;
+            }
+            set({ user: userData, authToken: token, isAuthenticated: true, isLoading: false });
             toast.success('Login berhasil!');
             return true;
           } else {
@@ -88,7 +96,14 @@ export const useAuthStore = create<AuthState>()(
         try {
           const res = await api.post('/admin/stop-impersonate');
           if (res.data.success) {
-            set({ user: res.data.user });
+            const token = typeof res.data.token === 'string' ? res.data.token : get().authToken;
+            if (token) {
+              api.defaults.headers.common.Authorization = `Bearer ${token}`;
+            }
+            set({
+              user: res.data.user,
+              authToken: token,
+            });
             toast.success('Kembali ke Super Admin');
             // Force reload to clear any cached tenant data
             window.location.href = '/super-admin'; 
@@ -114,7 +129,8 @@ export const useAuthStore = create<AuthState>()(
           }
         }
 
-        set({ user: null, isAuthenticated: false });
+        delete api.defaults.headers.common.Authorization;
+        set({ user: null, authToken: null, isAuthenticated: false });
         toast.success('Logout berhasil');
       },
 
@@ -124,8 +140,13 @@ export const useAuthStore = create<AuthState>()(
       checkSession: async () => {
         const { user } = get();
 
-        // Demo users never call backend.
-        if (user?.isDemo) return;
+        // Demo users never call backend, but production must not keep old demo state.
+        if (user?.isDemo) {
+          if (isDemoLoginEnabled()) return;
+          delete api.defaults.headers.common.Authorization;
+          set({ user: null, authToken: null, isAuthenticated: false, isLoading: false });
+          return;
+        }
 
         set({ isLoading: true });
         try {
@@ -133,19 +154,26 @@ export const useAuthStore = create<AuthState>()(
           // refresh from trusting stale localStorage while impersonating a tenant.
           const response = await api.get('/admin/me');
           if (response.data?.success && response.data?.user) {
+            const token = typeof response.data.token === 'string' ? response.data.token : get().authToken;
+            if (token) {
+              api.defaults.headers.common.Authorization = `Bearer ${token}`;
+            }
             set({
               user: { ...response.data.user, isDemo: false },
+              authToken: token,
               isAuthenticated: true,
               isLoading: false,
             });
             return;
           }
 
-          set({ user: null, isAuthenticated: false, isLoading: false });
+          delete api.defaults.headers.common.Authorization;
+          set({ user: null, authToken: null, isAuthenticated: false, isLoading: false });
         } catch (error: any) {
           const status = error?.response?.status;
           if (status === 401 || status === 403) {
-            set({ user: null, isAuthenticated: false, isLoading: false });
+            delete api.defaults.headers.common.Authorization;
+            set({ user: null, authToken: null, isAuthenticated: false, isLoading: false });
             return;
           }
 
@@ -158,8 +186,14 @@ export const useAuthStore = create<AuthState>()(
        * Demo login - bypasses backend
        */
       loginDemo: (demoUser: User) => {
+        if (!isDemoLoginEnabled()) {
+          toast.error('Demo login dinonaktifkan di production');
+          return;
+        }
+        delete api.defaults.headers.common.Authorization;
         set({
           user: { ...demoUser, isDemo: true },
+          authToken: null,
           isAuthenticated: true
         });
         toast.success(`Demo login sebagai ${demoUser.name}`);
@@ -169,6 +203,7 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       partialize: (state) => ({
         user: state.user,
+        authToken: state.authToken,
         isAuthenticated: state.isAuthenticated
       }),
     }

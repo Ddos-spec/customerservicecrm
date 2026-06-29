@@ -624,9 +624,14 @@ const TenantManagement = () => {
     try {
         const res = await api.post(`/admin/impersonate/${tenant.id}`);
         if (res.data.success) {
+            const token = typeof res.data.token === 'string' ? res.data.token : useAuthStore.getState().authToken;
+            if (token) {
+                api.defaults.headers.common.Authorization = `Bearer ${token}`;
+            }
             // Update auth store manually since we are bypassing login form
             useAuthStore.setState({
                 user: res.data.user,
+                authToken: token,
                 isAuthenticated: true
             });
             toast.success(`Berhasil masuk ke ${tenant.company_name}`);
@@ -1192,7 +1197,7 @@ const TenantManagement = () => {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Tenant API Key</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Dipakai untuk integrasi n8n/AI per tenant.</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Dipakai untuk integrasi gateway/AI per tenant.</p>
                   </div>
                   <button
                     type="button"
@@ -1242,7 +1247,7 @@ const TenantManagement = () => {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-widest">Webhook Tenant (Incoming)</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Forward pesan masuk ke n8n/AI. Bisa lebih dari satu URL.</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">Forward pesan masuk ke gateway/AI. Bisa lebih dari satu URL.</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button

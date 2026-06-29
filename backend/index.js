@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Customer Service CRM - Backend Server
  *
  * This is the main entry point for the Node.js backend.
@@ -19,7 +19,7 @@ const { initializeApi } = require('./api_v1');
 const { buildExternalDashboardRouter } = require('./routes/external-dashboard');
 const { router: authRouter, ensureSuperAdmin, syncContactsForTenant, setSessionDeleteHandler } = require('./auth');
 const db = require('./db');
-const { initializeN8nApi } = require('./n8n-api');
+const { initializeGatewayApi } = require('./gateway-api');
 require('dotenv').config();
 const session = require('express-session');
 const { RedisStore } = require('connect-redis');
@@ -1581,7 +1581,7 @@ app.use(helmet({
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
 }));
 
-// Rate limiting removed per user request for n8n integration
+// Rate limiting removed per user request for gateway integration
 // app.use(rateLimit({
 //     windowMs: 15 * 60 * 1000,
 //     max: 100,
@@ -1667,6 +1667,7 @@ app.use(session({
         secure: isProd, // Must be true in production (HTTPS)
         httpOnly: true,
         sameSite: isProd ? 'none' : 'lax', // Must be 'none' for cross-site (Vercel -> Backend)
+        partitioned: isProd, // Helps modern browsers keep cross-site app/backend cookies isolated but usable
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
@@ -1875,8 +1876,8 @@ app.get('/api/v1/debug/config', (req, res) => {
 setSessionDeleteHandler(deleteSession);
 app.use('/api/v1/admin', authRouter);
 
-// n8n integration
-app.use('/api/v1/n8n', initializeN8nApi({ scheduleMessageSend, waGateway }));
+// Gateway integration
+app.use('/api/v1/gateway', initializeGatewayApi({ scheduleMessageSend, waGateway }));
 
 // External dashboard compatibility routes (used by crm-n8n-dashboard)
 const externalDashboardCompatRouter = buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway });

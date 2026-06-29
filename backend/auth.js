@@ -28,6 +28,7 @@ const DEFAULT_WEBHOOK_EVENTS = {
     document: true
 };
 const VALID_AI_MODES = new Set(['agent', 'chatbot']);
+const ADMIN_AUTH_TOKEN_TTL_SECONDS = Number.parseInt(process.env.ADMIN_AUTH_TOKEN_TTL_SECONDS || `${24 * 60 * 60}`, 10);
 let sessionDeleteHandler = null;
 
 function setSessionDeleteHandler(handler) {
@@ -71,6 +72,120 @@ function normalizeWhatsmeowSessionId(rawSessionId) {
         if (sessionId.startsWith('0')) sessionId = '62' + sessionId.slice(1);
     }
     return sessionId === '' ? null : sessionId;
+}
+
+function sanitizeSessionUser(user) {
+    if (!user || typeof user !== 'object') return null;
+
+    const sanitized = {
+        id: user.id,
+        tenant_id: user.tenant_id ?? null,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        tenant_name: user.tenant_name ?? null,
+        session_id: user.session_id ?? null
+    };
+
+    if (user.isImpersonating) {
+        sanitized.isImpersonating = true;
+        if (user.originalUser && typeof user.originalUser === 'object') {
+            sanitized.originalUser = {
+                id: user.originalUser.id,
+                name: user.originalUser.name,
+                role: user.originalUser.role
+            };
+        }
+    }
+
+    return sanitized;
+}
+
+function getAuthTokenSecret() {
+    return process.env.AUTH_JWT_SECRET || process.env.SESSION_SECRET || '';
+}
+
+function signAuthTokenPart(header, payload) {
+    return crypto
+        .createHmac('sha256', getAuthTokenSecret())
+        .update(`${header}.${payload}`)
+        .digest('base64url');
+}
+
+function createAdminAuthToken(user) {
+    const secret = getAuthTokenSecret();
+    const safeUser = sanitizeSessionUser(user);
+    if (!secret || !safeUser) return null;
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({
+        typ: 'admin_session',
+        iat: now,
+        exp: now + ADMIN_AUTH_TOKEN_TTL_SECONDS,
+        user: safeUser
+    })).toString('base64url');
+
+    return `${header}.${payload}.${signAuthTokenPart(header, payload)}`;
+}
+
+function readBearerToken(req) {
+    const header = req.headers?.authorization;
+    if (typeof header !== 'string') return null;
+    const match = header.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() : null;
+}
+
+function verifyAdminAuthToken(token) {
+    if (!token || typeof token !== 'string') return null;
+    if (!getAuthTokenSecret()) return null;
+
+    const parts = token.split('.');
+    if (parts.length !== 3 || parts.some(part => !part)) return null;
+
+    const [header, payload, signature] = parts;
+    const expected = signAuthTokenPart(header, payload);
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+
+    if (signatureBuffer.length !== expectedBuffer.length) return null;
+    if (!crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) return null;
+
+    try {
+        const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+        const now = Math.floor(Date.now() / 1000);
+        if (decoded.typ !== 'admin_session') return null;
+        if (!decoded.exp || decoded.exp < now) return null;
+        return sanitizeSessionUser(decoded.user);
+    } catch {
+        return null;
+    }
+}
+
+function resolveAuthenticatedUser(req) {
+    if (req.session?.user) return req.session.user;
+
+    const tokenUser = verifyAdminAuthToken(readBearerToken(req));
+    if (!tokenUser) return null;
+
+    req.session.user = tokenUser;
+    req.authTokenAuthenticated = true;
+    return req.session.user;
+}
+
+function getSessionCookieOptions(req) {
+    const isSecureRequest = Boolean(
+        req.secure
+        || req.headers?.['x-forwarded-proto'] === 'https'
+        || process.env.NODE_ENV === 'production'
+        || (process.env.FRONTEND_URL && process.env.FRONTEND_URL.startsWith('https'))
+    );
+
+    return {
+        path: '/',
+        secure: isSecureRequest,
+        sameSite: isSecureRequest ? 'none' : 'lax'
+    };
 }
 
 function normalizeAiMode(value) {
@@ -291,7 +406,7 @@ const loginLimiter = rateLimit({
  * Middleware: Require authenticated session
  */
 function requireAuth(req, res, next) {
-    if (!req.session?.user) {
+    if (!resolveAuthenticatedUser(req)) {
         return res.status(401).json({ success: false, error: 'Unauthorized - Please login' });
     }
     next();
@@ -303,10 +418,11 @@ function requireAuth(req, res, next) {
  */
 function requireRole(...roles) {
     return (req, res, next) => {
-        if (!req.session?.user) {
+        const user = resolveAuthenticatedUser(req);
+        if (!user) {
             return res.status(401).json({ success: false, error: 'Unauthorized' });
         }
-        if (!roles.includes(req.session.user.role)) {
+        if (!roles.includes(user.role)) {
             return res.status(403).json({ success: false, error: 'Forbidden - Insufficient permissions' });
         }
         next();
@@ -317,18 +433,20 @@ function requireRole(...roles) {
  * Middleware: Require tenant access (agent can only access own tenant)
  */
 function requireTenantAccess(req, res, next) {
-    if (!req.session?.user) {
+    const user = resolveAuthenticatedUser(req);
+    if (!user) {
         return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
     // Super admin can access all tenants
-    if (req.session.user.role === 'super_admin') {
+    if (user.role === 'super_admin') {
         return next();
     }
 
     // Others can only access their own tenant
     const requestedTenantId = (req.params.tenantId || req.body.tenant_id || req.query.tenant_id || '').toString().trim();
-    if (requestedTenantId && requestedTenantId !== req.session.user.tenant_id) {
+    const userTenantId = (user.tenant_id || '').toString().trim();
+    if (requestedTenantId && requestedTenantId !== userTenantId) {
         return res.status(403).json({ success: false, error: 'Forbidden - Cannot access other tenant data' });
     }
 
@@ -578,7 +696,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         const effectiveSessionId = user.tenant_session_id || null;
 
         // Create session
-        req.session.user = {
+        req.session.user = sanitizeSessionUser({
             id: user.id,
             tenant_id: user.tenant_id,
             name: user.name,
@@ -586,7 +704,7 @@ router.post('/login', loginLimiter, async (req, res) => {
             role: user.role,
             tenant_name: user.tenant_name,
             session_id: effectiveSessionId
-        };
+        });
 
         // Save session explicitly
         req.session.save((err) => {
@@ -600,15 +718,8 @@ router.post('/login', loginLimiter, async (req, res) => {
 
             res.json({
                 success: true,
-                user: {
-                    id: user.id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    tenant_id: user.tenant_id,
-                    tenant_name: user.tenant_name,
-                    session_id: effectiveSessionId
-                }
+                user: req.session.user,
+                token: createAdminAuthToken(req.session.user)
             });
 
             // Auto-sync contacts in background (non-blocking)
@@ -636,11 +747,12 @@ router.post('/login', loginLimiter, async (req, res) => {
  * Destroy session
  */
 router.post('/logout', (req, res) => {
+    const cookieOptions = getSessionCookieOptions(req);
     req.session.destroy((err) => {
         if (err) {
             return res.status(500).json({ success: false, error: 'Logout failed' });
         }
-        res.clearCookie('connect.sid');
+        res.clearCookie('connect.sid', cookieOptions);
         res.json({ success: true, message: 'Logged out successfully' });
     });
 });
@@ -652,7 +764,8 @@ router.post('/logout', (req, res) => {
 router.get('/me', requireAuth, (req, res) => {
     res.json({
         success: true,
-        user: req.session.user
+        user: req.session.user,
+        token: createAdminAuthToken(req.session.user)
     });
 });
 
@@ -661,11 +774,13 @@ router.get('/me', requireAuth, (req, res) => {
  * Check if session is valid (for frontend)
  */
 router.get('/check', (req, res) => {
-    if (req.session?.user) {
+    const user = resolveAuthenticatedUser(req);
+    if (user) {
         res.json({
             success: true,
             authenticated: true,
-            user: req.session.user
+            user,
+            token: createAdminAuthToken(user)
         });
     } else {
         res.json({
@@ -1252,7 +1367,7 @@ router.post('/impersonate/:tenantId', requireRole('super_admin'), async (req, re
         const originalUser = req.session.user;
 
         // Switch session to target user
-        req.session.user = {
+        req.session.user = sanitizeSessionUser({
             id: targetUser.id,
             tenant_id: targetUser.tenant_id,
             name: targetUser.name,
@@ -1267,14 +1382,18 @@ router.post('/impersonate/:tenantId', requireRole('super_admin'), async (req, re
                 name: originalUser.name,
                 role: originalUser.role
             }
-        };
+        });
 
         req.session.save((err) => {
             if (err) {
                 console.error('Impersonate session save error:', err);
                 return res.status(500).json({ success: false, error: 'Session error' });
             }
-            res.json({ success: true, user: req.session.user });
+            res.json({
+                success: true,
+                user: req.session.user,
+                token: createAdminAuthToken(req.session.user)
+            });
         });
     } catch (error) {
         console.error('Impersonate error:', error);
@@ -1286,7 +1405,7 @@ router.post('/impersonate/:tenantId', requireRole('super_admin'), async (req, re
  * POST /api/v1/admin/stop-impersonate
  * Revert session to Super Admin
  */
-router.post('/stop-impersonate', async (req, res) => {
+router.post('/stop-impersonate', requireAuth, async (req, res) => {
     try {
         if (!req.session.user?.isImpersonating || !req.session.user?.originalUser) {
             return res.status(400).json({ success: false, error: 'Not currently impersonating' });
@@ -1308,7 +1427,7 @@ router.post('/stop-impersonate', async (req, res) => {
             sessionId = tenant?.session_id || null;
         }
 
-        req.session.user = {
+        req.session.user = sanitizeSessionUser({
             id: user.id,
             tenant_id: user.tenant_id,
             name: user.name,
@@ -1316,14 +1435,18 @@ router.post('/stop-impersonate', async (req, res) => {
             role: user.role,
             tenant_name: tenantName,
             session_id: sessionId
-        };
+        });
 
         req.session.save((err) => {
             if (err) {
                 console.error('Stop impersonate session save error:', err);
                 return res.status(500).json({ success: false, error: 'Session error' });
             }
-            res.json({ success: true, user: req.session.user });
+            res.json({
+                success: true,
+                user: req.session.user,
+                token: createAdminAuthToken(req.session.user)
+            });
         });
     } catch (error) {
         console.error('Stop impersonate error:', error);
