@@ -19,6 +19,7 @@ const MainLayout = () => {
   const { isDarkMode, toggleDarkMode } = useThemeStore();
 
   const isSuperAdmin = user?.role === 'super_admin';
+  const isChatWorkspace = location.pathname.endsWith('/chat');
   const getRoleLabel = (role?: string | null) => {
     switch (role) {
       case 'super_admin':
@@ -275,8 +276,22 @@ const MainLayout = () => {
 
 
       {/* ================= MAIN CONTENT AREA ================= */}
-      <main className="flex-1 overflow-x-hidden bg-[linear-gradient(to_bottom,_rgba(248,250,252,0.96),_rgba(248,250,252,1))] pt-20 transition-colors duration-300 dark:bg-[linear-gradient(to_bottom,_rgba(15,23,42,0.94),_rgba(2,6,23,1))] lg:pt-0">
-        <div className="mx-auto w-full max-w-[1480px] px-4 py-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-8 lg:py-8 xl:px-10">
+      <main
+        className={clsx(
+          "flex-1 overflow-x-hidden pt-20 transition-colors duration-300 lg:pt-0",
+          isChatWorkspace
+            ? "bg-[#111b21]"
+            : "bg-[linear-gradient(to_bottom,_rgba(248,250,252,0.96),_rgba(248,250,252,1))] dark:bg-[linear-gradient(to_bottom,_rgba(15,23,42,0.94),_rgba(2,6,23,1))]"
+        )}
+      >
+        <div
+          className={clsx(
+            "mx-auto w-full",
+            isChatWorkspace
+              ? "h-[calc(100dvh-5rem)] max-w-none p-0"
+              : "max-w-[1480px] px-4 py-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-8 lg:py-8 xl:px-10"
+          )}
+        >
           <Outlet />
         </div>
       </main>

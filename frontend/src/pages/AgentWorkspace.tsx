@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
-  Send, Paperclip, Smile, MoreVertical, Search,
+  Send, Paperclip, Smile, MoreVertical, Search, Phone,
   Info, Check, CheckCheck, Clock, User, X, Loader2, Users, Image as ImageIcon, Video, Mic, FileText,
   Wifi, WifiOff, AlertTriangle
 } from 'lucide-react';
@@ -65,6 +65,47 @@ const formatMessageTime = (value?: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+};
+
+const formatChatListTime = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const messageDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((today - messageDay) / 86400000);
+
+  if (diffDays === 0) return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  if (diffDays === 1) return 'Kemarin';
+  if (diffDays < 7) return date.toLocaleDateString('id-ID', { weekday: 'short' });
+  return date.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: '2-digit' });
+};
+
+const formatDateDivider = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const messageDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((today - messageDay) / 86400000);
+
+  if (diffDays === 0) return 'Hari Ini';
+  if (diffDays === 1) return 'Kemarin';
+  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const isSameCalendarDay = (left?: string, right?: string) => {
+  if (!left || !right) return false;
+  const leftDate = new Date(left);
+  const rightDate = new Date(right);
+  if (Number.isNaN(leftDate.getTime()) || Number.isNaN(rightDate.getTime())) return false;
+  return leftDate.getFullYear() === rightDate.getFullYear()
+    && leftDate.getMonth() === rightDate.getMonth()
+    && leftDate.getDate() === rightDate.getDate();
 };
 
 const formatFullDateTime = (value?: string) => {
@@ -134,6 +175,107 @@ const getMessageStatusIcon = (status?: Message['status']) => {
   return <Clock size={12} />;
 };
 
+const tokenRegex = /(https?:\/\/[^\s<]+|www\.[^\s<]+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\+?62[\d\s().-]{7,20}|08[\d\s().-]{7,20})/gi;
+
+const splitTrailingPunctuation = (token: string) => {
+  let core = token;
+  let trailing = '';
+  while (core.length > 1 && /[.,!?;:)]$/.test(core)) {
+    trailing = `${core.slice(-1)}${trailing}`;
+    core = core.slice(0, -1);
+  }
+  return { core, trailing };
+};
+
+const normalizePhoneForWhatsApp = (value: string) => {
+  let digits = value.replace(/\D/g, '');
+  if (digits.startsWith('0')) digits = `62${digits.slice(1)}`;
+  if (digits.startsWith('8')) digits = `62${digits}`;
+  if (!digits.startsWith('62')) return null;
+  if (digits.length < 10 || digits.length > 15) return null;
+  return digits;
+};
+
+const renderInteractiveText = (text: string, isFromMe: boolean): ReactNode => {
+  if (!text) return null;
+
+  const linkClass = isFromMe
+    ? 'font-semibold text-[#9ee9ff] underline decoration-[#9ee9ff]/60 underline-offset-2 hover:text-white'
+    : 'font-semibold text-[#53bdeb] underline decoration-[#53bdeb]/50 underline-offset-2 hover:text-[#8fd8ff]';
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+
+  text.replace(tokenRegex, (rawToken, _match, offset: number) => {
+    if (offset > lastIndex) {
+      nodes.push(text.slice(lastIndex, offset));
+    }
+
+    const { core, trailing } = splitTrailingPunctuation(rawToken);
+    const lower = core.toLowerCase();
+
+    if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('www.')) {
+      const href = lower.startsWith('www.') ? `https://${core}` : core;
+      nodes.push(
+        <a
+          key={`${core}-${offset}`}
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className={linkClass}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {core}
+        </a>
+      );
+    } else if (core.includes('@') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(core)) {
+      nodes.push(
+        <a
+          key={`${core}-${offset}`}
+          href={`mailto:${core}`}
+          className={linkClass}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {core}
+        </a>
+      );
+    } else {
+      const phone = normalizePhoneForWhatsApp(core);
+      if (phone) {
+        nodes.push(
+          <a
+            key={`${core}-${offset}`}
+            href={`https://wa.me/${phone}`}
+            target="_blank"
+            rel="noreferrer"
+            className={linkClass}
+            title={`Buka nomor ${phone} di WhatsApp`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {core}
+          </a>
+        );
+      } else {
+        nodes.push(core);
+      }
+    }
+
+    if (trailing) nodes.push(trailing);
+    lastIndex = offset + rawToken.length;
+    return rawToken;
+  });
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+};
+
+const buildWhatsAppNumberHref = (phone?: string) => {
+  const normalized = normalizePhoneForWhatsApp(phone || '');
+  return normalized ? `https://wa.me/${normalized}` : undefined;
+};
+
 const CHAT_PAGE_SIZE = 100;
 
 const AgentWorkspace = () => {
@@ -169,17 +311,18 @@ const AgentWorkspace = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const chatOffsetRef = useRef(0);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+    });
+  }, []);
 
-  // Only auto-scroll to bottom on initial load or new incoming messages (at the bottom)
-  // We disable this when fetching old history to prevent jumping
+  // Opened chats must land on latest message. Only preserve position when loading old history.
   useEffect(() => {
-    if (!isFetchingMore) {
-        scrollToBottom();
+    if (!isFetchingMore && !isLoadingMessages) {
+      scrollToBottom('auto');
     }
-  }, [messages, isFetchingMore]);
+  }, [selectedChat?.id, messages.length, isFetchingMore, isLoadingMessages, scrollToBottom]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setTimeTick(Date.now()), 30000);
@@ -287,7 +430,7 @@ const AgentWorkspace = () => {
   // Handle Scroll to Top (Infinite Scroll)
   const handleScroll = () => {
     const container = messagesContainerRef.current;
-    if (!container) return;
+    if (!container || !selectedChat) return;
 
     // Check if scrolled to top (allow 10px buffer) and if we have more messages to load
     if (container.scrollTop < 10 && hasMoreMessages && !isFetchingMore && !isLoadingMessages && messages.length > 0) {
@@ -572,7 +715,6 @@ const AgentWorkspace = () => {
   );
   const openChatsCount = chats.filter((chat) => chat.status === 'open').length;
   const unreadChatsCount = chats.filter((chat) => chat.unread_count > 0).length;
-  const totalUnreadMessages = chats.reduce((total, chat) => total + (chat.unread_count || 0), 0);
   const isRealtimeStale = realtimeState === 'connected' && timeTick - lastRealtimeAt > 120000;
   const isSessionStale = realtimeState === 'connected'
     && lastSessionUpdateAt > 0
@@ -587,75 +729,52 @@ const AgentWorkspace = () => {
         : 'Menghubungkan realtime';
 
   return (
-    <div className="flex min-h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden rounded-[28px] border border-gray-200/80 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)] transition-colors duration-300 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none lg:h-[calc(100dvh-7rem)] lg:flex-row">
+    <div className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col overflow-hidden border border-[#2a3942] bg-[#111b21] text-[#e9edef] transition-colors duration-300 lg:flex-row">
 
       {/* LEFT SIDEBAR: CHAT LIST */}
-      <div className="flex w-full min-h-0 shrink-0 flex-col border-b border-gray-200/80 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950 lg:h-full lg:w-[25rem] lg:max-h-none lg:border-b-0 lg:border-r xl:w-[26rem] max-h-[42svh]">
+      <div className="flex max-h-[42svh] w-full min-h-0 shrink-0 flex-col border-b border-[#2a3942] bg-[#111b21] lg:h-full lg:w-[28.5rem] lg:max-h-none lg:border-b-0 lg:border-r">
         {/* Search Header */}
-        <div className="border-b border-gray-100 dark:border-slate-800 bg-white/90 px-5 py-5 dark:bg-slate-950/90">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600 dark:text-blue-400">
-                Workspace
-              </p>
-              <h2 className="mt-1 text-xl font-black tracking-tight text-gray-900 dark:text-white">
-                Inbox Aktif
-              </h2>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Pantau percakapan, balas cepat, dan jaga SLA tim.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-right dark:border-blue-900/50 dark:bg-blue-950/30">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-500 dark:text-blue-300">
-                Total Kontak
-              </p>
-              <p className="mt-1 text-lg font-black text-blue-700 dark:text-blue-200">
-                {typeof totalContacts === 'number' ? totalContacts.toLocaleString('id-ID') : '-'}
-              </p>
+        <div className="border-b border-[#2a3942] bg-[#111b21] px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-[22px] font-semibold tracking-tight text-[#e9edef]">WhatsApp</h2>
+            <div className="flex items-center gap-1 text-[#aebac1]">
+              <button className="p-2 transition-colors hover:bg-[#202c33]" title="Status realtime">
+                {realtimeState === 'connected' ? <Wifi size={19} /> : <WifiOff size={19} />}
+              </button>
+              <button className="p-2 transition-colors hover:bg-[#202c33]" title="Menu">
+                <MoreVertical size={20} />
+              </button>
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
-                Open
-              </p>
-              <p className="mt-1 text-lg font-black text-gray-900 dark:text-white">{openChatsCount}</p>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
-                Unread
-              </p>
-              <p className="mt-1 text-lg font-black text-gray-900 dark:text-white">{unreadChatsCount}</p>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
-                Pesan
-              </p>
-              <p className="mt-1 text-lg font-black text-gray-900 dark:text-white">{totalUnreadMessages}</p>
-            </div>
-          </div>
-
-          <div className="relative mt-4">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <div className="relative mt-5">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8696a0]" size={17} />
             <input
               type="text"
-              placeholder="Cari nama pelanggan atau nomor..."
+              placeholder="Cari atau mulai obrolan baru"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-2xl border border-gray-200 bg-gray-50 pl-11 pr-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500 dark:focus:border-blue-500/50 dark:focus:bg-slate-950"
+              className="w-full rounded-lg border-0 bg-[#202c33] py-2.5 pl-11 pr-4 text-sm text-[#e9edef] outline-none placeholder:text-[#8696a0] focus:bg-[#26343d]"
             />
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 text-[13px] font-semibold">
+            <span className="shrink-0 rounded-full bg-[#0a5c46] px-4 py-2 text-[#d9fdd3]">Semua</span>
+            <span className="shrink-0 rounded-full border border-[#2a3942] px-4 py-2 text-[#aebac1]">Belum dibaca {unreadChatsCount || ''}</span>
+            <span className="shrink-0 rounded-full border border-[#2a3942] px-4 py-2 text-[#aebac1]">Grup</span>
+            <span className="shrink-0 rounded-full border border-[#2a3942] px-4 py-2 text-[#aebac1]">Open {openChatsCount}</span>
+            <span className="shrink-0 rounded-full border border-[#2a3942] px-4 py-2 text-[#aebac1]">Kontak {typeof totalContacts === 'number' ? totalContacts.toLocaleString('id-ID') : '-'}</span>
           </div>
         </div>
 
         {/* Chat List */}
         <div
-          className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+          className="min-h-0 flex-1 overflow-y-auto"
           ref={chatListRef}
           onScroll={handleChatListScroll}
         >
           {isLoadingChats ? (
-            <div className="p-10 flex flex-col items-center text-gray-400 dark:text-gray-500">
+            <div className="flex flex-col items-center p-10 text-[#8696a0]">
               <Loader2 className="animate-spin mb-2" size={24} />
               <span className="text-xs">Memuat percakapan...</span>
             </div>
@@ -664,45 +783,38 @@ const AgentWorkspace = () => {
               <div
                 key={chat.id}
                 onClick={() => handleSelectChat(chat)}
-                className={`mb-2 cursor-pointer rounded-3xl border px-4 py-4 transition-all duration-200 ${
+                className={`cursor-pointer border-b border-[#222e35] px-3 py-3 transition-colors duration-150 ${
                   selectedChat?.id === chat.id
-                    ? 'border-blue-200 bg-blue-50 shadow-[0_12px_30px_-20px_rgba(37,99,235,0.8)] dark:border-blue-900/50 dark:bg-blue-950/20'
-                    : 'border-transparent hover:border-gray-200 hover:bg-gray-50 dark:hover:border-slate-800 dark:hover:bg-slate-900'
+                    ? 'bg-[#2a3942]'
+                    : 'hover:bg-[#202c33]'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <div className="relative shrink-0">
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl font-bold text-sm shadow-sm ${chat.is_group ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-full text-sm font-bold ${chat.is_group ? 'bg-[#0a5c46] text-[#d9fdd3]' : 'bg-[#2a3942] text-[#d1d7db]'}`}>
                       {chat.is_group ? <Users size={20} /> : getDisplayInitials(chat.display_name || chat.phone_number)}
                     </div>
                     {chat.status === 'open' && (
-                      <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-950" />
+                      <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#111b21] bg-[#00a884]" />
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="mb-1 flex items-baseline justify-between gap-3">
-                      <h4 className="flex items-center gap-1.5 truncate pr-2 text-sm font-bold text-gray-900 dark:text-white">
+                      <h4 className="flex items-center gap-1.5 truncate pr-2 text-[15px] font-semibold text-[#e9edef]">
                         {chat.display_name || chat.phone_number}
-                        {chat.is_group && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">GRUP</span>}
+                        {chat.is_group && <span className="bg-[#0a5c46] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#d9fdd3]">GRUP</span>}
                       </h4>
-                      <span className="shrink-0 text-[10px] text-gray-400 dark:text-gray-500">
-                        {formatRelativeTime(chat.last_message_time)}
+                      <span className="shrink-0 text-xs text-[#8696a0]">
+                        {formatChatListTime(chat.last_message_time)}
                       </span>
                     </div>
-                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                    <p className="truncate text-[13px] text-[#8696a0]">
                       {chat.last_message_preview || 'Belum ada pesan'}
                     </p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
-                        chat.status === 'open'
-                          ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
-                          : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-gray-400'
-                      }`}>
-                        {chat.status === 'open' ? 'Aktif' : 'Selesai'}
-                      </span>
+                    <div className="mt-1 flex items-center gap-2">
                       {!chat.is_group && (
-                        <span className="truncate text-[11px] text-gray-400 dark:text-gray-500">
+                        <span className="truncate text-[11px] text-[#667781]">
                           {chat.phone_number}
                         </span>
                       )}
@@ -710,7 +822,7 @@ const AgentWorkspace = () => {
                   </div>
 
                   {chat.unread_count > 0 && (
-                    <div className="shrink-0 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm shadow-blue-500/30">
+                    <div className="shrink-0 rounded-full bg-[#00a884] px-2.5 py-1 text-[10px] font-bold text-[#111b21]">
                       {chat.unread_count}
                     </div>
                   )}
@@ -718,18 +830,18 @@ const AgentWorkspace = () => {
               </div>
             ))
           ) : (
-            <div className="rounded-3xl border border-dashed border-gray-200 bg-gray-50 p-10 text-center text-sm text-gray-400 dark:border-slate-800 dark:bg-slate-900 dark:text-gray-500">
+            <div className="p-10 text-center text-sm text-[#8696a0]">
               Belum ada percakapan yang cocok.
             </div>
           )}
           {!isLoadingChats && isLoadingMoreChats && (
-            <div className="p-4 flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs gap-2">
+            <div className="flex items-center justify-center gap-2 p-4 text-xs text-[#8696a0]">
               <Loader2 className="animate-spin" size={16} />
               <span>Memuat kontak lainnya...</span>
             </div>
           )}
           {!isLoadingChats && !isLoadingMoreChats && !hasMoreChats && chats.length > 0 && (
-            <div className="p-4 text-center text-gray-400 dark:text-gray-500 text-xs">
+            <div className="p-4 text-center text-xs text-[#667781]">
               Semua kontak sudah dimuat.
             </div>
           )}
@@ -737,42 +849,55 @@ const AgentWorkspace = () => {
       </div>
 
       {/* RIGHT AREA: CHAT ROOM */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_35%),linear-gradient(to_bottom,_rgba(248,250,252,0.9),_rgba(248,250,252,0.98))] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),_transparent_30%),linear-gradient(to_bottom,_rgba(2,6,23,0.92),_rgba(2,6,23,1))]">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0b141a]">
         {selectedChat ? (
             <div className="flex h-full min-h-0 flex-1 overflow-hidden">
               <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
                 {/* Chat Header */}
-                <div className="sticky top-0 z-10 shrink-0 border-b border-white/60 bg-white/85 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 sm:px-5 lg:px-6">
+                <div className="sticky top-0 z-10 shrink-0 border-b border-[#2a3942] bg-[#202c33] px-4 py-3 sm:px-5">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex cursor-pointer items-center space-x-3" onClick={() => setIsInfoOpen(true)}>
-                        <div className={`flex h-11 w-11 items-center justify-center rounded-2xl font-bold text-xs shadow-sm ${selectedChat.is_group ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold ${selectedChat.is_group ? 'bg-[#0a5c46] text-[#d9fdd3]' : 'bg-[#dfe5e7] text-[#54656f]'}`}>
                             {selectedChat.is_group ? <Users size={18} /> : getDisplayInitials(selectedChat.display_name, selectedChat.phone_number?.slice(-2) || '?')}
                         </div>
                         <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
+                              <h3 className="flex items-center gap-2 text-base font-semibold text-[#e9edef]">
                                 {selectedChat.display_name}
                               </h3>
-                              {selectedChat.is_group && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">Grup</span>}
-                              <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
-                                selectedChat.status === 'open'
-                                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
-                                  : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-gray-400'
-                              }`}>
-                                {selectedChat.status === 'open' ? 'Sedang ditangani' : 'Selesai'}
-                              </span>
                             </div>
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                {selectedChat.is_group ? 'Grup WhatsApp' : selectedChat.phone_number}
+                            <p className="mt-0.5 text-xs text-[#8696a0]">
+                                {selectedChat.is_group ? 'Grup WhatsApp' : (
+                                  buildWhatsAppNumberHref(selectedChat.phone_number) ? (
+                                    <a
+                                      href={buildWhatsAppNumberHref(selectedChat.phone_number)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="hover:text-[#53bdeb] hover:underline"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {selectedChat.phone_number}
+                                    </a>
+                                  ) : selectedChat.phone_number
+                                )}
                                 {selectedChat.last_message_time ? ` • Aktif ${formatRelativeTime(selectedChat.last_message_time)}` : ''}
                             </p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2 text-gray-400 dark:text-gray-500">
-                        <button className="rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm transition-colors hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800" title="Info" onClick={() => setIsInfoOpen(!isInfoOpen)}>
+                      <div className="flex items-center space-x-1 text-[#aebac1]">
+                        <button className="p-2 transition-colors hover:bg-[#2a3942]" title="Video call">
+                            <Video size={20} />
+                        </button>
+                        <button className="p-2 transition-colors hover:bg-[#2a3942]" title="Call">
+                            <Phone size={20} />
+                        </button>
+                        <button className="p-2 transition-colors hover:bg-[#2a3942]" title="Cari pesan">
+                            <Search size={20} />
+                        </button>
+                        <button className="p-2 transition-colors hover:bg-[#2a3942]" title="Info" onClick={() => setIsInfoOpen(!isInfoOpen)}>
                             <Info size={20} />
                         </button>
-                        <button className="rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm transition-colors hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800" title="More">
+                        <button className="p-2 transition-colors hover:bg-[#2a3942]" title="More">
                             <MoreVertical size={20} />
                         </button>
                       </div>
@@ -780,7 +905,7 @@ const AgentWorkspace = () => {
                 </div>
 
                 {shouldShowRealtimeWarning && (
-                  <div className="shrink-0 border-b border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-900 backdrop-blur dark:border-amber-500/20 dark:bg-amber-950/30 dark:text-amber-100 sm:px-5 lg:px-6">
+                  <div className="shrink-0 border-b border-[#3b4a54] bg-[#182229] px-4 py-3 text-[#f8e6a0] sm:px-5">
                     <div className="flex items-center gap-3 text-xs font-semibold">
                       {realtimeState === 'connected' ? <Wifi size={16} /> : <WifiOff size={16} />}
                       <div className="min-w-0 flex-1">
@@ -799,37 +924,51 @@ const AgentWorkspace = () => {
                 <div
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
-                    className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 lg:px-5"
+                    className="min-h-0 flex-1 overflow-y-auto bg-[#0b141a] bg-repeat px-6 py-4 sm:px-8 lg:px-14"
+                    style={{
+                      backgroundImage: "linear-gradient(rgba(11,20,26,0.88), rgba(11,20,26,0.88)), url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
+                    }}
                 >
                     {isFetchingMore && (
                         <div className="flex justify-center py-2">
-                            <Loader2 className="animate-spin text-gray-400" size={20} />
+                            <Loader2 className="animate-spin text-[#8696a0]" size={20} />
                         </div>
                     )}
 
                     {isLoadingMessages ? (
                         <div className="flex h-full items-center justify-center">
-                            <Loader2 className="animate-spin text-blue-500" size={32} />
+                            <Loader2 className="animate-spin text-[#00a884]" size={32} />
                         </div>
                     ) : messages.length > 0 ? (
-                        messages.map((msg) => (
-                            <div key={msg.id} className={`mb-4 flex ${msg.is_from_me ? 'justify-end' : 'justify-start'}`}>
+                        messages.map((msg, index) => {
+                          const showDateDivider = index === 0 || !isSameCalendarDay(messages[index - 1]?.created_at, msg.created_at);
+
+                          return (
+                            <Fragment key={msg.id}>
+                              {showDateDivider && (
+                                <div className="sticky top-2 z-[1] my-3 flex justify-center">
+                                  <span className="bg-[#182229] px-3 py-1.5 text-xs font-medium text-[#8696a0] shadow-sm">
+                                    {formatDateDivider(msg.created_at)}
+                                  </span>
+                                </div>
+                              )}
+                              <div className={`mb-1.5 flex ${msg.is_from_me ? 'justify-end' : 'justify-start'}`}>
                                 <div
-                                    className={`group relative max-w-[82%] rounded-[24px] px-4 py-3 text-sm shadow-sm lg:max-w-[62%] ${
+                                    className={`group relative max-w-[84%] px-2.5 py-1.5 text-[14.2px] leading-[19px] shadow-sm lg:max-w-[64%] ${
                                     msg.is_from_me
-                                        ? 'rounded-tr-md bg-blue-600 text-white shadow-blue-500/15'
-                                        : 'rounded-tl-md border border-white/70 bg-white/90 text-gray-800 shadow-[0_18px_35px_-28px_rgba(15,23,42,0.6)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-white dark:shadow-none'
+                                        ? 'rounded-lg rounded-tr-sm bg-[#005c4b] text-[#e9edef]'
+                                        : 'rounded-lg rounded-tl-sm bg-[#202c33] text-[#e9edef]'
                                     }`}
                                 >
                                     {/* Sender Name in Group Chat */}
                                     {selectedChat.is_group && !msg.is_from_me && msg.sender_name && (
-                                        <p className="mb-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{msg.sender_name}</p>
+                                        <p className="mb-1 text-[11px] font-bold text-[#06cf9c]">{msg.sender_name}</p>
                                     )}
 
                                     {msg.message_type === 'image' ? (
-                                      <div className="space-y-3">
+                                      <div className="space-y-2">
                                         {msg.media_url ? (
-                                          <a href={msg.media_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-white/20 bg-white/10">
+                                          <a href={msg.media_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border border-white/10 bg-black/15">
                                             <img
                                               src={msg.media_url}
                                               alt={msg.body && !isMediaPlaceholder(msg.body) ? msg.body : 'Gambar pelanggan'}
@@ -838,18 +977,23 @@ const AgentWorkspace = () => {
                                             />
                                           </a>
                                         ) : (
-                                          <div className={`flex items-center gap-2 rounded-2xl px-3 py-2 ${msg.is_from_me ? 'bg-blue-500/60 text-blue-50' : 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-gray-300'}`}>
+                                          <div className={`flex items-center gap-2 rounded-md px-3 py-2 ${msg.is_from_me ? 'bg-white/10 text-[#d9fdd3]' : 'bg-black/15 text-[#aebac1]'}`}>
                                             <ImageIcon size={16} />
                                             <span>Gambar diterima</span>
                                           </div>
                                         )}
                                         {!isMediaPlaceholder(msg.body) && (
-                                          <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                                          <div className="whitespace-pre-wrap break-words">{renderInteractiveText(msg.body, msg.is_from_me)}</div>
                                         )}
                                       </div>
                                     ) : getMessageTypeMeta(msg.message_type) ? (
                                       <div className="space-y-2">
-                                        <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] ${msg.is_from_me ? 'bg-blue-500/60 text-blue-50' : 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-gray-300'}`}>
+                                        <a
+                                          href={msg.media_url || undefined}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[12px] font-semibold ${msg.is_from_me ? 'bg-white/10 text-[#d9fdd3]' : 'bg-black/15 text-[#aebac1]'} ${msg.media_url ? 'hover:underline' : 'pointer-events-none'}`}
+                                        >
                                           {(() => {
                                             const meta = getMessageTypeMeta(msg.message_type);
                                             const Icon = meta!.icon;
@@ -860,28 +1004,30 @@ const AgentWorkspace = () => {
                                               </>
                                             );
                                           })()}
-                                        </div>
+                                        </a>
                                         {!isMediaPlaceholder(msg.body) && (
-                                          <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                                          <div className="whitespace-pre-wrap break-words">{renderInteractiveText(msg.body, msg.is_from_me)}</div>
                                         )}
                                       </div>
                                     ) : (
-                                      <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                                      <div className="whitespace-pre-wrap break-words">{renderInteractiveText(msg.body, msg.is_from_me)}</div>
                                     )}
 
-                                    <div className={`mt-1.5 flex items-center justify-end space-x-1 text-[10px] opacity-70 ${msg.is_from_me ? 'text-blue-100' : 'text-gray-400'}`}>
+                                    <div className={`float-right ml-2 mt-1 flex items-center justify-end space-x-1 text-[11px] leading-none ${msg.is_from_me ? 'text-[#b6d6cd]' : 'text-[#8696a0]'}`}>
                                         <span>{formatMessageTime(msg.created_at)}</span>
                                         {msg.is_from_me && getMessageStatusIcon(msg.delivery_status || msg.status)}
                                     </div>
                                 </div>
-                            </div>
-                        ))
+                              </div>
+                            </Fragment>
+                          );
+                        })
                     ) : (
-                        <div className="flex h-full flex-col items-center justify-center rounded-[28px] border border-dashed border-gray-200 bg-white/70 text-gray-400 dark:border-slate-800 dark:bg-slate-900/60 dark:text-gray-500">
-                            <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-800">
+                        <div className="flex h-full flex-col items-center justify-center text-[#8696a0]">
+                            <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#202c33]">
                                 <Send size={24} className="-ml-1" />
                             </div>
-                            <p className="font-semibold text-gray-600 dark:text-gray-300">Belum ada pesan.</p>
+                            <p className="font-semibold text-[#d1d7db]">Belum ada pesan.</p>
                             <p className="mt-1 text-sm">Sapa pelanggan sekarang untuk mulai percakapan.</p>
                         </div>
                     )}
@@ -889,31 +1035,32 @@ const AgentWorkspace = () => {
                 </div>
 
                 {/* Input Area */}
-                <div className="z-10 shrink-0 border-t border-gray-200/80 bg-[#eef1f5] px-3 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900 sm:px-4">
+                <div className="z-10 shrink-0 border-t border-[#2a3942] bg-[#202c33] px-3 py-2.5 sm:px-4">
                     <div className="flex w-full items-center gap-2">
-                        <button className="rounded-full p-2.5 text-gray-400 transition-colors hover:bg-white/80 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400">
+                        <button className="p-2.5 text-[#aebac1] transition-colors hover:bg-[#2a3942] hover:text-[#e9edef]" title="Lampiran">
                             <Paperclip size={20} />
                         </button>
 
-                        <div className="flex min-w-0 flex-1 items-center rounded-full bg-white px-4 py-2.5 shadow-sm dark:bg-slate-800 dark:shadow-none">
+                        <button className="p-2.5 text-[#aebac1] transition-colors hover:bg-[#2a3942] hover:text-[#e9edef]" title="Emoji">
+                          <Smile size={20} />
+                        </button>
+
+                        <div className="flex min-w-0 flex-1 items-center rounded-lg bg-[#2a3942] px-4 py-2">
                              <input
                                 type="text"
                                 value={messageText}
                                 onChange={(e) => setMessageText(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                placeholder="Ketik pesan..."
-                                className="min-w-0 flex-1 border-none bg-transparent py-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-0 dark:text-white"
+                                placeholder="Ketik pesan"
+                                className="min-w-0 flex-1 border-none bg-transparent py-1.5 text-[15px] text-[#e9edef] outline-none placeholder:text-[#8696a0] focus:ring-0"
                                 autoComplete="off"
                             />
-                            <button className="ml-2 shrink-0 rounded-full p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-blue-600 dark:hover:bg-slate-700 dark:hover:text-blue-400">
-                              <Smile size={19} />
-                            </button>
                         </div>
 
                         <button
                             onClick={handleSendMessage}
                             disabled={isSending || !messageText.trim()}
-                            className="flex-shrink-0 rounded-full bg-blue-600 p-3 text-white shadow-lg shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400 dark:shadow-blue-900/30"
+                            className="flex-shrink-0 p-3 text-[#aebac1] transition-all hover:bg-[#2a3942] hover:text-[#e9edef] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                             {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
                         </button>
@@ -923,59 +1070,65 @@ const AgentWorkspace = () => {
 
               {/* Info Sidebar (Right) */}
               {isInfoOpen && (
-                  <div className="absolute right-0 top-0 z-20 flex h-full w-80 flex-col border-l border-gray-200 bg-white/95 shadow-2xl backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 animate-in slide-in-from-right duration-300 lg:relative lg:shrink-0 lg:shadow-none">
-                      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-slate-800">
+                  <div className="absolute right-0 top-0 z-20 flex h-full w-80 flex-col border-l border-[#2a3942] bg-[#111b21] shadow-2xl animate-in slide-in-from-right duration-300 lg:relative lg:shrink-0 lg:shadow-none">
+                      <div className="flex items-center justify-between border-b border-[#2a3942] px-5 py-4">
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-600 dark:text-blue-400">Profil Chat</p>
-                            <h3 className="mt-1 font-bold text-gray-900 dark:text-white">Detail Kontak</h3>
+                            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#00a884]">Profil Chat</p>
+                            <h3 className="mt-1 font-bold text-[#e9edef]">Detail Kontak</h3>
                           </div>
-                          <button onClick={() => setIsInfoOpen(false)} className="rounded-full p-1 transition-colors hover:bg-gray-100 dark:hover:bg-slate-800 lg:hidden">
+                          <button onClick={() => setIsInfoOpen(false)} className="p-1 text-[#aebac1] transition-colors hover:bg-[#202c33] lg:hidden">
                               <X size={20} />
                           </button>
                       </div>
                       <div className="flex flex-1 flex-col overflow-y-auto p-6 text-center">
-                          <div className="mb-4 flex h-24 w-24 self-center rounded-[28px] bg-blue-100 text-2xl font-bold text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 items-center justify-center">
+                          <div className="mb-4 flex h-24 w-24 items-center justify-center self-center rounded-full bg-[#dfe5e7] text-2xl font-bold text-[#54656f]">
                               {getDisplayInitials(selectedChat.display_name, selectedChat.phone_number?.slice(-2) || '?')}
                           </div>
-                          <h2 className="text-lg font-bold text-gray-900 dark:text-white">{selectedChat.display_name}</h2>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selectedChat.phone_number}</p>
+                          <h2 className="text-lg font-bold text-[#e9edef]">{selectedChat.display_name}</h2>
+                          {buildWhatsAppNumberHref(selectedChat.phone_number) ? (
+                            <a href={buildWhatsAppNumberHref(selectedChat.phone_number)} target="_blank" rel="noreferrer" className="mt-1 text-sm text-[#53bdeb] hover:underline">
+                              {selectedChat.phone_number}
+                            </a>
+                          ) : (
+                            <p className="mt-1 text-sm text-[#8696a0]">{selectedChat.phone_number}</p>
+                          )}
 
                           <div className="mt-8 w-full space-y-4 text-left">
-                              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Status Chat</span>
+                              <div className="border border-[#2a3942] bg-[#202c33] p-4">
+                                  <span className="text-[10px] uppercase font-bold text-[#8696a0] tracking-wider">Status Chat</span>
                                   <div className="mt-2 flex items-center space-x-2">
-                                      <div className={`w-2 h-2 rounded-full ${selectedChat.status === 'open' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200 capitalize">{selectedChat.status || 'Open'}</span>
+                                      <div className={`w-2 h-2 rounded-full ${selectedChat.status === 'open' ? 'bg-[#00a884]' : 'bg-[#8696a0]'}`} />
+                                      <span className="text-sm font-medium text-[#d1d7db] capitalize">{selectedChat.status || 'Open'}</span>
                                   </div>
                               </div>
 
-                              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Contact ID</span>
-                                  <p className="mt-1 text-xs font-mono text-gray-600 dark:text-gray-300 break-all">
+                              <div className="border border-[#2a3942] bg-[#202c33] p-4">
+                                  <span className="text-[10px] uppercase font-bold text-[#8696a0] tracking-wider">Contact ID</span>
+                                  <p className="mt-1 text-xs font-mono text-[#d1d7db] break-all">
                                       {selectedChat.contact_id}
                                   </p>
                               </div>
 
-                              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Tipe Percakapan</span>
-                                  <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                              <div className="border border-[#2a3942] bg-[#202c33] p-4">
+                                  <span className="text-[10px] uppercase font-bold text-[#8696a0] tracking-wider">Tipe Percakapan</span>
+                                  <p className="mt-1 text-sm font-medium text-[#d1d7db]">
                                     {selectedChat.is_group ? 'Grup WhatsApp' : 'Chat pribadi'}
                                   </p>
                               </div>
 
                               {selectedChat.agent_name && (
-                                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Ditangani Oleh</span>
-                                    <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                <div className="border border-[#2a3942] bg-[#202c33] p-4">
+                                    <span className="text-[10px] uppercase font-bold text-[#8696a0] tracking-wider">Ditangani Oleh</span>
+                                    <p className="mt-1 text-sm font-medium text-[#d1d7db]">
                                       {selectedChat.agent_name}
                                     </p>
                                 </div>
                               )}
 
                               {selectedChat.last_message_time && (
-                                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Aktivitas Terakhir</span>
-                                    <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                <div className="border border-[#2a3942] bg-[#202c33] p-4">
+                                    <span className="text-[10px] uppercase font-bold text-[#8696a0] tracking-wider">Aktivitas Terakhir</span>
+                                    <p className="mt-1 text-sm font-medium text-[#d1d7db]">
                                       {formatFullDateTime(selectedChat.last_message_time)}
                                     </p>
                                 </div>
@@ -987,15 +1140,15 @@ const AgentWorkspace = () => {
             </div>
         ) : (
             // No Chat Selected State
-            <div className="flex-1 flex flex-col items-center justify-center px-6 text-gray-400 dark:text-gray-500">
-                <div className="flex w-full max-w-xl flex-col items-center rounded-[32px] border border-gray-200/80 bg-white/85 px-8 py-12 text-center shadow-[0_24px_80px_-48px_rgba(15,23,42,0.6)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-none">
-                  <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-blue-50 dark:bg-slate-800 animate-pulse">
-                    <User size={48} className="text-blue-200 dark:text-slate-600" />
+            <div className="flex flex-1 flex-col items-center justify-center px-6 text-[#8696a0]">
+                <div className="flex w-full max-w-xl flex-col items-center border-t border-[#2a3942] bg-[#111b21] px-8 py-12 text-center">
+                  <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-[#202c33]">
+                    <User size={48} className="text-[#3b4a54]" />
                   </div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600 dark:text-blue-400">
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#00a884]">
                     Customer Service Hub
                   </p>
-                  <h3 className="mt-3 text-2xl font-black tracking-tight text-gray-800 dark:text-gray-100">Selamat Datang, {user?.name}</h3>
+                  <h3 className="mt-3 text-2xl font-black tracking-tight text-[#e9edef]">Selamat Datang, {user?.name}</h3>
                   <p className="mt-3 max-w-md text-sm leading-6">Pilih percakapan dari daftar di sebelah kiri untuk mulai melayani pelanggan. Semua chat, status, dan respons tim akan terpusat di sini.</p>
                 </div>
             </div>
