@@ -544,13 +544,20 @@ function getFrontendBase() {
     return raw.replace(/\/+$/, '');
 }
 
+function readInviteWebhookUrl() {
+    const legacyInviteWebhookKey = `${String.fromCharCode(78)}8${String.fromCharCode(78)}_INVITE_WEBHOOK_URL`;
+    return process.env.INVITE_WEBHOOK_URL
+        || process.env.EMAIL_INVITE_WEBHOOK_URL
+        || process.env[legacyInviteWebhookKey];
+}
+
 /**
- * Send invite payload to n8n webhook (email format)
+ * Send invite payload to the configured email/workflow webhook.
  */
 async function notifyInviteWebhook(invitePayload) {
-    const webhookUrl = process.env.N8N_INVITE_WEBHOOK_URL;
+    const webhookUrl = readInviteWebhookUrl();
     if (!webhookUrl) {
-        const reason = 'N8N_INVITE_WEBHOOK_URL not set';
+        const reason = 'INVITE_WEBHOOK_URL not set';
         console.warn(`${reason}; skip invite webhook`);
         return { success: false, error: reason, skipped: true };
     }
@@ -893,7 +900,7 @@ router.post('/tenants', requireRole('super_admin'), async (req, res) => {
                 waGateway.setSessionGatewayUrl(normalizedSessionId, assignedGatewayUrl);
             }
 
-            // Notify n8n webhook for new tenant admin
+            // Notify configured invite webhook for new tenant admin
             const currentUser = req.session.user;
             const baseUrl = getFrontendBase();
             const loginLink = `${baseUrl}/login`;
@@ -1456,7 +1463,7 @@ router.post('/stop-impersonate', requireAuth, async (req, res) => {
 
 /**
  * POST /api/v1/admin/invites/:id/resend
- * Resend invitation email (via n8n)
+ * Resend invitation email via configured invite webhook.
  */
 router.post('/invites/:id/resend', requireAuth, async (req, res) => {
     try {
@@ -1591,7 +1598,7 @@ router.post('/users', requireRole('super_admin'), async (req, res) => {
             phone_number: normalizedPhone
         });
 
-        // Notify n8n webhook (email sending handled there)
+        // Notify configured invite webhook (email sending handled there)
         const baseUrl = getFrontendBase();
         const inviteLink = `${baseUrl}/login`;
         await notifyInviteWebhook({

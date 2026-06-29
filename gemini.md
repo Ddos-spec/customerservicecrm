@@ -59,7 +59,7 @@ File ini digunakan oleh Agen Gemini untuk melacak progres pengembangan, tugas ya
 - [x] **E2E Testing:** Script `backend/tests/saas_flow.test.js` (Fixed Redis Client issue).
 
 ### 9. Tenant Webhook Controls (✅ Selesai)
-- [x] **Rate Limit Removal:** Menghapus rate limiter untuk integrasi n8n yang lebih lancar.
+- [x] **Rate Limit Removal:** Menghapus rate limiter untuk integrasi workflow eksternal yang lebih lancar.
 - [x] **Webhook Event Filtering:** Menambahkan kontrol event webhook per tenant (Groups, Private, Self).
 - [x] **DB Schema Update:** Kolom `webhook_events` (JSONB) di tabel `tenants`.
 - [x] **UI Integration:** Checkbox konfigurasi di menu "Atur Session WA".

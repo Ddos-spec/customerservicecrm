@@ -3,15 +3,11 @@ const marketingProcessor = require('../services/marketing/processor');
 
 function buildMarketingRouter(deps) {
     const router = express.Router();
-    const { db, validateToken } = deps;
+    const { db } = deps;
 
     // REMOVED: router.use(validateToken); -- UI uses session auth, not API token.
 
     const requireOwner = (req, res) => {
-        console.log(`[Marketing] Auth Check ${req.method} ${req.originalUrl}`);
-        console.log(`[Marketing] SessionID: ${req.sessionID}`);
-        console.log('[Marketing] User:', req.session?.user ? `${req.session.user.email} (${req.session.user.role})` : 'NONE');
-
         const user = req.session?.user;
         if (!user) {
             res.status(401).json({ status: 'error', message: 'Authentication required' });
@@ -28,6 +24,14 @@ function buildMarketingRouter(deps) {
             return null;
         }
         return { user, tenantId: user.tenant_id };
+    };
+
+    const triggerMarketingProcessor = () => {
+        setImmediate(() => {
+            marketingProcessor.processBatch().catch((error) => {
+                console.warn('[Marketing] Immediate processor trigger failed:', error.message);
+            });
+        });
     };
 
     router.get('/groups', async (req, res) => {
@@ -190,6 +194,7 @@ function buildMarketingRouter(deps) {
             `, [totalTargets, campaign.id]);
 
             await client.query('COMMIT');
+            triggerMarketingProcessor();
             res.status(201).json({
                 status: 'success',
                 campaign: { ...campaign, total_targets: totalTargets }
@@ -387,6 +392,7 @@ function buildMarketingRouter(deps) {
                         updated_at = now()
                     WHERE id = $1
                 `, [campaignId, retryRes.rowCount]);
+                triggerMarketingProcessor();
             }
 
             res.json({
@@ -420,6 +426,7 @@ function buildMarketingRouter(deps) {
                 return res.status(404).json({ status: 'error', message: 'Campaign tidak ditemukan atau tidak sedang paused' });
             }
 
+            triggerMarketingProcessor();
             res.json({ status: 'success', data: result.rows[0], message: 'Campaign dilanjutkan' });
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });

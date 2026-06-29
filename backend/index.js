@@ -1879,7 +1879,7 @@ app.use('/api/v1/admin', authRouter);
 // Gateway integration
 app.use('/api/v1/gateway', initializeGatewayApi({ scheduleMessageSend, waGateway }));
 
-// External dashboard compatibility routes (used by crm-n8n-dashboard)
+// External dashboard compatibility routes
 const externalDashboardCompatRouter = buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway });
 app.use('/api', (req, res, next) => {
     if (req.path.startsWith('/v1')) return next();

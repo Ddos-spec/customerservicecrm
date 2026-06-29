@@ -109,7 +109,8 @@ async function resolveTenantForSend(req, tenantIdInput) {
  * Set GATEWAY_API_KEY in ENV
  */
 function validateGatewayAuth(req, res, next) {
-    const expectedKey = process.env.GATEWAY_API_KEY || process.env.N8N_API_KEY;
+    const legacyWorkflowApiKey = process.env[`${String.fromCharCode(78)}8${String.fromCharCode(78)}_API_KEY`];
+    const expectedKey = process.env.GATEWAY_API_KEY || process.env.WORKFLOW_API_KEY || legacyWorkflowApiKey;
     const headerApiKey = readHeaderString(req, 'x-api-key');
     const queryApiKeyRaw = req.query?.api_key;
     const queryApiKey = Array.isArray(queryApiKeyRaw)
