@@ -280,7 +280,7 @@ const MainLayout = () => {
         className={clsx(
           "flex-1 overflow-x-hidden pt-20 transition-colors duration-300 lg:pt-0",
           isChatWorkspace
-            ? "bg-[#111b21]"
+            ? "bg-[#f0f2f5] dark:bg-[#111b21]"
             : "bg-[linear-gradient(to_bottom,_rgba(248,250,252,0.96),_rgba(248,250,252,1))] dark:bg-[linear-gradient(to_bottom,_rgba(15,23,42,0.94),_rgba(2,6,23,1))]"
         )}
       >
