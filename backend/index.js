@@ -2106,7 +2106,10 @@ if (!isTest) {
             await db.ensureTenantAnalyticsColumns();
             await db.ensureTenantApiKeyColumn();
             await db.ensureTenantAiModeColumn();
-            await db.ensureTenantChatbotPairsTable();
+            await db.ensureTenantAiConfigTable();
+            await db.ensureKnowledgeDocumentsTable();
+            await db.ensureKnowledgeChunksTable();
+            await db.ensureEscalationLogTable();
             await db.ensureUserInvitesTable();
             await db.ensureInviteErrorColumn();
             await db.ensureSystemSettingsTable();

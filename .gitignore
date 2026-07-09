@@ -33,6 +33,7 @@ tmpclaude-*
 # WhatsApp Gateway Specific
 backend/auth_info_baileys/
 backend/media/
+backend/knowledge_uploads/
 backend/*.log
 backend/*.enc
 backend/session_tokens.json

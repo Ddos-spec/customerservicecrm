@@ -128,9 +128,6 @@ async function clearSessionReferences(sessionId) {
     }
 }
 
-function normalizeChatbotPrompt(text) {
-    return (text || '').toString().trim().replace(/\s+/g, ' ').toLowerCase();
-}
 
 async function messageExistsByWaId(waMessageId) {
     if (!waMessageId) return false;
@@ -465,74 +462,186 @@ async function updateMessageReceiptByWaId(waMessageIds, receiptType, timestamp) 
     return result.rows;
 }
 
-async function getTenantChatbotPairs(tenantId) {
-    const result = await query(`
-        SELECT id, tenant_id, question, answer, sort_order, created_at, updated_at
-        FROM tenant_chatbot_pairs
-        WHERE tenant_id = $1
-        ORDER BY sort_order ASC, created_at ASC
+// AI Agent (RAG) — config
+async function getTenantAiConfig(tenantId) {
+    await query(`
+        INSERT INTO tenant_ai_config (tenant_id)
+        VALUES ($1)
+        ON CONFLICT (tenant_id) DO NOTHING
     `, [tenantId]);
+
+    const result = await query('SELECT * FROM tenant_ai_config WHERE tenant_id = $1', [tenantId]);
+    return result.rows[0];
+}
+
+async function upsertTenantAiConfig(tenantId, config) {
+    const result = await query(`
+        INSERT INTO tenant_ai_config (tenant_id, system_prompt, openrouter_api_key, chat_model, embedding_model, temperature, max_tokens, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+        ON CONFLICT (tenant_id) DO UPDATE SET
+            system_prompt = EXCLUDED.system_prompt,
+            openrouter_api_key = EXCLUDED.openrouter_api_key,
+            chat_model = EXCLUDED.chat_model,
+            embedding_model = EXCLUDED.embedding_model,
+            temperature = EXCLUDED.temperature,
+            max_tokens = EXCLUDED.max_tokens,
+            updated_at = now()
+        RETURNING *
+    `, [
+        tenantId,
+        config.system_prompt || '',
+        config.openrouter_api_key || null,
+        config.chat_model || 'openai/gpt-4o-mini',
+        config.embedding_model || 'openai/text-embedding-3-small',
+        config.temperature ?? 0.3,
+        config.max_tokens ?? 500,
+    ]);
+    return result.rows[0];
+}
+
+// AI Agent (RAG) — FAQ (stored as knowledge_documents source_type='faq')
+function buildFaqRawText(question, answer) {
+    return `Q: ${question}\nA: ${answer}`;
+}
+
+function withFaqAnswer(row) {
+    if (!row) return row;
+    const marker = '\nA: ';
+    const markerIndex = row.raw_text ? row.raw_text.indexOf(marker) : -1;
+    const answer = markerIndex >= 0 ? row.raw_text.slice(markerIndex + marker.length) : '';
+    return { ...row, question: row.title, answer };
+}
+
+async function getTenantFaqs(tenantId) {
+    const result = await query(`
+        SELECT id, tenant_id, title, raw_text, status, chunk_count, created_at, updated_at
+        FROM knowledge_documents
+        WHERE tenant_id = $1 AND source_type = 'faq'
+        ORDER BY created_at ASC
+    `, [tenantId]);
+    return result.rows.map(withFaqAnswer);
+}
+
+async function createTenantFaq(tenantId, question, answer, createdBy) {
+    const result = await query(`
+        INSERT INTO knowledge_documents (tenant_id, source_type, title, raw_text, status, created_by)
+        VALUES ($1, 'faq', $2, $3, 'pending', $4)
+        RETURNING id, tenant_id, title, raw_text, status, chunk_count, created_at, updated_at
+    `, [tenantId, question, buildFaqRawText(question, answer), createdBy || null]);
+    return withFaqAnswer(result.rows[0]);
+}
+
+async function updateTenantFaq(tenantId, id, question, answer) {
+    const result = await query(`
+        UPDATE knowledge_documents
+        SET title = $3, raw_text = $4, status = 'pending', chunk_count = 0, updated_at = now()
+        WHERE id = $1 AND tenant_id = $2 AND source_type = 'faq'
+        RETURNING id, tenant_id, title, raw_text, status, chunk_count, created_at, updated_at
+    `, [id, tenantId, question, buildFaqRawText(question, answer)]);
+    return withFaqAnswer(result.rows[0]) || null;
+}
+
+async function deleteTenantFaq(tenantId, id) {
+    const result = await query(`
+        DELETE FROM knowledge_documents
+        WHERE id = $1 AND tenant_id = $2 AND source_type = 'faq'
+        RETURNING id
+    `, [id, tenantId]);
+    return result.rows[0] || null;
+}
+
+// AI Agent (RAG) — knowledge documents (file / url)
+async function createKnowledgeDocument(tenantId, doc) {
+    const result = await query(`
+        INSERT INTO knowledge_documents (tenant_id, source_type, title, original_filename, file_path, source_url, raw_text, status, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)
+        RETURNING *
+    `, [
+        tenantId,
+        doc.sourceType,
+        doc.title,
+        doc.originalFilename || null,
+        doc.filePath || null,
+        doc.sourceUrl || null,
+        doc.rawText || null,
+        doc.createdBy || null,
+    ]);
+    return result.rows[0];
+}
+
+async function getKnowledgeDocumentById(id) {
+    const result = await query('SELECT * FROM knowledge_documents WHERE id = $1', [id]);
+    return result.rows[0] || null;
+}
+
+async function getTenantKnowledgeDocuments(tenantId, sourceTypes) {
+    const params = [tenantId];
+    let filter = '';
+    if (Array.isArray(sourceTypes) && sourceTypes.length > 0) {
+        params.push(sourceTypes);
+        filter = ' AND source_type = ANY($2::text[])';
+    }
+    const result = await query(`
+        SELECT id, tenant_id, source_type, title, original_filename, source_url, status, error_message, chunk_count, created_at, updated_at
+        FROM knowledge_documents
+        WHERE tenant_id = $1${filter}
+        ORDER BY created_at DESC
+    `, params);
     return result.rows;
 }
 
-async function replaceTenantChatbotPairs(tenantId, pairs, existingClient = null) {
-    const client = existingClient || await pool.connect();
-    const shouldRelease = !existingClient;
-    const normalizedPairs = Array.isArray(pairs)
-        ? pairs
-            .map((pair, index) => ({
-                question: (pair?.question || '').toString().trim(),
-                answer: (pair?.answer || '').toString().trim(),
-                sort_order: index,
-            }))
-            .filter((pair) => pair.question && pair.answer)
-        : [];
-
-    try {
-        if (!existingClient) {
-            await client.query('BEGIN');
-        }
-
-        await client.query('DELETE FROM tenant_chatbot_pairs WHERE tenant_id = $1', [tenantId]);
-
-        for (const pair of normalizedPairs) {
-            await client.query(`
-                INSERT INTO tenant_chatbot_pairs (tenant_id, question, answer, sort_order)
-                VALUES ($1, $2, $3, $4)
-            `, [tenantId, pair.question, pair.answer, pair.sort_order]);
-        }
-
-        if (!existingClient) {
-            await client.query('COMMIT');
-        }
-    } catch (error) {
-        if (!existingClient) {
-            await client.query('ROLLBACK');
-        }
-        throw error;
-    } finally {
-        if (shouldRelease) {
-            client.release();
-        }
-    }
-
-    return getTenantChatbotPairs(tenantId);
+async function updateKnowledgeDocumentStatus(id, status, extra = {}) {
+    const fields = ['status = $2', 'updated_at = now()'];
+    const values = [id, status];
+    let idx = 3;
+    if (extra.chunkCount !== undefined) { fields.push(`chunk_count = $${idx++}`); values.push(extra.chunkCount); }
+    fields.push(`error_message = $${idx++}`);
+    values.push(extra.errorMessage !== undefined ? extra.errorMessage : null);
+    const result = await query(`UPDATE knowledge_documents SET ${fields.join(', ')} WHERE id = $1 RETURNING *`, values);
+    return result.rows[0];
 }
 
-async function findTenantChatbotReply(tenantId, incomingText) {
-    const normalizedText = normalizeChatbotPrompt(incomingText);
-    if (!normalizedText) return null;
-
+async function updateKnowledgeDocumentTitleAndText(id, title, rawText) {
     const result = await query(`
-        SELECT id, question, answer, sort_order
-        FROM tenant_chatbot_pairs
-        WHERE tenant_id = $1
-          AND lower(regexp_replace(trim(question), '\s+', ' ', 'g')) = $2
-        ORDER BY sort_order ASC, created_at ASC
-        LIMIT 1
-    `, [tenantId, normalizedText]);
+        UPDATE knowledge_documents SET title = $2, raw_text = $3, updated_at = now()
+        WHERE id = $1
+        RETURNING *
+    `, [id, title, rawText]);
+    return result.rows[0];
+}
 
+async function deleteKnowledgeDocument(tenantId, id) {
+    const result = await query(`
+        DELETE FROM knowledge_documents
+        WHERE id = $1 AND tenant_id = $2 AND source_type != 'faq'
+        RETURNING id, file_path
+    `, [id, tenantId]);
     return result.rows[0] || null;
+}
+
+async function replaceKnowledgeChunks(tenantId, documentId, chunks) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM knowledge_chunks WHERE document_id = $1', [documentId]);
+        for (const chunk of chunks) {
+            await client.query(`
+                INSERT INTO knowledge_chunks (tenant_id, document_id, chunk_index, content, embedding, embedding_dim)
+                VALUES ($1, $2, $3, $4, $5, $6)
+            `, [tenantId, documentId, chunk.chunkIndex, chunk.content, chunk.embedding, chunk.embedding.length]);
+        }
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function getKnowledgeChunksByTenant(tenantId) {
+    const result = await query('SELECT id, document_id, content, embedding FROM knowledge_chunks WHERE tenant_id = $1', [tenantId]);
+    return result.rows;
 }
 
 // =============================================
@@ -900,9 +1009,20 @@ module.exports = {
     // Users & Tenants
     findUserByEmail, findUserById, getUserBySessionId, getTenantById, getTenantBySessionId, clearSessionReferences, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
     messageExistsByWaId,
-    getTenantChatbotPairs,
-    replaceTenantChatbotPairs,
-    findTenantChatbotReply,
+    getTenantAiConfig,
+    upsertTenantAiConfig,
+    getTenantFaqs,
+    createTenantFaq,
+    updateTenantFaq,
+    deleteTenantFaq,
+    createKnowledgeDocument,
+    getKnowledgeDocumentById,
+    getTenantKnowledgeDocuments,
+    updateKnowledgeDocumentStatus,
+    updateKnowledgeDocumentTitleAndText,
+    deleteKnowledgeDocument,
+    replaceKnowledgeChunks,
+    getKnowledgeChunksByTenant,
     createUser: async (u) => (await query('INSERT INTO users (tenant_id, name, email, password_hash, role, phone_number) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [u.tenant_id, u.name, u.email, u.password_hash, u.role, u.phone_number])).rows[0],
     updateUser: async (id, u) => {
         const fields = Object.keys(u).map((k, i) => `${k} = $${i + 2}`).join(', ');
@@ -930,19 +1050,72 @@ module.exports = {
         await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) DEFAULT \'agent\'');
         await query("UPDATE tenants SET ai_mode = 'agent' WHERE ai_mode IS NULL OR trim(ai_mode) = ''");
     },
-    ensureTenantChatbotPairsTable: async () => {
+    // AI Agent (RAG)
+    ensureTenantAiConfigTable: async () => {
         await query(`
-            CREATE TABLE IF NOT EXISTS tenant_chatbot_pairs (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-                question TEXT NOT NULL,
-                answer TEXT NOT NULL,
-                sort_order INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT now(),
-                updated_at TIMESTAMP DEFAULT now()
+            CREATE TABLE IF NOT EXISTS tenant_ai_config (
+                tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+                system_prompt TEXT NOT NULL DEFAULT '',
+                openrouter_api_key TEXT NULL,
+                chat_model TEXT NOT NULL DEFAULT 'openai/gpt-4o-mini',
+                embedding_model TEXT NOT NULL DEFAULT 'openai/text-embedding-3-small',
+                temperature NUMERIC(3,2) NOT NULL DEFAULT 0.3,
+                max_tokens INTEGER NOT NULL DEFAULT 500,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
             )
         `);
-        await query('CREATE INDEX IF NOT EXISTS idx_tenant_chatbot_pairs_tenant_sort ON tenant_chatbot_pairs (tenant_id, sort_order)');
+    },
+    ensureKnowledgeDocumentsTable: async () => {
+        await query(`
+            CREATE TABLE IF NOT EXISTS knowledge_documents (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                source_type VARCHAR(20) NOT NULL,
+                title TEXT NOT NULL,
+                original_filename TEXT NULL,
+                file_path TEXT NULL,
+                source_url TEXT NULL,
+                raw_text TEXT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                error_message TEXT NULL,
+                chunk_count INTEGER NOT NULL DEFAULT 0,
+                created_by UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+            )
+        `);
+        await query('CREATE INDEX IF NOT EXISTS idx_knowledge_documents_tenant ON knowledge_documents (tenant_id, status)');
+    },
+    ensureKnowledgeChunksTable: async () => {
+        await query(`
+            CREATE TABLE IF NOT EXISTS knowledge_chunks (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                document_id UUID NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+                chunk_index INTEGER NOT NULL DEFAULT 0,
+                content TEXT NOT NULL,
+                embedding DOUBLE PRECISION[] NOT NULL,
+                embedding_dim INTEGER NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+            )
+        `);
+        await query('CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_tenant ON knowledge_chunks (tenant_id)');
+        await query('CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document ON knowledge_chunks (document_id)');
+    },
+    ensureEscalationLogTable: async () => {
+        await query(`
+            CREATE TABLE IF NOT EXISTS escalation_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+                trigger_type VARCHAR(30) NOT NULL,
+                trigger_detail TEXT NULL,
+                message_id UUID NULL REFERENCES messages(id) ON DELETE SET NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+            )
+        `);
+        await query('CREATE INDEX IF NOT EXISTS idx_escalation_log_tenant ON escalation_log (tenant_id, created_at)');
     },
 
     // Invites

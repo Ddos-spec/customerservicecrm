@@ -4,7 +4,7 @@
 This document describes the current system architecture and role flows
 for super admin, owner (tenant), and staff. It serves as the **Single Source of Truth** for development.
 
-**Instruction for AI Agents:** When asked to implement a phase, read the specific details in the "Hybrid Provider Roadmap" section below and execute exactly as described.
+**Instruction for AI Agents:** When asked to implement a phase, read the specific details in the relevant roadmap section below (e.g. "Hybrid Provider Roadmap", "Marketing Module Roadmap", "AI Agent Roadmap") and execute exactly as described.
 
 ## Components
 - Frontend (React/Vite/TS/Tailwind): UI for login, workspace, and owner panels.
@@ -30,6 +30,9 @@ for super admin, owner (tenant), and staff. It serves as the **Single Source of 
   - Step 1: Database Schema (DONE)
   - Step 2: Core Backend Logic (DONE) - Campaigns, Contact Groups, Background Processor with Rate Limiting, Cancel/Delete Campaign.
   - Step 3: Frontend UI Integration (DONE) - Campaign List, Create Campaign, Contact Groups, Cancel/Delete Campaign.
+- **Phase 8 (AI Agent - RAG, replaces exact-match chatbot):** **DONE** (Phase 1 of the AI Agent initiative — see
+  "AI Agent Roadmap" below; assign-to-agent, escalated-chat UI, and self-learning feedback loop are tracked
+  separately as not-yet-scheduled follow-ups)
 
 ## Roles and capabilities
 Super admin:
@@ -105,6 +108,10 @@ Tenant API Integration:
 - **contact_group_members**: contact_id, group_id.
 - **campaigns**: id, tenant_id, name, message_template, status, scheduled_at, total_targets, success_count, failed_count, **updated_at**.
 - **campaign_messages**: id, campaign_id, contact_id, phone_number, status, sent_at, wa_message_id, **updated_at**.
+- **tenant_ai_config**: tenant_id (PK), system_prompt, openrouter_api_key, chat_model, embedding_model, temperature, max_tokens.
+- **knowledge_documents**: id, tenant_id, source_type (file/url/faq), title, raw_text, status, chunk_count.
+- **knowledge_chunks**: id, tenant_id, document_id, chunk_index, content, embedding (double precision[]), embedding_dim.
+- **escalation_log**: id, tenant_id, chat_id, trigger_type, trigger_detail, message_id.
 - whatsmeow_*: raw WhatsApp data from gateway.
 
 ---
@@ -218,6 +225,74 @@ Objective: Implement a comprehensive WA Blast and Campaign management system.
 -   **CampaignList.tsx:** Displays list of campaigns with status, progress, and actions (Pause, Delete).
 -   **CreateCampaign.tsx:** Form to create campaigns, select groups, set message.
 -   **ContactGroups.tsx:** CRUD for contact groups, add members to groups.
+
+---
+
+## AI Agent Roadmap (Actionable Blueprint)
+
+Objective: Replace the old exact-match "chatbot" (`tenant_chatbot_pairs`, string equality matching) with a real
+LLM-powered agent per tenant: custom system prompt, RAG knowledge base (documents/FAQ/URL), and automatic
+escalation to a human agent when the AI is unsure or the topic is sensitive.
+
+Key decisions:
+- Single LLM provider: **OpenRouter**, using each **tenant's own API key** (stored in `tenant_ai_config`, never
+  a shared platform key) for both chat completion and embeddings — OpenRouter exposes both under one
+  OpenAI-compatible API, so no second provider/key is needed.
+- Vector search is **application-layer cosine similarity** (embeddings stored as `DOUBLE PRECISION[]`), not
+  pgvector — the production Postgres (`postgres_scrapdatan8n`, vanilla `postgres:17`) doesn't have the
+  extension, and per-tenant KB volume at this stage doesn't need it. Revisit if a tenant's KB grows large.
+- `tenants.ai_mode` keeps its existing two values (`agent` / `chatbot`) to avoid touching the toggle UI — only
+  the meaning of `'chatbot'` changed, from exact-match auto-reply to the real AI Agent.
+- If a tenant hasn't filled in their OpenRouter API key yet, the AI Agent stays silent and messages behave as
+  if `ai_mode='agent'` (no auto-reply, no auto-escalation) — avoids spamming escalations due to a config gap.
+
+### Phase 1: Database Schema (DONE)
+- New tables: `tenant_ai_config` (system_prompt, openrouter_api_key, chat_model, embedding_model, temperature,
+  max_tokens), `knowledge_documents` (source_type: file/url/faq — FAQ pairs are stored here too, one row per
+  Q/A), `knowledge_chunks` (content + embedding + embedding_dim, FK to knowledge_documents), `escalation_log`
+  (audit trail: trigger_type keyword/sensitive_topic/no_context/llm_uncertain).
+- Old table `tenant_chatbot_pairs` and its CRUD (`db.js`) / endpoints (`auth.js` `/chatbot-config`) removed.
+
+### Phase 2: Backend Config + FAQ CRUD (DONE)
+- `backend/routes/ai-agent.js` mounted at `/api/v1/ai-agent`: `GET/PUT /config`, `GET/POST/PUT/DELETE /faq`.
+- API key is never returned in full to the frontend — only a masked suffix (`getConfig` response has
+  `openrouter_api_key_masked` + `has_api_key`).
+
+### Phase 3: Ingestion Pipeline (DONE)
+- `backend/services/ai/chunking.js` (pure text splitter), `services/ai/ingest/parseFile.js` (PDF via
+  `pdf-parse`, DOCX via `mammoth`, XLSX via `exceljs` — **not** the `xlsx` npm package, which has unpatched
+  high-severity prototype-pollution/ReDoS advisories and is unsafe for untrusted uploads), `services/ai/ingest/parseUrl.js`
+  (cheerio scrape with an SSRF guard blocking localhost/private IP ranges).
+- `POST /ai-agent/documents/upload` (multer, PDF/DOCX/XLSX, 15MB limit), `POST /ai-agent/documents/url`.
+- Ingestion runs in the background (`setImmediate`) via `services/ai/ingest/ingestPipeline.js`, updating
+  `knowledge_documents.status` (pending → processing → ready/failed).
+
+### Phase 4: Retrieval (DONE)
+- `backend/services/ai/retrieval.js`: in-memory cosine similarity over a tenant's `knowledge_chunks`, top-K.
+
+### Phase 5: LLM Adapter + Webhook Integration + Escalation (DONE)
+- `backend/services/ai/openrouter.js`: `chatCompletion()` and `createEmbeddings()`, both REST calls to
+  `https://openrouter.ai/api/v1` using the tenant's key (no SDK dependency, `axios`).
+- `backend/services/ai/escalation.js`: keyword-based pre-check (reuses the same keyword set as
+  `gateway-api.js` `/check-escalation`), split into `keyword` (explicit human request) and `sensitive_topic`.
+- `backend/services/ai/responder.js`: orchestrates keyword check → retrieval → prompt assembly → OpenRouter
+  call → uncertainty check → reply or escalate (writes `escalation_log` + sets `chats.status='escalated'`).
+- Replaces the old exact-match block in `backend/webhook-handler.js` (`handleMessage`, around the
+  `tenant.ai_mode === 'chatbot'` branch); reuses `sendChatbotAutoReply()` as-is to actually send the reply.
+
+### Phase 6: Frontend (DONE)
+- `frontend/src/pages/AiAgentSettings.tsx` replaces `ChatbotSettings.tsx` (same route, `/admin/chatbot`):
+  tabs for Konfigurasi (system prompt, API key, model pickers), Sumber Pengetahuan (upload + URL, unified
+  list with status badges, polls every 4s while anything is pending/processing), and FAQ (inline add/edit/delete).
+- Sidebar label and `TenantManagement.tsx` ai_mode labels updated from the old (confusing) "AI Agent" =
+  `agent` / "Chatbot FAQ" = `chatbot` to "Manual (Tanpa AI)" = `agent` / "AI Agent" = `chatbot`.
+
+### Not in scope (Phase 2/3 of the AI Agent initiative — separate from the phases above)
+- `chats.assigned_to` is defined in the schema but nothing writes to it yet — assigning an escalated chat to
+  a specific human agent is still manual.
+- Escalated chats aren't surfaced in `AgentDashboard`/`AgentWorkspace` UI yet (only `chats.status='escalated'`
+  in the DB and the `/gateway/escalation-queue` API).
+- No self-learning/feedback loop yet (agent corrections turning into new KB entries, 👍👎 on AI replies).
 
 ---
 

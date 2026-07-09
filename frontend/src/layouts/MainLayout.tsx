@@ -52,7 +52,7 @@ const MainLayout = () => {
           { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
           { to: '/admin/chat', icon: MessageSquare, label: 'Workspace' },
           { to: '/admin/history', icon: Clock, label: 'Riwayat' },
-          { to: '/admin/chatbot', icon: Bot, label: 'Chatbot' },
+          { to: '/admin/chatbot', icon: Bot, label: 'AI Agent' },
           { to: '/admin/agents', icon: Users, label: 'Tim Staff' },
           { to: '/admin/marketing', icon: Megaphone, label: 'Marketing' },
           { to: '/admin/billing', icon: CreditCard, label: 'Langganan' },

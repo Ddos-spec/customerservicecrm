@@ -10,6 +10,7 @@ const router = express.Router();
 const db = require('./db');
 const waGateway = require('./wa-gateway-client');
 const ProviderFactory = require('./services/whatsapp/factory');
+const aiResponder = require('./services/ai/responder');
 const { normalizeJid, getJidUser } = require('./utils/jid');
 const { sendAlertWebhook } = require('./utils/alert-webhook');
 const { buildSignedEphemeralMediaUrl } = require('./utils/ephemeral-media');
@@ -299,7 +300,7 @@ async function sendChatbotAutoReply(tenant, chat, targetJid, replyText) {
         chatId: chat.id,
         senderType: 'system',
         senderId: null,
-        senderName: 'AI Chatbot',
+        senderName: 'AI Agent',
         messageType: 'text',
         body: replyText,
         mediaUrl: null,
@@ -316,7 +317,7 @@ async function sendChatbotAutoReply(tenant, chat, targetJid, replyText) {
             type: 'text',
             from: tenant.session_id,
             to: targetJid,
-            pushName: 'AI Chatbot',
+            pushName: 'AI Agent',
             isFromMe: true,
             db_id: savedReply.id,
             chat_id: chat.id,
@@ -609,16 +610,19 @@ async function handleMessage(req, sessionId, data) {
             message: forwardedMessage,
         });
 
-        const isChatbotTenant = (tenant.ai_mode || 'agent') === 'chatbot';
+        const isAiAgentTenant = (tenant.ai_mode || 'agent') === 'chatbot';
         const canAutoReply = !message.isFromMe && !isGroup && !messageAlreadyExists && message.type === 'text';
-        if (isChatbotTenant && canAutoReply) {
-            const matchedPair = await db.findTenantChatbotReply(tenant.id, messageText);
-            if (matchedPair?.answer) {
-                try {
-                    await sendChatbotAutoReply(tenant, chat, targetJid, matchedPair.answer);
-                } catch (replyError) {
-                    console.error(`[Webhook] Failed chatbot auto-reply for tenant ${tenant.id}:`, replyError.message);
-                }
+        if (isAiAgentTenant && canAutoReply) {
+            try {
+                await aiResponder.handleIncomingMessage({
+                    tenant,
+                    chat,
+                    messageText,
+                    savedMessage,
+                    sendReply: (replyText) => sendChatbotAutoReply(tenant, chat, targetJid, replyText),
+                });
+            } catch (replyError) {
+                console.error(`[Webhook] Failed AI agent auto-reply for tenant ${tenant.id}:`, replyError.message);
             }
         }
 

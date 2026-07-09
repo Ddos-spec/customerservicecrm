@@ -85,7 +85,45 @@ CREATE TABLE "public"."contacts" (
   CONSTRAINT "contacts_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "contacts_tenant_id_jid_key" UNIQUE ("tenant_id", "jid")
 );
-CREATE TABLE "public"."message_attachments" ( 
+CREATE TABLE "public"."escalation_log" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
+  "tenant_id" UUID NOT NULL,
+  "chat_id" UUID NOT NULL,
+  "trigger_type" VARCHAR(30) NOT NULL,
+  "trigger_detail" TEXT NULL,
+  "message_id" UUID NULL,
+  "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  CONSTRAINT "escalation_log_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "public"."knowledge_chunks" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
+  "tenant_id" UUID NOT NULL,
+  "document_id" UUID NOT NULL,
+  "chunk_index" INTEGER NOT NULL DEFAULT 0 ,
+  "content" TEXT NOT NULL,
+  "embedding" DOUBLE PRECISION[] NOT NULL,
+  "embedding_dim" INTEGER NOT NULL,
+  "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  CONSTRAINT "knowledge_chunks_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "public"."knowledge_documents" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
+  "tenant_id" UUID NOT NULL,
+  "source_type" VARCHAR(20) NOT NULL,
+  "title" TEXT NOT NULL,
+  "original_filename" TEXT NULL,
+  "file_path" TEXT NULL,
+  "source_url" TEXT NULL,
+  "raw_text" TEXT NULL,
+  "status" VARCHAR(20) NOT NULL DEFAULT 'pending'::character varying ,
+  "error_message" TEXT NULL,
+  "chunk_count" INTEGER NOT NULL DEFAULT 0 ,
+  "created_by" UUID NULL,
+  "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  "updated_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  CONSTRAINT "knowledge_documents_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "public"."message_attachments" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
   "tenant_id" UUID NOT NULL,
   "message_id" UUID NOT NULL,
@@ -127,7 +165,19 @@ CREATE TABLE "public"."system_settings" (
   "value" TEXT NOT NULL,
   CONSTRAINT "system_settings_pkey" PRIMARY KEY ("key")
 );
-CREATE TABLE "public"."tenant_webhooks" ( 
+CREATE TABLE "public"."tenant_ai_config" (
+  "tenant_id" UUID NOT NULL,
+  "system_prompt" TEXT NOT NULL DEFAULT ''::text ,
+  "openrouter_api_key" TEXT NULL,
+  "chat_model" TEXT NOT NULL DEFAULT 'openai/gpt-4o-mini'::text ,
+  "embedding_model" TEXT NOT NULL DEFAULT 'openai/text-embedding-3-small'::text ,
+  "temperature" NUMERIC(3,2) NOT NULL DEFAULT 0.3 ,
+  "max_tokens" INTEGER NOT NULL DEFAULT 500 ,
+  "created_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  "updated_at" TIMESTAMP WITH TIME ZONE NULL DEFAULT now() ,
+  CONSTRAINT "tenant_ai_config_pkey" PRIMARY KEY ("tenant_id")
+);
+CREATE TABLE "public"."tenant_webhooks" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid() ,
   "tenant_id" UUID NOT NULL,
   "url" TEXT NOT NULL,
@@ -360,7 +410,25 @@ ON "public"."contacts" (
   "tenant_id" ASC,
   "jid" ASC
 );
-CREATE INDEX "idx_attachments_message" 
+CREATE INDEX "idx_escalation_log_tenant"
+ON "public"."escalation_log" (
+  "tenant_id" ASC,
+  "created_at" DESC
+);
+CREATE INDEX "idx_knowledge_chunks_tenant"
+ON "public"."knowledge_chunks" (
+  "tenant_id" ASC
+);
+CREATE INDEX "idx_knowledge_chunks_document"
+ON "public"."knowledge_chunks" (
+  "document_id" ASC
+);
+CREATE INDEX "idx_knowledge_documents_tenant"
+ON "public"."knowledge_documents" (
+  "tenant_id" ASC,
+  "status" ASC
+);
+CREATE INDEX "idx_attachments_message"
 ON "public"."message_attachments" (
   "message_id" ASC
 );
@@ -423,6 +491,14 @@ ALTER TABLE "public"."contact_groups" ADD CONSTRAINT "contact_groups_tenant_id_f
 ALTER TABLE "public"."contacts" ADD CONSTRAINT "contacts_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."messages" ADD CONSTRAINT "messages_chat_id_fkey" FOREIGN KEY ("chat_id") REFERENCES "public"."chats" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."tenant_webhooks" ADD CONSTRAINT "tenant_webhooks_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."tenant_ai_config" ADD CONSTRAINT "tenant_ai_config_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."knowledge_documents" ADD CONSTRAINT "knowledge_documents_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."knowledge_documents" ADD CONSTRAINT "knowledge_documents_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
+ALTER TABLE "public"."knowledge_chunks" ADD CONSTRAINT "knowledge_chunks_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."knowledge_chunks" ADD CONSTRAINT "knowledge_chunks_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."knowledge_documents" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."escalation_log" ADD CONSTRAINT "escalation_log_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."escalation_log" ADD CONSTRAINT "escalation_log_chat_id_fkey" FOREIGN KEY ("chat_id") REFERENCES "public"."chats" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "public"."escalation_log" ADD CONSTRAINT "escalation_log_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "public"."messages" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 ALTER TABLE "public"."user_invites" ADD CONSTRAINT "user_invites_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "public"."user_invites" ADD CONSTRAINT "user_invites_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users" ("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 ALTER TABLE "public"."users" ADD CONSTRAINT "users_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;

@@ -20,7 +20,7 @@ const SuperAdminApiDocs = lazy(() => import('./pages/SuperAdminApiDocs'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AdminReports = lazy(() => import('./pages/AdminReports'));
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'));
-const ChatbotSettings = lazy(() => import('./pages/ChatbotSettings'));
+const AiAgentSettings = lazy(() => import('./pages/AiAgentSettings'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
 const CampaignList = lazy(() => import('./pages/marketing/CampaignList'));
 const CreateCampaign = lazy(() => import('./pages/marketing/CreateCampaign'));
@@ -124,7 +124,7 @@ function App() {
                 <Route path="chat" element={<AgentWorkspace />} />
                 <Route path="history" element={<ChatHistory />} />
                 <Route path="agents" element={<AgentManagement />} />
-                <Route path="chatbot" element={<ChatbotSettings />} />
+                <Route path="chatbot" element={<AiAgentSettings />} />
                 <Route path="billing" element={<BillingPage />} />
                 <Route path="marketing" element={<CampaignList />} />
                 <Route path="marketing/create" element={<CreateCampaign />} />

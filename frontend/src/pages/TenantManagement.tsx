@@ -99,9 +99,9 @@ const getProviderLabel = (provider?: Tenant['wa_provider']) => {
 const getAiModeLabel = (mode?: Tenant['ai_mode']) => {
   switch (mode) {
     case 'chatbot':
-      return 'Chatbot FAQ';
-    case 'agent':
       return 'AI Agent';
+    case 'agent':
+      return 'Manual (Tanpa AI)';
     default:
       return 'Belum dipilih';
   }
@@ -671,9 +671,9 @@ const TenantManagement = () => {
       accent: 'amber',
     },
     {
-      label: 'Chatbot FAQ',
+      label: 'Pakai AI Agent',
       value: chatbotTenants.toLocaleString('id-ID'),
-      helper: `${Math.max(tenants.length - chatbotTenants, 0).toLocaleString('id-ID')} pakai AI Agent`,
+      helper: `${Math.max(tenants.length - chatbotTenants, 0).toLocaleString('id-ID')} manual tanpa AI`,
       icon: Bot,
       accent: 'purple',
     },
@@ -774,7 +774,7 @@ const TenantManagement = () => {
                 <Bot size={16} className="text-purple-500" />
                 <p className="text-sm font-bold">AI mode transparan</p>
               </div>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Lihat cepat tenant yang masih di AI Agent vs tenant yang sudah dipindah ke Chatbot FAQ.</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Lihat cepat tenant yang masih manual vs tenant yang sudah dipindah ke AI Agent.</p>
             </div>
           </div>
         </div>
@@ -1158,15 +1158,15 @@ const TenantManagement = () => {
               <div className="rounded-2xl border border-purple-100 dark:border-purple-900 bg-purple-50/60 dark:bg-purple-900/20 p-4 space-y-3">
                 <div>
                   <p className="text-xs font-black text-purple-800 dark:text-purple-100 uppercase tracking-widest">Model AI Tenant</p>
-                  <p className="text-[11px] text-purple-600 dark:text-purple-300">Pilih apakah tenant ini berjalan dengan workflow AI agent atau chatbot FAQ.</p>
+                  <p className="text-[11px] text-purple-600 dark:text-purple-300">Pilih apakah tenant ini dibalas manual oleh agent atau otomatis oleh AI Agent.</p>
                 </div>
                 <select
                   value={aiMode}
                   onChange={(e) => setAiMode(e.target.value as 'agent' | 'chatbot')}
                   className="w-full p-3 bg-white dark:bg-slate-900 rounded-xl font-bold text-xs text-gray-800 dark:text-gray-200 border border-purple-200 dark:border-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                 >
-                  <option value="agent">AI Agent</option>
-                  <option value="chatbot">Chatbot FAQ</option>
+                  <option value="agent">Manual (Tanpa AI)</option>
+                  <option value="chatbot">AI Agent</option>
                 </select>
               </div>
 
@@ -1429,8 +1429,8 @@ const TenantManagement = () => {
                     onChange={(e) => setFormData({...formData, ai_mode: e.target.value as 'agent' | 'chatbot'})}
                     className="w-full p-4 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold text-sm text-gray-900 dark:text-white border border-gray-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                   >
-                    <option value="agent">AI Agent</option>
-                    <option value="chatbot">Chatbot FAQ</option>
+                    <option value="agent">Manual (Tanpa AI)</option>
+                    <option value="chatbot">AI Agent</option>
                   </select>
                 </div>
               </div>

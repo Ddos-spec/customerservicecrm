@@ -23,6 +23,7 @@ const { buildContactsRouter } = require('./routes/contacts');
 const { buildSearchRouter } = require('./routes/search');
 const { buildSyncRouter } = require('./routes/sync'); // Import Sync Router
 const { buildMarketingRouter } = require('./routes/marketing');
+const { buildAiAgentRouter } = require('./routes/ai-agent');
 const { buildAnalyticsRouter } = require('./routes/analytics');
 const { buildDebugRouter } = require('./routes/debug'); // Import Debug Router
 const { buildExternalDashboardRouter } = require('./routes/external-dashboard');
@@ -240,6 +241,7 @@ function initializeApi(
     router.use('/sync', buildSyncRouter({ waGateway, db, validateToken })); // Mount Sync Router
     router.use('/webhook/meta', metaWebhookRouter); // Mount Meta Webhook
     router.use('/marketing', buildMarketingRouter({ db, validateToken }));
+    router.use('/ai-agent', buildAiAgentRouter({ db }));
     router.use('/analytics', buildAnalyticsRouter({ db, validateToken }));
     router.use('/debug', buildDebugRouter({ db })); // Mount Debug Router
     router.use(buildSearchRouter({ validateToken }));
