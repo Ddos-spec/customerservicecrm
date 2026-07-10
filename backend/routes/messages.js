@@ -270,6 +270,13 @@ function buildMessagesRouter(deps) {
                 chat = await db.getOrCreateChat(tenant.id, destination, null, isGroup);
             }
 
+            // Kalau tenant pakai AI Agent dan seorang manusia manual balas chat ini,
+            // anggap manusia sudah ambil alih — tandai escalated supaya AI Agent
+            // berhenti auto-reply di chat ini (lihat guard chat.status di webhook-handler.js).
+            if ((tenant.ai_mode || 'agent') === 'chatbot' && chat.status !== 'escalated') {
+                await db.query("UPDATE chats SET status = 'escalated', updated_at = now() WHERE id = $1", [chat.id]);
+            }
+
             const savedMsg = await db.logMessage({
                 chatId: chat.id,
                 senderType: 'agent',

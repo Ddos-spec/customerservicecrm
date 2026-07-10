@@ -611,7 +611,10 @@ async function handleMessage(req, sessionId, data) {
         });
 
         const isAiAgentTenant = (tenant.ai_mode || 'agent') === 'chatbot';
-        const canAutoReply = !message.isFromMe && !isGroup && !messageAlreadyExists && message.type === 'text';
+        // chat.status === 'escalated' berarti sudah dialihkan ke manusia (baik oleh AI sendiri
+        // maupun karena agent manual balas duluan di /internal/messages) — AI berhenti total
+        // di chat ini sampai ada yang membuka ulang statusnya.
+        const canAutoReply = !message.isFromMe && !isGroup && !messageAlreadyExists && message.type === 'text' && chat.status !== 'escalated';
         if (isAiAgentTenant && canAutoReply) {
             try {
                 await aiResponder.handleIncomingMessage({
