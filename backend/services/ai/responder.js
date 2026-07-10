@@ -6,6 +6,7 @@ const { chatCompletion, createEmbeddings } = require('./openrouter');
 const TOP_K = 4;
 const MIN_RELEVANCE_SCORE = 0.3;
 const FALLBACK_ESCALATION_REPLY = 'Mohon maaf, untuk pertanyaan ini kami akan hubungkan dengan agent kami ya 🙏';
+const SERVICE_FAILURE_REPLY = 'Mohon maaf, sistem kami sedang mengalami kendala. Pesan Anda sudah diteruskan ke tim customer service dan akan dibantu di chat ini ya 🙏';
 const UNCERTAIN_PATTERNS = [
     /tidak tahu/i,
     /tidak (memiliki|ada) informasi/i,
@@ -14,6 +15,7 @@ const UNCERTAIN_PATTERNS = [
     /i'm not sure/i,
     /i do not have/i,
 ];
+const HISTORY_LIMIT = 16;
 
 function looksUncertain(text) {
     if (!text || !text.trim()) return true;
@@ -53,35 +55,76 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
         return;
     }
 
-    const [queryEmbedding] = await createEmbeddings({
-        apiKey: config.openrouter_api_key,
-        model: config.embedding_model,
-        input: [messageText],
-    });
+    let completion;
+    try {
+        const [queryEmbedding] = await createEmbeddings({
+            apiKey: config.openrouter_api_key,
+            model: config.embedding_model,
+            input: [messageText],
+        });
 
-    const topChunks = await retrieveTopK(tenant.id, queryEmbedding, TOP_K);
-    const relevantChunks = topChunks.filter((chunk) => chunk.score >= MIN_RELEVANCE_SCORE);
+        const topChunks = await retrieveTopK(tenant.id, queryEmbedding, TOP_K);
+        const relevantChunks = topChunks.filter((chunk) => chunk.score >= MIN_RELEVANCE_SCORE);
 
     // Catatan: kosongnya hasil retrieval TIDAK langsung eskalasi. Sapaan/basa-basi ("halo",
     // "test") wajar tidak match knowledge base apa pun — AI tetap harus bisa membalas itu
     // secara natural. Eskalasi baru terjadi kalau LLM sendiri mengaku tidak tahu jawaban
     // faktualnya (lihat looksUncertain di bawah), bukan berdasarkan skor kemiripan semata.
-    const basePrompt = config.system_prompt?.trim() || 'Kamu adalah customer service yang ramah dan membantu.';
-    const contextSection = relevantChunks.length > 0
-        ? `Informasi relevan dari knowledge base:\n${relevantChunks.map((chunk) => `- ${chunk.content}`).join('\n')}`
-        : 'Tidak ditemukan informasi spesifik di knowledge base untuk pesan ini.';
-    const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer "hubungi kami di WhatsApp" atau "chat kami di sini", karena mereka sudah di sini. Kalau perlu menindaklanjuti dengan tim manusia, katakan akan dihubungkan/dibantu langsung di chat ini juga, bukan disuruh pindah channel — kecuali knowledge base secara eksplisit menyebut cara lain (misal email untuk kirim dokumen, atau link jadwal meeting) yang relevan dengan kebutuhannya.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, katakan dengan jujur akan dibantu lebih lanjut oleh tim, jangan mengarang.`;
+        const basePrompt = config.system_prompt?.trim() || 'Kamu adalah customer service yang ramah dan membantu.';
+        const contextSection = relevantChunks.length > 0
+            ? `Informasi relevan dari knowledge base:\n${relevantChunks.map((chunk) => `- ${chunk.content}`).join('\n')}`
+            : 'Tidak ditemukan informasi spesifik di knowledge base untuk pesan ini.';
+        const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer "hubungi kami di WhatsApp" atau "chat kami di sini", karena mereka sudah di sini. Kalau perlu menindaklanjuti dengan tim manusia, katakan akan dihubungkan/dibantu langsung di chat ini juga, bukan disuruh pindah channel — kecuali knowledge base secara eksplisit menyebut cara lain (misal email untuk kirim dokumen, atau link jadwal meeting) yang relevan dengan kebutuhannya.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, katakan dengan jujur akan dibantu lebih lanjut oleh tim, jangan mengarang.\n4. Pahami riwayat percakapan. Jangan mengulang sapaan, pertanyaan, atau informasi yang sudah jelas.\n5. Jawab ringkas, hangat, dan berorientasi solusi seperti customer service manusia.`;
 
-    const completion = await chatCompletion({
-        apiKey: config.openrouter_api_key,
-        model: config.chat_model,
-        temperature: Number(config.temperature),
-        maxTokens: config.max_tokens,
-        messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: messageText },
-        ],
-    });
+        const history = (await db.getMessagesByChat(chat.id, HISTORY_LIMIT))
+            .filter((message) => message.message_type === 'text' && message.body?.trim())
+            .map((message) => ({
+                role: message.is_from_me ? 'assistant' : 'user',
+                content: message.body.trim(),
+            }));
+
+        const hasCurrentMessage = history.some((message, index) => (
+            index === history.length - 1
+            && message.role === 'user'
+            && message.content === messageText.trim()
+        ));
+        if (!hasCurrentMessage) history.push({ role: 'user', content: messageText });
+
+        completion = await chatCompletion({
+            apiKey: config.openrouter_api_key,
+            model: config.chat_model,
+            temperature: Number(config.temperature),
+            maxTokens: config.max_tokens,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                ...history,
+            ],
+        });
+
+        console.info('[AI Agent] Completion success', {
+            tenantId: tenant.id,
+            chatId: chat.id,
+            model: completion.model,
+            generationId: completion.id,
+            promptTokens: completion.usage?.prompt_tokens,
+            completionTokens: completion.usage?.completion_tokens,
+        });
+    } catch (error) {
+        console.error('[AI Agent] Generation failed, escalating safely', {
+            tenantId: tenant.id,
+            chatId: chat.id,
+            error: error.message,
+        });
+        await logEscalation({
+            tenantId: tenant.id,
+            chatId: chat.id,
+            triggerType: 'ai_service_error',
+            detail: error.message,
+            messageId: savedMessage?.id,
+        });
+        await sendReply(SERVICE_FAILURE_REPLY);
+        return;
+    }
 
     if (looksUncertain(completion.text)) {
         await logEscalation({

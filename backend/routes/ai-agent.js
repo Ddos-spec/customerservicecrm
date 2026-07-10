@@ -5,6 +5,7 @@ const fs = require('fs');
 const { randomUUID } = require('crypto');
 const { parseFileBuffer, SUPPORTED_MIME_TYPES } = require('../services/ai/ingest/parseFile');
 const { ingestDocument, ingestUrlDocument } = require('../services/ai/ingest/ingestPipeline');
+const { chatCompletion, listModels, getOpenRouterErrorMessage } = require('../services/ai/openrouter');
 
 const OPENROUTER_KEY_MASK = '••••••••';
 const MAX_KB_FILE_SIZE_BYTES = 15 * 1024 * 1024;
@@ -47,6 +48,20 @@ function maskApiKey(key) {
     return `${OPENROUTER_KEY_MASK}${trimmed.slice(-4)}`;
 }
 
+function serializeConfig(config, tenant) {
+    return {
+        tenant_id: config.tenant_id,
+        enabled: (tenant?.ai_mode || 'agent') === 'chatbot',
+        system_prompt: config.system_prompt || '',
+        openrouter_api_key_masked: maskApiKey(config.openrouter_api_key),
+        has_api_key: Boolean(config.openrouter_api_key),
+        chat_model: config.chat_model,
+        embedding_model: config.embedding_model,
+        temperature: Number(config.temperature),
+        max_tokens: config.max_tokens,
+    };
+}
+
 function buildAiAgentRouter(deps) {
     const router = express.Router();
     const { db } = deps;
@@ -76,19 +91,13 @@ function buildAiAgentRouter(deps) {
         const ctx = requireOwner(req, res);
         if (!ctx) return;
         try {
-            const config = await db.getTenantAiConfig(ctx.tenantId);
+            const [config, tenant] = await Promise.all([
+                db.getTenantAiConfig(ctx.tenantId),
+                db.getTenantById(ctx.tenantId),
+            ]);
             res.json({
                 success: true,
-                config: {
-                    tenant_id: config.tenant_id,
-                    system_prompt: config.system_prompt || '',
-                    openrouter_api_key_masked: maskApiKey(config.openrouter_api_key),
-                    has_api_key: Boolean(config.openrouter_api_key),
-                    chat_model: config.chat_model,
-                    embedding_model: config.embedding_model,
-                    temperature: Number(config.temperature),
-                    max_tokens: config.max_tokens,
-                },
+                config: serializeConfig(config, tenant),
             });
         } catch (error) {
             console.error('[AI Agent] Error fetching config:', error.message);
@@ -102,7 +111,13 @@ function buildAiAgentRouter(deps) {
         if (!ctx) return;
         try {
             const body = req.body || {};
-            const existing = await db.getTenantAiConfig(ctx.tenantId);
+            const [existing, tenant] = await Promise.all([
+                db.getTenantAiConfig(ctx.tenantId),
+                db.getTenantById(ctx.tenantId),
+            ]);
+            if (!tenant) {
+                return res.status(404).json({ success: false, error: 'Tenant not found' });
+            }
 
             const nextConfig = {
                 system_prompt: typeof body.system_prompt === 'string' ? body.system_prompt : existing.system_prompt,
@@ -117,23 +132,96 @@ function buildAiAgentRouter(deps) {
                 max_tokens: body.max_tokens !== undefined ? parseInt(body.max_tokens, 10) : existing.max_tokens,
             };
 
+            if (!Number.isFinite(nextConfig.temperature) || nextConfig.temperature < 0 || nextConfig.temperature > 1) {
+                return res.status(400).json({ success: false, error: 'Temperature harus di antara 0 dan 1' });
+            }
+            if (!Number.isInteger(nextConfig.max_tokens) || nextConfig.max_tokens < 100 || nextConfig.max_tokens > 2000) {
+                return res.status(400).json({ success: false, error: 'Panjang balasan harus di antara 100 dan 2000 token' });
+            }
+
+            const shouldEnable = body.enabled !== undefined
+                ? Boolean(body.enabled)
+                : (tenant.ai_mode || 'agent') === 'chatbot';
+            if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+                return res.status(400).json({ success: false, error: 'Status AI Agent harus berupa aktif atau nonaktif' });
+            }
+            if (shouldEnable && !nextConfig.openrouter_api_key) {
+                return res.status(400).json({ success: false, error: 'Isi API key OpenRouter sebelum mengaktifkan AI Agent' });
+            }
+            if (shouldEnable && nextConfig.system_prompt.trim().length < 20) {
+                return res.status(400).json({ success: false, error: 'Lengkapi instruksi AI minimal 20 karakter sebelum mengaktifkannya' });
+            }
+
             const saved = await db.upsertTenantAiConfig(ctx.tenantId, nextConfig);
+            let savedTenant = tenant;
+            if (body.enabled !== undefined) {
+                savedTenant = await db.updateTenantConfig(ctx.tenantId, {
+                    ai_mode: shouldEnable ? 'chatbot' : 'agent',
+                });
+            }
             res.json({
                 success: true,
-                config: {
-                    tenant_id: saved.tenant_id,
-                    system_prompt: saved.system_prompt || '',
-                    openrouter_api_key_masked: maskApiKey(saved.openrouter_api_key),
-                    has_api_key: Boolean(saved.openrouter_api_key),
-                    chat_model: saved.chat_model,
-                    embedding_model: saved.embedding_model,
-                    temperature: Number(saved.temperature),
-                    max_tokens: saved.max_tokens,
-                },
+                config: serializeConfig(saved, savedTenant),
             });
         } catch (error) {
             console.error('[AI Agent] Error saving config:', error.message);
             res.status(500).json({ success: false, error: 'Failed to save AI agent configuration' });
+        }
+    });
+
+    // GET /api/v1/ai-agent/models
+    router.get('/models', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+        try {
+            const models = await listModels();
+            res.json({ success: true, models });
+        } catch (error) {
+            console.warn('[AI Agent] Failed fetching OpenRouter models:', error.message);
+            res.status(502).json({ success: false, error: getOpenRouterErrorMessage(error) });
+        }
+    });
+
+    // POST /api/v1/ai-agent/test — test a draft config without activating the bot.
+    router.post('/test', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+        try {
+            const existing = await db.getTenantAiConfig(ctx.tenantId);
+            const apiKey = typeof req.body?.openrouter_api_key === 'string' && req.body.openrouter_api_key.trim()
+                ? req.body.openrouter_api_key.trim()
+                : existing.openrouter_api_key;
+            const model = (req.body?.chat_model || existing.chat_model || '').toString().trim();
+            const systemPrompt = (req.body?.system_prompt || existing.system_prompt || '').toString().trim();
+            const message = (req.body?.message || '').toString().trim();
+
+            if (!apiKey) return res.status(400).json({ success: false, error: 'Isi API key OpenRouter terlebih dahulu' });
+            if (!model) return res.status(400).json({ success: false, error: 'Pilih model percakapan terlebih dahulu' });
+            if (systemPrompt.length < 20) return res.status(400).json({ success: false, error: 'Lengkapi instruksi AI minimal 20 karakter' });
+            if (!message) return res.status(400).json({ success: false, error: 'Isi contoh pertanyaan customer' });
+
+            const startedAt = Date.now();
+            const completion = await chatCompletion({
+                apiKey,
+                model,
+                temperature: Number(req.body?.temperature ?? existing.temperature),
+                maxTokens: Math.min(parseInt(req.body?.max_tokens ?? existing.max_tokens, 10) || 500, 700),
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: message },
+                ],
+            });
+
+            res.json({
+                success: true,
+                reply: completion.text,
+                model: completion.model,
+                latency_ms: Date.now() - startedAt,
+                usage: completion.usage,
+            });
+        } catch (error) {
+            console.warn('[AI Agent] Test failed:', error.message);
+            res.status(502).json({ success: false, error: getOpenRouterErrorMessage(error) });
         }
     });
 

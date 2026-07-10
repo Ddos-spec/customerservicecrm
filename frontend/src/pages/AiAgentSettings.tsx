@@ -9,8 +9,11 @@ import {
   Link2,
   Loader2,
   MessageSquareText,
+  PlayCircle,
   Plus,
+  Power,
   Save,
+  ShieldCheck,
   Sparkles,
   Trash2,
   UploadCloud,
@@ -20,6 +23,7 @@ import { toast } from 'sonner';
 import api from '../lib/api';
 
 type AiConfig = {
+  enabled: boolean;
   system_prompt: string;
   openrouter_api_key_masked: string | null;
   has_api_key: boolean;
@@ -27,6 +31,13 @@ type AiConfig = {
   embedding_model: string;
   temperature: number;
   max_tokens: number;
+};
+
+type AiModel = {
+  id: string;
+  name: string;
+  description?: string;
+  context_length?: number | null;
 };
 
 type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed';
@@ -51,13 +62,24 @@ type Faq = {
   chunk_count: number;
 };
 
-const CHAT_MODELS = [
+const RECOMMENDED_CHAT_MODELS = [
   { value: 'openai/gpt-4o-mini', label: 'GPT-4o mini (cepat & murah)' },
   { value: 'openai/gpt-4o', label: 'GPT-4o (lebih pintar)' },
   { value: 'anthropic/claude-3.5-haiku', label: 'Claude 3.5 Haiku (cepat)' },
   { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet (lebih pintar)' },
   { value: 'meta-llama/llama-3.1-8b-instruct', label: 'Llama 3.1 8B (hemat)' },
 ];
+
+const DEFAULT_CS_PROMPT = `Kamu adalah customer service profesional untuk bisnis ini.
+
+Tugas utama:
+- Sambut customer dengan ramah dan pahami kebutuhannya sebelum memberi solusi.
+- Jawab singkat, jelas, hangat, dan gunakan bahasa Indonesia yang natural.
+- Gunakan informasi dari sumber pengetahuan sebagai acuan fakta.
+- Jangan mengarang harga, stok, kebijakan, alamat, atau janji yang tidak tersedia.
+- Jika informasi belum cukup atau customer meminta manusia, jelaskan dengan sopan bahwa tim akan membantu langsung di chat ini.
+- Jangan mengulang pertanyaan yang sudah dijawab customer.
+- Fokus membantu customer menyelesaikan kebutuhannya, bukan sekadar memberi jawaban umum.`;
 
 const EMBEDDING_MODELS = [
   { value: 'openai/text-embedding-3-small', label: 'OpenAI text-embedding-3-small (rekomendasi)' },
@@ -73,6 +95,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 const emptyConfig: AiConfig = {
+  enabled: false,
   system_prompt: '',
   openrouter_api_key_masked: null,
   has_api_key: false,
@@ -109,6 +132,12 @@ const AiAgentSettings = () => {
 
   const [config, setConfig] = useState<AiConfig>(emptyConfig);
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [models, setModels] = useState<AiModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [testMessage, setTestMessage] = useState('Halo, saya mau tahu produk atau layanan yang tersedia. Bisa dibantu?');
+  const [testReply, setTestReply] = useState<string | null>(null);
+  const [testMeta, setTestMeta] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
 
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -143,6 +172,24 @@ const AiAgentSettings = () => {
     void fetchAll();
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingModels(true);
+    api.get('/ai-agent/models')
+      .then((res) => {
+        if (isMounted && res.data?.success) setModels(res.data.models || []);
+      })
+      .catch(() => {
+        // Daftar rekomendasi lokal tetap tersedia bila katalog OpenRouter sedang bermasalah.
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingModels(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [config.has_api_key]);
+
   // Poll status selama ada dokumen/FAQ yang masih diproses di background.
   useEffect(() => {
     const hasPending = [...documents, ...faqs].some((item) => item.status === 'pending' || item.status === 'processing');
@@ -163,6 +210,7 @@ const AiAgentSettings = () => {
     setIsSavingConfig(true);
     try {
       const payload: Record<string, unknown> = {
+        enabled: config.enabled,
         system_prompt: config.system_prompt,
         chat_model: config.chat_model,
         embedding_model: config.embedding_model,
@@ -175,13 +223,40 @@ const AiAgentSettings = () => {
       if (res.data?.success) {
         setConfig(res.data.config);
         setApiKeyInput('');
-        toast.success('Konfigurasi AI Agent tersimpan');
+        toast.success(res.data.config.enabled ? 'AI Agent tersimpan dan aktif' : 'Konfigurasi tersimpan, AI Agent nonaktif');
       }
     } catch (error: any) {
       console.error('Failed to save AI config:', error);
       toast.error(error.response?.data?.error || 'Gagal menyimpan konfigurasi');
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  const handleTestConfig = async () => {
+    if (!testMessage.trim()) return;
+    setIsTesting(true);
+    setTestReply(null);
+    setTestMeta(null);
+    try {
+      const res = await api.post('/ai-agent/test', {
+        openrouter_api_key: apiKeyInput.trim() || undefined,
+        chat_model: config.chat_model,
+        system_prompt: config.system_prompt,
+        temperature: config.temperature,
+        max_tokens: config.max_tokens,
+        message: testMessage.trim(),
+      });
+      if (res.data?.success) {
+        setTestReply(res.data.reply);
+        setTestMeta(`${res.data.model || config.chat_model} • ${res.data.latency_ms} ms`);
+        toast.success('Tes berhasil. Periksa apakah jawabannya sudah sesuai.');
+      }
+    } catch (error: any) {
+      console.error('Failed to test AI config:', error);
+      toast.error(error.response?.data?.error || 'Tes AI gagal');
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -285,6 +360,17 @@ const AiAgentSettings = () => {
 
   const readyCount = [...documents, ...faqs].filter((item) => item.status === 'ready').length;
   const totalSources = documents.length + faqs.length;
+  const hasApiKey = config.has_api_key || Boolean(apiKeyInput.trim());
+  const hasPrompt = config.system_prompt.trim().length >= 20;
+  const hasModel = Boolean(config.chat_model.trim());
+  const canActivate = hasApiKey && hasPrompt && hasModel;
+  const modelOptions = models.length > 0
+    ? [...models]
+    : RECOMMENDED_CHAT_MODELS.map((model) => ({ id: model.value, name: model.label }));
+
+  if (config.chat_model && !modelOptions.some((model) => model.id === config.chat_model)) {
+    modelOptions.unshift({ id: config.chat_model, name: config.chat_model });
+  }
 
   if (isLoading) {
     return (
@@ -333,96 +419,178 @@ const AiAgentSettings = () => {
       </div>
 
       {activeTab === 'config' && (
-        <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr] xl:items-start">
-          <div className="crm-surface space-y-5">
-            <div>
-              <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                Kepribadian AI (System Prompt)
-              </label>
-              <textarea
-                value={config.system_prompt}
-                onChange={(e) => setConfig((prev) => ({ ...prev, system_prompt: e.target.value }))}
-                placeholder="Contoh: Kamu adalah customer service toko sepatu ABC. Jawab dengan ramah, singkat, dan gunakan bahasa Indonesia santai."
-                rows={6}
-                className="w-full p-4 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-y"
-              />
-            </div>
-
-            <div>
-              <label className="flex items-center gap-2 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                <KeyRound size={13} /> API Key OpenRouter
-              </label>
-              <input
-                type="password"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder={config.has_api_key ? `Tersimpan: ${config.openrouter_api_key_masked}` : 'sk-or-v1-...'}
-                className="w-full p-4 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Dapatkan key gratis di openrouter.ai. Biaya pemakaian AI ditagih langsung ke akun OpenRouter Anda, bukan ke langganan CRM ini.
-              </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-5">
+          <div className={`flex flex-col gap-4 rounded-3xl border p-5 sm:flex-row sm:items-center sm:justify-between ${config.enabled ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900 dark:bg-emerald-950/30' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`}>
+            <div className="flex items-start gap-4">
+              <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${config.enabled ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'}`}>
+                <Power size={20} />
+              </span>
               <div>
-                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Model Percakapan</label>
-                <select
-                  value={config.chat_model}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, chat_model: e.target.value }))}
-                  className="w-full p-4 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                >
-                  {CHAT_MODELS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Model Pemahaman Dokumen</label>
-                <select
-                  value={config.embedding_model}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, embedding_model: e.target.value }))}
-                  className="w-full p-4 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                >
-                  {EMBEDDING_MODELS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
+                <p className="text-sm font-black text-slate-950 dark:text-white">Balasan otomatis {config.enabled ? 'akan aktif' : 'nonaktif'}</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  {config.enabled
+                    ? 'Setelah disimpan, AI mulai membalas chat baru. Agent manusia tetap bisa mengambil alih kapan saja.'
+                    : 'Semua pesan tetap masuk ke inbox dan menunggu agent manusia. Perubahan berlaku setelah disimpan.'}
+                </p>
               </div>
             </div>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleSaveConfig}
-                disabled={isSavingConfig}
-                className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 transition-colors text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-900/10"
-              >
-                {isSavingConfig ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                <span>{isSavingConfig ? 'Menyimpan...' : 'Simpan Konfigurasi'}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={config.enabled}
+              aria-label="Aktifkan balasan otomatis AI Agent"
+              disabled={!config.enabled && !canActivate}
+              onClick={() => setConfig((prev) => ({ ...prev, enabled: !prev.enabled }))}
+              className={`relative h-8 w-14 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-4 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40 ${config.enabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+            >
+              <span className={`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${config.enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+            </button>
           </div>
 
-          <div className="space-y-4">
-            <div className={`rounded-[2rem] border p-6 ${config.has_api_key ? 'border-emerald-100 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-900/20' : 'border-amber-100 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-900/20'}`}>
-              <p className={`text-xs font-black uppercase tracking-[0.2em] ${config.has_api_key ? 'text-emerald-800 dark:text-emerald-100' : 'text-amber-800 dark:text-amber-100'}`}>Status API Key</p>
-              <p className="text-2xl font-black text-gray-900 dark:text-white mt-3">
-                {config.has_api_key ? 'Terhubung' : 'Belum Diisi'}
-              </p>
-              <p className={`text-sm mt-3 leading-relaxed ${config.has_api_key ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
-                {config.has_api_key
-                  ? 'AI Agent siap membalas pesan customer secara otomatis.'
-                  : 'Tanpa API key, pesan customer akan tetap masuk ke inbox seperti biasa dan menunggu dibalas agent.'}
-              </p>
+          <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr] xl:items-start">
+            <div className="crm-surface space-y-5">
+              <div>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Instruksi & Kepribadian AI
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setConfig((prev) => ({ ...prev, system_prompt: DEFAULT_CS_PROMPT }))}
+                    className="rounded-xl border border-blue-200 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-blue-500/10 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/40"
+                  >
+                    Gunakan template CS andal
+                  </button>
+                </div>
+                <textarea
+                  value={config.system_prompt}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, system_prompt: e.target.value }))}
+                  placeholder="Jelaskan nama bisnis, gaya bahasa, hal yang boleh dijawab, dan kapan AI harus menyerahkan chat ke manusia."
+                  rows={9}
+                  className="w-full resize-y rounded-xl border border-gray-200 bg-white p-4 text-sm font-semibold text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
+                />
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Tulis aturan bisnis dengan bahasa biasa. Sistem tetap menjaga AI agar tidak mengarang fakta.</p>
+              </div>
+
+              <div>
+                <label className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <KeyRound size={13} /> API Key OpenRouter
+                </label>
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder={config.has_api_key ? `Tersimpan: ${config.openrouter_api_key_masked}` : 'sk-or-v1-...'}
+                  className="w-full rounded-xl border border-gray-200 bg-white p-4 text-sm font-semibold text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
+                />
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Key tidak pernah ditampilkan kembali. Biaya pemakaian dibayar langsung melalui akun OpenRouter tenant.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Model Percakapan</label>
+                  <select
+                    value={config.chat_model}
+                    onChange={(e) => setConfig((prev) => ({ ...prev, chat_model: e.target.value }))}
+                    className="w-full rounded-xl border border-gray-200 bg-white p-4 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    {modelOptions.map((model) => (
+                      <option key={model.id} value={model.id}>{model.name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    {isLoadingModels
+                      ? 'Memuat katalog model terbaru...'
+                      : models.length > 0
+                        ? `${models.length} model terbaru tersedia dari OpenRouter.`
+                        : 'Pilihan rekomendasi tersedia. Katalog terbaru dimuat saat backend terhubung.'}
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Pemahaman Dokumen</label>
+                  <select
+                    value={config.embedding_model}
+                    onChange={(e) => setConfig((prev) => ({ ...prev, embedding_model: e.target.value }))}
+                    className="w-full rounded-xl border border-gray-200 bg-white p-4 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    {EMBEDDING_MODELS.map((model) => (
+                      <option key={model.value} value={model.value}>{model.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Dipakai untuk mencari jawaban dari FAQ dan dokumen.</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {config.enabled ? 'Simpan untuk mulai membalas customer otomatis.' : 'Konfigurasi aman disimpan tanpa mengaktifkan AI.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveConfig}
+                  disabled={isSavingConfig || (config.enabled && !canActivate)}
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:bg-slate-300 dark:disabled:bg-slate-700"
+                >
+                  {isSavingConfig ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                  <span>{isSavingConfig ? 'Menyimpan...' : config.enabled ? 'Simpan & Aktifkan' : 'Simpan Konfigurasi'}</span>
+                </button>
+              </div>
             </div>
 
-            <div className="rounded-[2rem] border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-6">
-              <p className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">Cara Kerja</p>
-              <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                <p>1. Isi kepribadian AI dan API key OpenRouter.</p>
-                <p>2. Tambahkan dokumen, FAQ, atau URL di tab lain sebagai sumber pengetahuan.</p>
-                <p>3. AI akan menjawab pakai sumber itu — kalau tidak yakin, otomatis dialihkan ke agent manusia.</p>
+            <div className="space-y-4">
+              <div className={`rounded-3xl border p-6 ${canActivate ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30' : 'border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20'}`}>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={18} className={canActivate ? 'text-emerald-600' : 'text-amber-600'} />
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-700 dark:text-slate-200">Kesiapan AI</p>
+                </div>
+                <p className="mt-3 text-xl font-black text-slate-950 dark:text-white">{canActivate ? 'Siap diuji dan diaktifkan' : 'Lengkapi pengaturan'}</p>
+                <div className="mt-4 space-y-2 text-sm font-semibold">
+                  <p className={hasApiKey ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}>{hasApiKey ? '✓' : '○'} API key OpenRouter</p>
+                  <p className={hasPrompt ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}>{hasPrompt ? '✓' : '○'} Instruksi AI yang jelas</p>
+                  <p className={hasModel ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}>{hasModel ? '✓' : '○'} Model percakapan</p>
+                  <p className={readyCount > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}>{readyCount > 0 ? '✓' : '○'} Sumber pengetahuan <span className="font-normal">(disarankan)</span></p>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex items-center gap-2">
+                  <PlayCircle size={18} className="text-blue-600" />
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-700 dark:text-slate-200">Simulasi Customer</p>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">Tes prompt dan model sebelum AI berbicara dengan customer asli.</p>
+                <textarea
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                  rows={3}
+                  className="mt-4 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleTestConfig}
+                  disabled={isTesting || !canActivate || !testMessage.trim()}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-black uppercase tracking-wider text-blue-700 transition-colors hover:bg-blue-100 focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
+                >
+                  {isTesting ? <Loader2 size={15} className="animate-spin" /> : <PlayCircle size={15} />}
+                  {isTesting ? 'Menghubungi AI...' : 'Tes Balasan'}
+                </button>
+                {testReply && (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">Balasan AI</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-800 dark:text-slate-100">{testReply}</p>
+                    {testMeta && <p className="mt-3 text-[10px] text-slate-500 dark:text-slate-400">{testMeta}</p>}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Pengaman Customer</p>
+                <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                  <p>• AI membawa riwayat chat agar tidak mengulang pertanyaan.</p>
+                  <p>• Fakta bisnis hanya boleh berasal dari sumber pengetahuan.</p>
+                  <p>• Saat ragu atau layanan AI bermasalah, chat dialihkan ke manusia.</p>
+                </div>
               </div>
             </div>
           </div>
