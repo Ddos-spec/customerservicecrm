@@ -7,6 +7,8 @@ const TOP_K = 4;
 const MIN_RELEVANCE_SCORE = 0.3;
 const FALLBACK_ESCALATION_REPLY = 'Mohon maaf, untuk pertanyaan ini kami akan hubungkan dengan agent kami ya 🙏';
 const SERVICE_FAILURE_REPLY = 'Mohon maaf, sistem kami sedang mengalami kendala. Pesan Anda sudah diteruskan ke tim customer service dan akan dibantu di chat ini ya 🙏';
+const HANDOFF_MARKER = '[[ESCALATE_TO_HUMAN]]';
+const HANDOFF_MARKER_PATTERN = /\[\[\s*ESCALATE_TO_HUMAN\s*\]\]/gi;
 const UNCERTAIN_PATTERNS = [
     /tidak tahu/i,
     /tidak (memiliki|ada) informasi/i,
@@ -20,6 +22,18 @@ const HISTORY_LIMIT = 16;
 function looksUncertain(text) {
     if (!text || !text.trim()) return true;
     return UNCERTAIN_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function requestsHumanHandoff(text) {
+    if (!text) return false;
+    HANDOFF_MARKER_PATTERN.lastIndex = 0;
+    return HANDOFF_MARKER_PATTERN.test(text);
+}
+
+function stripHandoffMarker(text) {
+    if (!text) return '';
+    HANDOFF_MARKER_PATTERN.lastIndex = 0;
+    return text.replace(HANDOFF_MARKER_PATTERN, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 async function logEscalation({ tenantId, chatId, triggerType, detail, messageId }) {
@@ -74,7 +88,7 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
         const contextSection = relevantChunks.length > 0
             ? `Informasi relevan dari knowledge base:\n${relevantChunks.map((chunk) => `- ${chunk.content}`).join('\n')}`
             : 'Tidak ditemukan informasi spesifik di knowledge base untuk pesan ini.';
-        const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer "hubungi kami di WhatsApp" atau "chat kami di sini", karena mereka sudah di sini. Kalau perlu menindaklanjuti dengan tim manusia, katakan akan dihubungkan/dibantu langsung di chat ini juga, bukan disuruh pindah channel — kecuali knowledge base secara eksplisit menyebut cara lain (misal email untuk kirim dokumen, atau link jadwal meeting) yang relevan dengan kebutuhannya.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, katakan dengan jujur akan dibantu lebih lanjut oleh tim, jangan mengarang.\n4. Pahami riwayat percakapan. Jangan mengulang sapaan, pertanyaan, atau informasi yang sudah jelas.\n5. Jawab ringkas, hangat, dan berorientasi solusi seperti customer service manusia.`;
+        const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer pindah ke website, form, email, Calendly, telepon, atau channel lain. Semua konsultasi dan tindak lanjut berlangsung di chat WhatsApp ini.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, katakan dengan jujur akan dibantu lebih lanjut oleh tim, jangan mengarang.\n4. Pahami riwayat percakapan. Jangan mengulang sapaan, pertanyaan, atau informasi yang sudah jelas.\n5. Jawab ringkas, hangat, dan berorientasi solusi seperti customer service manusia. Ajukan maksimal satu pertanyaan paling relevan dalam satu balasan.\n6. Jika informasi inti customer sudah cukup untuk ditindaklanjuti admin, customer meminta manusia, perlu negosiasi, atau butuh keputusan yang bukan wewenangmu: beri konfirmasi singkat bahwa admin akan melanjutkan di chat ini, lalu tulis ${HANDOFF_MARKER} pada baris terakhir. Marker itu adalah perintah internal; jangan jelaskan artinya.`;
 
         const history = (await db.getMessagesByChat(chat.id, HISTORY_LIMIT))
             .filter((message) => message.message_type === 'text' && message.body?.trim())
@@ -126,19 +140,32 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
         return;
     }
 
-    if (looksUncertain(completion.text)) {
+    const replyText = stripHandoffMarker(completion.text);
+    if (requestsHumanHandoff(completion.text)) {
+        await logEscalation({
+            tenantId: tenant.id,
+            chatId: chat.id,
+            triggerType: 'llm_handoff',
+            detail: completion.text,
+            messageId: savedMessage?.id,
+        });
+        await sendReply(replyText || 'Terima kasih, Kak. Informasinya sudah cukup dan admin kami akan melanjutkan bantuan langsung di chat ini ya.');
+        return;
+    }
+
+    if (looksUncertain(replyText)) {
         await logEscalation({
             tenantId: tenant.id,
             chatId: chat.id,
             triggerType: 'llm_uncertain',
-            detail: completion.text,
+            detail: replyText,
             messageId: savedMessage?.id,
         });
         await sendReply(FALLBACK_ESCALATION_REPLY);
         return;
     }
 
-    await sendReply(completion.text);
+    await sendReply(replyText);
 }
 
-module.exports = { handleIncomingMessage, looksUncertain };
+module.exports = { handleIncomingMessage, looksUncertain, requestsHumanHandoff, stripHandoffMarker };

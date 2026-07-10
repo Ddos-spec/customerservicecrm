@@ -101,4 +101,36 @@ describe('AI responder', () => {
         expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('diteruskan ke tim customer service'));
         expect(chatCompletion).not.toHaveBeenCalled();
     });
+
+    it('menyembunyikan marker handoff dan benar-benar menghentikan AI di chat', async () => {
+        db.getMessagesByChat.mockResolvedValue([
+            { message_type: 'text', body: 'Saya punya toko dan ingin otomatisasi CS WhatsApp.', is_from_me: false },
+        ]);
+        chatCompletion.mockResolvedValue({
+            text: 'Informasinya sudah cukup, Kak. Admin kami akan melanjutkan langsung di chat ini.\n\n[[ESCALATE_TO_HUMAN]]',
+            model: 'test/chat-model',
+            id: 'generation-handoff',
+            usage: { prompt_tokens: 60, completion_tokens: 16 },
+        });
+        const sendReply = jest.fn();
+
+        await handleIncomingMessage({
+            tenant,
+            chat,
+            messageText: 'Saya punya toko dan ingin otomatisasi CS WhatsApp.',
+            savedMessage,
+            sendReply,
+        });
+
+        expect(db.query).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO escalation_log'),
+            expect.arrayContaining(['tenant-1', 'chat-1', 'llm_handoff'])
+        );
+        expect(db.query).toHaveBeenCalledWith(
+            expect.stringContaining("UPDATE chats SET status = 'escalated'"),
+            ['chat-1']
+        );
+        expect(sendReply).toHaveBeenCalledWith('Informasinya sudah cukup, Kak. Admin kami akan melanjutkan langsung di chat ini.');
+        expect(sendReply.mock.calls[0][0]).not.toContain('ESCALATE_TO_HUMAN');
+    });
 });
