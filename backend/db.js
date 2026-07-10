@@ -921,6 +921,15 @@ async function markChatAsRead(chatId) {
     return result.rows[0];
 }
 
+async function reopenChatToAi(chatId, tenantId) {
+    const result = await query(`
+        UPDATE chats SET status = 'open', updated_at = now()
+        WHERE id = $1 AND tenant_id = $2 AND status = 'escalated'
+        RETURNING *
+    `, [chatId, tenantId]);
+    return result.rows[0] || null;
+}
+
 function buildChatRangeCondition(range) {
     switch (range) {
         case 'today':
@@ -1263,7 +1272,7 @@ module.exports = {
     // Contacts
     syncContacts, getContactsByTenant, getContactCountByTenant, getContactByJid, getPnByLid,
     // Chats & Messages
-    getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead,
+    getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead, reopenChatToAi,
     updateMessageDelivery,
     markMessageOutboundSent,
     updateMessageReceiptByWaId,

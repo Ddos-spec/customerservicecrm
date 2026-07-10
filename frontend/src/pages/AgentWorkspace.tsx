@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect, useCallback, useRef, type ReactNode } fr
 import {
   Send, Paperclip, Smile, MoreVertical, Search,
   Info, Check, CheckCheck, Clock, User, X, Loader2, Users, Image as ImageIcon, Video, Mic, FileText,
-  Wifi, WifiOff, AlertTriangle
+  Wifi, WifiOff, AlertTriangle, Bot
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
@@ -22,7 +22,7 @@ interface Chat {
   last_message_time: string;
   last_message_type: 'text' | 'image' | 'video' | 'audio' | 'document' | 'sticker' | 'location';
   profile_pic_url?: string;
-  status: 'open' | 'resolved';
+  status: 'open' | 'resolved' | 'escalated' | 'closed';
   agent_name?: string; // Assigned agent
 }
 
@@ -638,6 +638,24 @@ const AgentWorkspace = () => {
     }
   };
 
+  const [isReopeningAi, setIsReopeningAi] = useState(false);
+  const handleReopenToAi = async (chatId: string) => {
+    setIsReopeningAi(true);
+    try {
+      const res = await api.put(`/chats/${chatId}/reopen-ai`);
+      const updated = res.data?.data;
+      if (updated) {
+        setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, status: updated.status } : c)));
+        setSelectedChat((prev) => (prev && prev.id === chatId ? { ...prev, status: updated.status } : prev));
+        toast.success('Chat dikembalikan ke AI Agent');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Gagal mengembalikan chat ke AI');
+    } finally {
+      setIsReopeningAi(false);
+    }
+  };
+
   // --- 4. Send Message Logic ---
   const handleSendMessage = async () => {
     if (!messageText.trim()) return;
@@ -804,6 +822,11 @@ const AgentWorkspace = () => {
                       <h4 className="flex items-center gap-1.5 truncate pr-2 text-[15px] font-semibold text-[#111b21] dark:text-[#e9edef]">
                         {chat.display_name || chat.phone_number}
                         {chat.is_group && <span className="bg-[#0a5c46] px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#d9fdd3]">GRUP</span>}
+                        {chat.status === 'escalated' && (
+                          <span className="flex items-center gap-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white" title="AI Agent berhenti, butuh agent manusia">
+                            <AlertTriangle size={9} /> Perlu Agent
+                          </span>
+                        )}
                       </h4>
                       <span className="shrink-0 text-xs text-[#667781] dark:text-[#8696a0]">
                         {formatChatListTime(chat.last_message_time)}
@@ -897,6 +920,31 @@ const AgentWorkspace = () => {
                       </div>
                     </div>
                 </div>
+
+                {selectedChat.status === 'escalated' && (
+                  <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-[#3b4a54] dark:bg-[#182229] dark:text-[#f8e6a0] sm:px-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 text-xs font-semibold">
+                        <AlertTriangle size={16} />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-black">AI Agent berhenti di chat ini</p>
+                          <p className="mt-0.5 font-medium opacity-80">
+                            Sudah dialihkan ke agent manusia — AI tidak akan membalas pesan customer di sini sampai dikembalikan.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleReopenToAi(selectedChat.id)}
+                        disabled={isReopeningAi}
+                        className="flex shrink-0 items-center gap-1.5 rounded-full bg-amber-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-amber-700 disabled:opacity-60"
+                      >
+                        {isReopeningAi ? <Loader2 size={13} className="animate-spin" /> : <Bot size={13} />}
+                        Kembalikan ke AI
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {shouldShowRealtimeWarning && (
                   <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-[#3b4a54] dark:bg-[#182229] dark:text-[#f8e6a0] sm:px-5">

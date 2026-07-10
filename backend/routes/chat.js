@@ -125,6 +125,34 @@ function buildChatRouter(deps) {
         }
     });
 
+    /**
+     * PUT /api/v1/chats/:chatId/reopen-ai
+     * Un-escalate a chat — hand control back to the AI Agent for future messages.
+     */
+    router.put('/chats/:chatId/reopen-ai', async (req, res) => {
+        const user = req.session?.user;
+        if (!user) return res.status(401).json({ status: 'error', message: 'Unauthorized' });
+        if (!['admin_agent', 'agent', 'super_admin'].includes(user.role)) {
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+
+        try {
+            const { chatId } = req.params;
+            const tenantId = user.role === 'super_admin'
+                ? (req.body?.tenant_id || req.query?.tenant_id || '').toString().trim()
+                : user.tenant_id;
+            if (!tenantId) return res.status(400).json({ status: 'error', message: 'Tenant ID is required' });
+
+            const chat = await db.reopenChatToAi(chatId, tenantId);
+            if (!chat) {
+                return res.status(404).json({ status: 'error', message: 'Chat not found or not currently escalated' });
+            }
+            res.json({ status: 'success', data: chat });
+        } catch (error) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
     router.get('/business-profile/:number', unsupported('Business profile belum didukung di gateway Go.'));
     router.post('/archive', unsupported('Archive chat belum didukung di gateway Go.'));
     router.post('/mute', unsupported('Mute chat belum didukung di gateway Go.'));
