@@ -106,7 +106,10 @@ describe('AI responder', () => {
         db.getMessagesByChat.mockResolvedValue([
             { message_type: 'text', body: 'Saya punya toko dan ingin otomatisasi CS WhatsApp.', is_from_me: false },
         ]);
-        chatCompletion.mockResolvedValue({
+        chatCompletion.mockResolvedValueOnce({
+            text: 'CONTINUE',
+            model: 'test/chat-model',
+        }).mockResolvedValueOnce({
             text: 'Informasinya sudah cukup, Kak. Admin kami akan melanjutkan langsung di chat ini.\n\n[[ESCALATE_TO_HUMAN]]',
             model: 'test/chat-model',
             id: 'generation-handoff',
@@ -132,5 +135,37 @@ describe('AI responder', () => {
         );
         expect(sendReply).toHaveBeenCalledWith('Informasinya sudah cukup, Kak. Admin kami akan melanjutkan langsung di chat ini.');
         expect(sendReply.mock.calls[0][0]).not.toContain('ESCALATE_TO_HUMAN');
+    });
+
+    it('memaksa handoff ketika classifier menilai informasi customer sudah cukup', async () => {
+        const qualifiedMessage = 'Saya punya toko online, admin kewalahan menjawab stok, dan saya ingin respons WhatsApp lebih cepat.';
+        db.getMessagesByChat.mockResolvedValue([
+            { message_type: 'text', body: qualifiedMessage, is_from_me: false },
+        ]);
+        chatCompletion.mockResolvedValueOnce({
+            text: 'HANDOFF',
+            model: 'test/chat-model',
+        }).mockResolvedValueOnce({
+            text: 'Kebutuhannya sudah jelas, Kak. Admin kami akan melanjutkan langsung di chat ini.',
+            model: 'test/chat-model',
+            id: 'generation-classified-handoff',
+            usage: { prompt_tokens: 80, completion_tokens: 14 },
+        });
+        const sendReply = jest.fn();
+
+        await handleIncomingMessage({
+            tenant,
+            chat,
+            messageText: qualifiedMessage,
+            savedMessage,
+            sendReply,
+        });
+
+        expect(chatCompletion).toHaveBeenCalledTimes(2);
+        expect(db.query).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO escalation_log'),
+            expect.arrayContaining(['tenant-1', 'chat-1', 'llm_handoff'])
+        );
+        expect(sendReply).toHaveBeenCalledWith('Kebutuhannya sudah jelas, Kak. Admin kami akan melanjutkan langsung di chat ini.');
     });
 });

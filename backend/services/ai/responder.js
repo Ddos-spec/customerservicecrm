@@ -9,6 +9,7 @@ const FALLBACK_ESCALATION_REPLY = 'Mohon maaf, untuk pertanyaan ini kami akan hu
 const SERVICE_FAILURE_REPLY = 'Mohon maaf, sistem kami sedang mengalami kendala. Pesan Anda sudah diteruskan ke tim customer service dan akan dibantu di chat ini ya 🙏';
 const HANDOFF_MARKER = '[[ESCALATE_TO_HUMAN]]';
 const HANDOFF_MARKER_PATTERN = /\[\[\s*ESCALATE_TO_HUMAN\s*\]\]/gi;
+const HANDOFF_CLASSIFIER_MIN_CHARS = 40;
 const UNCERTAIN_PATTERNS = [
     /tidak tahu/i,
     /tidak (memiliki|ada) informasi/i,
@@ -34,6 +35,43 @@ function stripHandoffMarker(text) {
     if (!text) return '';
     HANDOFF_MARKER_PATTERN.lastIndex = 0;
     return text.replace(HANDOFF_MARKER_PATTERN, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+async function classifyHandoff(config, history) {
+    const latestCustomerMessage = [...history].reverse().find((message) => message.role === 'user')?.content || '';
+    if (latestCustomerMessage.trim().length < HANDOFF_CLASSIFIER_MIN_CHARS) return false;
+
+    const transcript = history
+        .slice(-10)
+        .map((message) => `${message.role === 'assistant' ? 'CS' : 'CUSTOMER'}: ${message.content}`)
+        .join('\n')
+        .slice(-5000);
+
+    try {
+        const decision = await chatCompletion({
+            apiKey: config.openrouter_api_key,
+            model: config.chat_model,
+            temperature: 0,
+            maxTokens: 12,
+            messages: [
+                {
+                    role: 'system',
+                    content: `Nilai apakah percakapan customer service harus diserahkan ke admin manusia sekarang. Jawab HANYA HANDOFF atau CONTINUE.
+
+Jawab HANDOFF jika salah satu benar:
+- Customer meminta admin/manusia, siap deal, meminta negosiasi harga, atau membutuhkan keputusan/detail khusus.
+- Informasi sudah cukup untuk admin bertindak: konteks bisnis, masalah/proses yang ingin dibantu, dan hasil utama yang diharapkan sudah disebut atau tersirat jelas.
+
+Jangan meminta budget, timeline, meeting, atau fitur tambahan jika inti kebutuhan sudah jelas. Pertanyaan umum, sapaan, atau kebutuhan yang masih kabur adalah CONTINUE.`,
+                },
+                { role: 'user', content: transcript },
+            ],
+        });
+        return /^HANDOFF\b/i.test(decision.text.trim());
+    } catch (error) {
+        console.warn('[AI Agent] Handoff classifier failed, continuing with main responder:', error.message);
+        return false;
+    }
 }
 
 async function logEscalation({ tenantId, chatId, triggerType, detail, messageId }) {
@@ -70,6 +108,7 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
     }
 
     let completion;
+    let forceHandoff = false;
     try {
         const [queryEmbedding] = await createEmbeddings({
             apiKey: config.openrouter_api_key,
@@ -104,13 +143,18 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
         ));
         if (!hasCurrentMessage) history.push({ role: 'user', content: messageText });
 
+        forceHandoff = await classifyHandoff(config, history);
+
         completion = await chatCompletion({
             apiKey: config.openrouter_api_key,
             model: config.chat_model,
             temperature: Number(config.temperature),
             maxTokens: config.max_tokens,
             messages: [
-                { role: 'system', content: systemPrompt },
+                {
+                    role: 'system',
+                    content: `${systemPrompt}\n7. Keputusan handoff untuk balasan ini: ${forceHandoff ? 'WAJIB HANDOFF. Jangan ajukan pertanyaan lagi; rangkum singkat, katakan admin akan melanjutkan di chat ini, lalu tambahkan marker internal.' : 'LANJUTKAN DISCOVERY secara natural bila masih ada satu informasi inti yang benar-benar dibutuhkan.'}`,
+                },
                 ...history,
             ],
         });
@@ -141,12 +185,12 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
     }
 
     const replyText = stripHandoffMarker(completion.text);
-    if (requestsHumanHandoff(completion.text)) {
+    if (forceHandoff || requestsHumanHandoff(completion.text)) {
         await logEscalation({
             tenantId: tenant.id,
             chatId: chat.id,
             triggerType: 'llm_handoff',
-            detail: completion.text,
+            detail: `${forceHandoff ? 'classifier_handoff: ' : ''}${completion.text}`,
             messageId: savedMessage?.id,
         });
         await sendReply(replyText || 'Terima kasih, Kak. Informasinya sudah cukup dan admin kami akan melanjutkan bantuan langsung di chat ini ya.');
