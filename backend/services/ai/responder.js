@@ -62,21 +62,15 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
     const topChunks = await retrieveTopK(tenant.id, queryEmbedding, TOP_K);
     const relevantChunks = topChunks.filter((chunk) => chunk.score >= MIN_RELEVANCE_SCORE);
 
-    if (relevantChunks.length === 0) {
-        await logEscalation({
-            tenantId: tenant.id,
-            chatId: chat.id,
-            triggerType: 'no_context',
-            detail: messageText,
-            messageId: savedMessage?.id,
-        });
-        await sendReply(FALLBACK_ESCALATION_REPLY);
-        return;
-    }
-
-    const contextText = relevantChunks.map((chunk) => `- ${chunk.content}`).join('\n');
+    // Catatan: kosongnya hasil retrieval TIDAK langsung eskalasi. Sapaan/basa-basi ("halo",
+    // "test") wajar tidak match knowledge base apa pun — AI tetap harus bisa membalas itu
+    // secara natural. Eskalasi baru terjadi kalau LLM sendiri mengaku tidak tahu jawaban
+    // faktualnya (lihat looksUncertain di bawah), bukan berdasarkan skor kemiripan semata.
     const basePrompt = config.system_prompt?.trim() || 'Kamu adalah customer service yang ramah dan membantu.';
-    const systemPrompt = `${basePrompt}\n\nGunakan informasi berikut untuk menjawab pertanyaan customer:\n${contextText}\n\nJika informasi di atas tidak cukup untuk menjawab pertanyaan, katakan dengan jujur bahwa kamu tidak tahu jawabannya — jangan mengarang jawaban.`;
+    const contextSection = relevantChunks.length > 0
+        ? `Informasi relevan dari knowledge base:\n${relevantChunks.map((chunk) => `- ${chunk.content}`).join('\n')}`
+        : 'Tidak ditemukan informasi spesifik di knowledge base untuk pesan ini.';
+    const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan: untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas. Tapi untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, katakan dengan jujur akan dihubungkan ke tim, jangan mengarang.`;
 
     const completion = await chatCompletion({
         apiKey: config.openrouter_api_key,
