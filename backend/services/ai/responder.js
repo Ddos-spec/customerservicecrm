@@ -70,7 +70,7 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
     const contextSection = relevantChunks.length > 0
         ? `Informasi relevan dari knowledge base:\n${relevantChunks.map((chunk) => `- ${chunk.content}`).join('\n')}`
         : 'Tidak ditemukan informasi spesifik di knowledge base untuk pesan ini.';
-    const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan: untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas. Tapi untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, katakan dengan jujur akan dihubungkan ke tim, jangan mengarang.`;
+    const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer "hubungi kami di WhatsApp" atau "chat kami di sini", karena mereka sudah di sini. Kalau perlu menindaklanjuti dengan tim manusia, katakan akan dihubungkan/dibantu langsung di chat ini juga, bukan disuruh pindah channel — kecuali knowledge base secara eksplisit menyebut cara lain (misal email untuk kirim dokumen, atau link jadwal meeting) yang relevan dengan kebutuhannya.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, katakan dengan jujur akan dibantu lebih lanjut oleh tim, jangan mengarang.`;
 
     const completion = await chatCompletion({
         apiKey: config.openrouter_api_key,
