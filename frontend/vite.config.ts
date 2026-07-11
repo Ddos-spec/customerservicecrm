@@ -27,6 +27,10 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 900,
     rollupOptions: {
+      input: {
+        main: './index.html',
+        app: './app.html'
+      },
       output: {
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
