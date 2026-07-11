@@ -68,35 +68,35 @@ const Login = () => {
                 alt="Technology Background" 
                 className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-blue-900/85 mix-blend-multiply"></div>
-            <div className="absolute inset-0 bg-gradient-to-b from-blue-900/50 to-blue-950/90"></div>
+            <div className="absolute inset-0 bg-emerald-900/85 mix-blend-multiply"></div>
+            <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/50 to-emerald-950/90"></div>
         </div>
         
         <div className="relative z-10">
-          <div className="flex items-center space-x-3 text-blue-200 mb-12">
+          <div className="flex items-center space-x-3 text-emerald-200 mb-12">
             <img src={import.meta.env.BASE_URL + "logo.png"} alt="CRM SaaS" className="h-10 w-10 rounded-xl object-contain" />
             <span className="text-xl font-bold tracking-wide">myaicustom.com</span>
           </div>
           
           <h1 className="text-4xl font-bold leading-tight mb-6">
             Kelola Tim Support <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-sky-200">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-200 to-teal-200">
               Lebih Efisien
             </span>
           </h1>
-          <p className="text-blue-100 text-lg leading-relaxed max-w-sm">
+          <p className="text-emerald-100 text-lg leading-relaxed max-w-sm">
             Platform Customer Service terintegrasi WhatsApp Gateway dengan dukungan Multi-Tenant dan AI Automation.
           </p>
         </div>
 
-        <div className="relative z-10 text-xs text-blue-300/60 mt-8">
+        <div className="relative z-10 text-xs text-emerald-300/60 mt-8">
           © 2026 myaicustom.com. Hak cipta dilindungi.
         </div>
       </div>
 
       {/* Right Side - Login Form */}
-      <div className="w-full lg:w-7/12 flex flex-col justify-center items-center p-8 bg-blue-50/30 dark:bg-slate-950">
-        <div className="w-full max-w-sm bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl shadow-blue-100/50 dark:shadow-blue-900/30 border border-white dark:border-slate-800">
+      <div className="w-full lg:w-7/12 flex flex-col justify-center items-center p-8 bg-emerald-50/30 dark:bg-slate-950">
+        <div className="w-full max-w-sm bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl shadow-emerald-100/50 dark:shadow-emerald-900/30 border border-white dark:border-slate-800">
           <div className="text-center mb-10">
             <img src={import.meta.env.BASE_URL + "logo.png"} alt="CRM SaaS" className="mx-auto h-12 w-12 rounded-2xl object-contain mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Masuk</h2>
@@ -105,23 +105,23 @@ const Login = () => {
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="relative group">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 group-focus-within:text-blue-600 transition-colors" size={18} />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 group-focus-within:text-emerald-600 transition-colors" size={18} />
               <input 
                 type="email" 
                 placeholder="Email" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" 
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
               />
             </div>
             <div className="relative group">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 group-focus-within:text-blue-600 transition-colors" size={18} />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 group-focus-within:text-emerald-600 transition-colors" size={18} />
               <input 
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Kata Sandi" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-16 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all" 
+                className="w-full pl-10 pr-16 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
               />
               <button
                 type="button"
@@ -134,7 +134,7 @@ const Login = () => {
             <button 
                 type="submit" 
                 disabled={authLoading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-sm shadow-lg shadow-blue-200 dark:shadow-blue-900/30 transition-all active:scale-95 flex items-center justify-center space-x-2"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg text-sm shadow-lg shadow-emerald-200 dark:shadow-emerald-900/30 transition-all active:scale-95 flex items-center justify-center space-x-2"
             >
                 {authLoading && <Loader2 className="animate-spin" size={16} />}
                 <span>{authLoading ? 'Memproses...' : 'Masuk'}</span>
@@ -153,18 +153,18 @@ const Login = () => {
               {/* Super Admin Option (Hidden subtle) */}
               <button 
                 onClick={() => handleDemoLogin({ email: 'admin@localhost', role: 'super_admin', id: 'system-admin', name: 'Super Admin' })}
-                className="w-full text-[10px] text-gray-300 dark:text-gray-500 hover:text-blue-400 dark:hover:text-blue-300 transition-colors py-1"
+                className="w-full text-[10px] text-gray-300 dark:text-gray-500 hover:text-blue-400 dark:hover:text-emerald-300 transition-colors py-1"
               >
                 Login as System Super Admin
               </button>
 
               {/* 1. Owner */}
-              <button onClick={() => handleDemoLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-slate-700 hover:border-blue-500 bg-white dark:bg-slate-800 group transition-all">
+              <button onClick={() => handleDemoLogin(adminAgentUser)} className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-slate-700 hover:border-emerald-500 bg-white dark:bg-slate-800 group transition-all">
                 <div className="text-left">
                   <span className="block text-xs font-bold text-gray-800 dark:text-gray-100">1. Owner (Pemilik Toko)</span>
                   <span className="text-[10px] text-gray-400 dark:text-gray-500">Toko Maju Jaya</span>
                 </div>
-                <span className="text-[10px] bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 px-2 py-1 rounded group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 group-hover:text-blue-700 dark:group-hover:text-blue-300">Login</span>
+                <span className="text-[10px] bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 px-2 py-1 rounded group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/40 group-hover:text-emerald-700 dark:group-hover:text-emerald-300">Login</span>
               </button>
 
               {/* 2. Staff Group */}
@@ -175,7 +175,7 @@ const Login = () => {
                 >
                   <div className="flex items-center space-x-2">
                     <span className="text-xs font-bold text-gray-700 dark:text-gray-200">2. Staff (Karyawan)</span>
-                    <span className="text-[10px] bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200 px-2 py-0.5 rounded-full">3 Staff</span>
+                    <span className="text-[10px] bg-teal-100 dark:bg-sky-900/40 text-teal-700 dark:text-teal-200 px-2 py-0.5 rounded-full">3 Staff</span>
                   </div>
                   {showAgents ? <ChevronUp size={16} className="text-gray-500 dark:text-gray-400"/> : <ChevronDown size={16} className="text-gray-500 dark:text-gray-400"/>}
                 </button>
@@ -188,7 +188,7 @@ const Login = () => {
                         onClick={() => handleDemoLogin({ ...agent, role: 'agent' })}
                         className="w-full flex items-center space-x-3 p-2 rounded-md hover:bg-white dark:hover:bg-slate-700 hover:shadow-sm border border-transparent hover:border-gray-200 dark:hover:border-slate-600 transition-all text-left"
                       >
-                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-300">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-300">
                           <UserIcon size={14} />
                         </div>
                         <div>
