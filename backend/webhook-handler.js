@@ -17,8 +17,8 @@ const { sendAlertWebhook } = require('./utils/alert-webhook');
 const { buildSignedEphemeralMediaUrl } = require('./utils/ephemeral-media');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 const AI_REPLY_DEBOUNCE_MS = Math.min(
-    Math.max(parseInt(process.env.AI_REPLY_DEBOUNCE_MS || '8000', 10) || 8000, 1500),
-    30000
+    Math.max(parseInt(process.env.AI_REPLY_DEBOUNCE_MS || '60000', 10) || 60000, 1500),
+    120000
 );
 
 // Event handlers map (can be extended by other modules)
