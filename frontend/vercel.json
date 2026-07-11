@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/:path((?!.*\\.).*)", "destination": "/app.html" }
+    { "source": "/:path((?!.*\\.).+)", "destination": "/app.html" }
   ]
 }
