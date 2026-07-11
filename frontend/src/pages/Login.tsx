@@ -74,7 +74,7 @@ const Login = () => {
         
         <div className="relative z-10">
           <div className="flex items-center space-x-3 text-blue-200 mb-12">
-            <img src="/logo.png" alt="CRM SaaS" className="h-10 w-10 rounded-xl object-contain" />
+            <img src={import.meta.env.BASE_URL + "logo.png"} alt="CRM SaaS" className="h-10 w-10 rounded-xl object-contain" />
             <span className="text-xl font-bold tracking-wide">myaicustom.com</span>
           </div>
           
@@ -98,7 +98,7 @@ const Login = () => {
       <div className="w-full lg:w-7/12 flex flex-col justify-center items-center p-8 bg-blue-50/30 dark:bg-slate-950">
         <div className="w-full max-w-sm bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl shadow-blue-100/50 dark:shadow-blue-900/30 border border-white dark:border-slate-800">
           <div className="text-center mb-10">
-            <img src="/logo.png" alt="CRM SaaS" className="mx-auto h-12 w-12 rounded-2xl object-contain mb-4" />
+            <img src={import.meta.env.BASE_URL + "logo.png"} alt="CRM SaaS" className="mx-auto h-12 w-12 rounded-2xl object-contain mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Masuk</h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm mt-2">Akses Dashboard CRM Anda</p>
           </div>

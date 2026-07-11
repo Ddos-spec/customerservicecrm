@@ -140,7 +140,7 @@ const MainLayout = () => {
           <div className="flex min-w-0 flex-1 items-center gap-4 xl:gap-8">
             {/* Logo */}
             <div className="flex shrink-0 items-center space-x-3">
-              <img src="/logo.png" alt="CRM SaaS" className="h-10 w-10 rounded-2xl object-contain ring-1 ring-gray-100 dark:ring-slate-800" />
+              <img src={import.meta.env.BASE_URL + "logo.png"} alt="CRM SaaS" className="h-10 w-10 rounded-2xl object-contain ring-1 ring-gray-100 dark:ring-slate-800" />
               <div className="min-w-0">
                 <span className="block leading-none text-xl font-black tracking-tight text-gray-900 dark:text-white">
                   CRM<span className={isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}>SaaS</span>
@@ -212,7 +212,7 @@ const MainLayout = () => {
       <div className="fixed top-0 z-50 flex w-full items-center justify-between border-b border-gray-100 bg-white/92 px-4 py-3 shadow-lg backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/92 lg:hidden">
         <div className="min-w-0">
           <div className="flex items-center space-x-2 text-lg font-black tracking-tight text-gray-900 dark:text-white">
-            <img src="/logo.png" alt="CRM SaaS" className="h-8 w-8 rounded-xl object-contain" />
+            <img src={import.meta.env.BASE_URL + "logo.png"} alt="CRM SaaS" className="h-8 w-8 rounded-xl object-contain" />
             <span>CRM SaaS</span>
           </div>
           <p className="mt-0.5 truncate pl-10 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">

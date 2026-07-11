@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  // base dihapus untuk Vercel (Root domain)
+  base: '/customerservicecrm/',
   plugins: [
     react(),
     tailwindcss(),
@@ -12,7 +12,6 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Proxy tetap ada untuk local development
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
