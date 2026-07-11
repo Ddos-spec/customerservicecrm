@@ -37,7 +37,20 @@ function stripHandoffMarker(text) {
     return text.replace(HANDOFF_MARKER_PATTERN, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function meetingReadyForHandoff(history) {
+    const transcript = history.map((message) => message.content || '').join('\n');
+    const hasMeetingIntent = /\b(meeting|zoom|google meet|microsoft teams|video call)\b/i.test(transcript);
+    const hasSchedule = /\b(senin|selasa|rabu|kamis|jumat|sabtu|minggu|besok|lusa|tanggal\s*\d{1,2})\b/i.test(transcript)
+        && /(jam|pukul)\s*\d{1,2}(?:[:.]\d{2})?|\b\d{1,2}[:.]\d{2}\s*(?:wib|wita|wit)?\b/i.test(transcript);
+    const hasLinkDecision = /https?:\/\//i.test(transcript)
+        || /link.{0,50}(admin|kami|kalian|saya|aku|dibuat|buatkan|siapkan|disiapkan)/i.test(transcript)
+        || /(admin|kami|kalian|saya|aku).{0,50}link/i.test(transcript);
+    return hasMeetingIntent && hasSchedule && hasLinkDecision;
+}
+
 async function classifyHandoff(config, history) {
+    if (meetingReadyForHandoff(history)) return true;
+
     const latestCustomerMessage = [...history].reverse().find((message) => message.role === 'user')?.content || '';
     if (latestCustomerMessage.trim().length < HANDOFF_CLASSIFIER_MIN_CHARS) return false;
 
@@ -213,4 +226,10 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
     await sendReply(replyText);
 }
 
-module.exports = { handleIncomingMessage, looksUncertain, requestsHumanHandoff, stripHandoffMarker };
+module.exports = {
+    handleIncomingMessage,
+    looksUncertain,
+    requestsHumanHandoff,
+    stripHandoffMarker,
+    meetingReadyForHandoff,
+};

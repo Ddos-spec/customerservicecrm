@@ -230,4 +230,35 @@ describe('AI responder', () => {
             expect.anything()
         );
     });
+
+    it('wajib handoff setelah waktu meeting dan pembuat link sudah jelas', async () => {
+        const firstMessage = 'Saya ingin meeting online hari Senin jam 13.00 WIB untuk bahas AI CS.';
+        const latestMessage = 'Tolong link meeting disiapkan oleh admin my-aicustom.';
+        db.getMessagesByChat.mockResolvedValue([
+            { message_type: 'text', body: firstMessage, is_from_me: false },
+            { message_type: 'text', body: latestMessage, is_from_me: false },
+        ]);
+        chatCompletion.mockResolvedValueOnce({
+            text: 'Baik, Kak. Meeting Senin pukul 13.00 WIB sudah dicatat dan admin akan mengirim link di chat ini.',
+            model: 'test/chat-model',
+            id: 'generation-meeting-handoff',
+            usage: { prompt_tokens: 90, completion_tokens: 20 },
+        });
+        const sendReply = jest.fn();
+
+        await handleIncomingMessage({
+            tenant,
+            chat,
+            messageText: latestMessage,
+            savedMessage,
+            sendReply,
+        });
+
+        expect(chatCompletion).toHaveBeenCalledTimes(1);
+        expect(db.query).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO escalation_log'),
+            expect.arrayContaining(['tenant-1', 'chat-1', 'llm_handoff'])
+        );
+        expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('admin akan mengirim link'));
+    });
 });
