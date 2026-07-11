@@ -11,10 +11,15 @@ const db = require('./db');
 const waGateway = require('./wa-gateway-client');
 const ProviderFactory = require('./services/whatsapp/factory');
 const aiResponder = require('./services/ai/responder');
+const { createReplyBatcher } = require('./services/ai/reply-batcher');
 const { normalizeJid, getJidUser } = require('./utils/jid');
 const { sendAlertWebhook } = require('./utils/alert-webhook');
 const { buildSignedEphemeralMediaUrl } = require('./utils/ephemeral-media');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+const AI_REPLY_DEBOUNCE_MS = Math.min(
+    Math.max(parseInt(process.env.AI_REPLY_DEBOUNCE_MS || '8000', 10) || 8000, 1500),
+    30000
+);
 
 // Event handlers map (can be extended by other modules)
 const eventHandlers = new Map();
@@ -329,6 +334,47 @@ async function sendChatbotAutoReply(tenant, chat, targetJid, replyText) {
     });
 }
 
+const aiReplyBatcher = createReplyBatcher({
+    delayMs: AI_REPLY_DEBOUNCE_MS,
+    maxItems: 10,
+    onFlush: async (batchKey, items) => {
+        const latest = items[items.length - 1];
+        const chatResult = await db.query(
+            'SELECT * FROM chats WHERE id = $1 AND tenant_id = $2 LIMIT 1',
+            [latest.chat.id, latest.tenant.id]
+        );
+        const currentChat = chatResult.rows[0];
+        if (!currentChat || currentChat.status === 'escalated') {
+            console.info(`[AI Agent] Batch ${batchKey} dibatalkan karena chat sudah diambil alih manusia.`);
+            return;
+        }
+
+        const currentTenant = await db.getTenantById(latest.tenant.id);
+        if (!currentTenant || (currentTenant.ai_mode || 'agent') !== 'chatbot') {
+            console.info(`[AI Agent] Batch ${batchKey} dibatalkan karena AI tenant nonaktif.`);
+            return;
+        }
+
+        const combinedMessage = items
+            .map((item) => item.messageText?.trim())
+            .filter(Boolean)
+            .join('\n');
+        if (!combinedMessage) return;
+
+        console.info(`[AI Agent] Memproses ${items.length} pesan sebagai satu konteks untuk chat ${currentChat.id}.`);
+        await aiResponder.handleIncomingMessage({
+            tenant: currentTenant,
+            chat: currentChat,
+            messageText: combinedMessage,
+            savedMessage: latest.savedMessage,
+            sendReply: (replyText) => sendChatbotAutoReply(currentTenant, currentChat, latest.targetJid, replyText),
+        });
+    },
+    onError: (error, batchKey) => {
+        console.error(`[Webhook] Failed AI agent batched auto-reply for ${batchKey}:`, error.message);
+    },
+});
+
 /**
  * Main webhook endpoint
  * Receives events from Go WhatsApp Gateway
@@ -611,22 +657,33 @@ async function handleMessage(req, sessionId, data) {
         });
 
         const isAiAgentTenant = (tenant.ai_mode || 'agent') === 'chatbot';
+        const aiBatchKey = `${tenant.id}:${chat.id}`;
+
+        // Pesan outgoing dari ponsel/WhatsApp manusia tidak melewati endpoint CRM,
+        // jadi tetap anggap sebagai human takeover. Echo balasan AI sudah ada di DB
+        // dan memiliki messageAlreadyExists=true, sehingga tidak salah mematikan AI.
+        if (isAiAgentTenant && message.isFromMe && !messageAlreadyExists && !isGroup) {
+            aiReplyBatcher.cancel(aiBatchKey);
+            if (chat.status !== 'escalated') {
+                await db.query("UPDATE chats SET status = 'escalated', updated_at = now() WHERE id = $1", [chat.id]);
+                chat.status = 'escalated';
+                console.info(`[AI Agent] Chat ${chat.id} diambil alih manusia dari WhatsApp; balasan AI dihentikan.`);
+            }
+        }
+
         // chat.status === 'escalated' berarti sudah dialihkan ke manusia (baik oleh AI sendiri
         // maupun karena agent manual balas duluan di /internal/messages) — AI berhenti total
         // di chat ini sampai ada yang membuka ulang statusnya.
         const canAutoReply = !message.isFromMe && !isGroup && !messageAlreadyExists && message.type === 'text' && chat.status !== 'escalated';
         if (isAiAgentTenant && canAutoReply) {
-            try {
-                await aiResponder.handleIncomingMessage({
-                    tenant,
-                    chat,
-                    messageText,
-                    savedMessage,
-                    sendReply: (replyText) => sendChatbotAutoReply(tenant, chat, targetJid, replyText),
-                });
-            } catch (replyError) {
-                console.error(`[Webhook] Failed AI agent auto-reply for tenant ${tenant.id}:`, replyError.message);
-            }
+            const batchedCount = aiReplyBatcher.schedule(aiBatchKey, {
+                tenant,
+                chat,
+                targetJid,
+                messageText,
+                savedMessage,
+            });
+            console.info(`[AI Agent] Menunggu ${AI_REPLY_DEBOUNCE_MS}ms untuk chat ${chat.id}; ${batchedCount} pesan dalam batch.`);
         }
 
     } catch (error) {

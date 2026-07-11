@@ -137,8 +137,8 @@ describe('AI responder', () => {
         expect(sendReply.mock.calls[0][0]).not.toContain('ESCALATE_TO_HUMAN');
     });
 
-    it('memaksa handoff ketika classifier menilai informasi customer sudah cukup', async () => {
-        const qualifiedMessage = 'Saya punya toko online, admin kewalahan menjawab stok, dan saya ingin respons WhatsApp lebih cepat.';
+    it('memaksa handoff ketika customer sudah menerima solusi dan ingin lanjut', async () => {
+        const qualifiedMessage = 'Solusi AI CS tadi cocok untuk toko online saya. Saya setuju dan mau lanjut, tolong hubungkan ke admin.';
         db.getMessagesByChat.mockResolvedValue([
             { message_type: 'text', body: qualifiedMessage, is_from_me: false },
         ]);
@@ -167,5 +167,36 @@ describe('AI responder', () => {
             expect.arrayContaining(['tenant-1', 'chat-1', 'llm_handoff'])
         );
         expect(sendReply).toHaveBeenCalledWith('Kebutuhannya sudah jelas, Kak. Admin kami akan melanjutkan langsung di chat ini.');
+    });
+
+    it('tidak handoff terlalu cepat sebelum AI memetakan solusi dan melakukan closing', async () => {
+        const discoveryMessage = 'Saya punya toko online, admin kewalahan menjawab stok, dan saya ingin respons WhatsApp lebih cepat.';
+        db.getMessagesByChat.mockResolvedValue([
+            { message_type: 'text', body: discoveryMessage, is_from_me: false },
+        ]);
+        chatCompletion.mockResolvedValueOnce({
+            text: 'CONTINUE',
+            model: 'test/chat-model',
+        }).mockResolvedValueOnce({
+            text: 'AI CS WhatsApp cocok untuk membantu pertanyaan stok dan status pesanan secara otomatis. Apakah fokus utama ini sudah sesuai, Kak?',
+            model: 'test/chat-model',
+            id: 'generation-sales-discovery',
+            usage: { prompt_tokens: 80, completion_tokens: 24 },
+        });
+        const sendReply = jest.fn();
+
+        await handleIncomingMessage({
+            tenant,
+            chat,
+            messageText: discoveryMessage,
+            savedMessage,
+            sendReply,
+        });
+
+        expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('Apakah fokus utama ini sudah sesuai'));
+        expect(db.query).not.toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO escalation_log'),
+            expect.anything()
+        );
     });
 });

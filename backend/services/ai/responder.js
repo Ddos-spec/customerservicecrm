@@ -59,10 +59,10 @@ async function classifyHandoff(config, history) {
                     content: `Nilai apakah percakapan customer service harus diserahkan ke admin manusia sekarang. Jawab HANYA HANDOFF atau CONTINUE.
 
 Jawab HANDOFF jika salah satu benar:
-- Customer meminta admin/manusia, siap deal, meminta negosiasi harga, atau membutuhkan keputusan/detail khusus.
-- Informasi sudah cukup untuk admin bertindak: konteks bisnis, masalah/proses yang ingin dibantu, dan hasil utama yang diharapkan sudah disebut atau tersirat jelas.
+- Customer meminta admin/manusia, mengajak meeting, siap deal, meminta proposal/penawaran harga spesifik, atau membutuhkan keputusan/detail khusus.
+- AI sudah menjelaskan solusi yang relevan dan customer menyatakan setuju, cocok, mau lanjut, atau meminta langkah konkret berikutnya.
 
-Jangan meminta budget, timeline, meeting, atau fitur tambahan jika inti kebutuhan sudah jelas. Pertanyaan umum, sapaan, atau kebutuhan yang masih kabur adalah CONTINUE.`,
+Jika kebutuhan sudah jelas tetapi AI belum memetakan solusi atau customer belum menunjukkan komitmen, jawab CONTINUE agar AI dapat menjelaskan solusi, menangani keberatan, dan mengajukan satu pertanyaan closing. Pertanyaan umum, sapaan, atau kebutuhan yang masih kabur juga CONTINUE.`,
                 },
                 { role: 'user', content: transcript },
             ],
@@ -127,7 +127,7 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
         const contextSection = relevantChunks.length > 0
             ? `Informasi relevan dari knowledge base:\n${relevantChunks.map((chunk) => `- ${chunk.content}`).join('\n')}`
             : 'Tidak ditemukan informasi spesifik di knowledge base untuk pesan ini.';
-        const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer pindah ke website, form, email, Calendly, telepon, atau channel lain. Semua konsultasi dan tindak lanjut berlangsung di chat WhatsApp ini.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, katakan dengan jujur akan dibantu lebih lanjut oleh tim, jangan mengarang.\n4. Pahami riwayat percakapan. Jangan mengulang sapaan, pertanyaan, atau informasi yang sudah jelas.\n5. Jawab ringkas, hangat, dan berorientasi solusi seperti customer service manusia. Ajukan maksimal satu pertanyaan paling relevan dalam satu balasan.\n6. Jika informasi inti customer sudah cukup untuk ditindaklanjuti admin, customer meminta manusia, perlu negosiasi, atau butuh keputusan yang bukan wewenangmu: beri konfirmasi singkat bahwa admin akan melanjutkan di chat ini, lalu tulis ${HANDOFF_MARKER} pada baris terakhir. Marker itu adalah perintah internal; jangan jelaskan artinya.`;
+        const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer pindah ke website, form, email, Calendly, telepon, atau channel lain. Semua konsultasi dan tindak lanjut dikoordinasikan di chat WhatsApp ini. Jika CUSTOMER SENDIRI mengajak meeting, bantu koordinasikan di WhatsApp: tanyakan waktu bila belum jelas dan tanyakan apakah link meeting dibuat customer atau perlu disiapkan admin.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, jangan mengarang. Jelaskan bahwa detailnya akan dipastikan admin di chat ini.\n4. Pahami riwayat percakapan. Jangan mengulang sapaan, pertanyaan, atau informasi yang sudah jelas. Beberapa pesan customer yang berurutan adalah satu konteks utuh.\n5. Bertindak sebagai sales consultant: gali kebutuhan seperlunya, hubungkan masalah customer dengan solusi yang relevan, jelaskan manfaat konkret, tangani keberatan, lalu ajukan satu pertanyaan closing. Jangan menyerah atau handoff hanya karena informasi awal sudah cukup.\n6. Lakukan handoff jika customer meminta manusia, mengajak meeting, siap deal, meminta proposal/harga khusus, sudah menerima rekomendasi dan ingin lanjut, atau butuh keputusan admin. Beri konfirmasi singkat bahwa admin akan melanjutkan di chat ini, lalu tulis ${HANDOFF_MARKER} pada baris terakhir. Marker itu adalah perintah internal; jangan jelaskan artinya.`;
 
         const history = (await db.getMessagesByChat(chat.id, HISTORY_LIMIT))
             .filter((message) => message.message_type === 'text' && message.body?.trim())
@@ -153,7 +153,7 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
             messages: [
                 {
                     role: 'system',
-                    content: `${systemPrompt}\n7. Keputusan handoff untuk balasan ini: ${forceHandoff ? 'WAJIB HANDOFF. Jangan ajukan pertanyaan lagi; rangkum singkat, katakan admin akan melanjutkan di chat ini, lalu tambahkan marker internal.' : 'LANJUTKAN DISCOVERY secara natural bila masih ada satu informasi inti yang benar-benar dibutuhkan.'}`,
+                    content: `${systemPrompt}\n7. Keputusan handoff untuk balasan ini: ${forceHandoff ? 'WAJIB HANDOFF. Jangan ajukan pertanyaan lagi; rangkum singkat, katakan admin akan melanjutkan di chat ini, lalu tambahkan marker internal.' : 'LANJUTKAN PROSES PENJUALAN secara natural: discovery bila perlu, rekomendasikan solusi, jawab keberatan, atau ajukan satu pertanyaan closing.'}`,
                 },
                 ...history,
             ],
