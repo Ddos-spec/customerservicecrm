@@ -426,8 +426,8 @@ function parseFilenameFromContentDisposition(contentDisposition) {
  * Authenticate with the gateway and get JWT token
  */
 async function authenticate(username, password) {
-    try {
-        const client = getGatewayClient(resolveGatewayUrl(username));
+    const requestAuth = async (gatewayUrl) => {
+        const client = getGatewayClient(gatewayUrl);
         const response = await client.get('/auth', {
             auth: { username, password },
             params: {
@@ -439,7 +439,24 @@ async function authenticate(username, password) {
                 Pragma: 'no-cache',
             },
         });
-        const payload = unwrap(response);
+        return unwrap(response);
+    };
+    try {
+        const configuredUrl = getSessionGatewayUrl(username);
+        let payload;
+        try {
+            payload = await requestAuth(resolveGatewayUrl(username));
+        } catch (error) {
+            // Tenant lama kadang menyimpan URL gateway yang sudah tidak punya endpoint /auth.
+            // Jangan biarkan satu mapping 404 mematikan nomor WA; jatuhkan ke gateway default.
+            if (configuredUrl && configuredUrl !== DEFAULT_GATEWAY_URL && error?.response?.status === 404) {
+                console.warn(`[Gateway] Stale custom gateway URL for ${normalizeJid(username)} returned 404; falling back to default gateway.`);
+                setSessionGatewayUrl(username, null);
+                payload = await requestAuth(DEFAULT_GATEWAY_URL);
+            } else {
+                throw error;
+            }
+        }
         if (!payload.status || !payload.data?.token) {
             throw new Error(payload.message || 'Gateway authentication failed');
         }
