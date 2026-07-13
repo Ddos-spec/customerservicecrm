@@ -893,7 +893,7 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
                 db.query(`
                     SELECT
                         COUNT(*) FILTER (WHERE sender_name = 'AI Chatbot')::int AS reply_count,
-                        MAX(created_at) FILTER (WHERE sender_name = 'AI Chatbot') AS last_reply_at
+                        MAX(m.created_at) FILTER (WHERE sender_name = 'AI Chatbot') AS last_reply_at
                     FROM messages m
                     JOIN chats c ON c.id = m.chat_id
                     WHERE c.tenant_id = $1
