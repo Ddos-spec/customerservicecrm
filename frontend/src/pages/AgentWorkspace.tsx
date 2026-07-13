@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect, useCallback, useRef, type ReactNode } fr
 import {
   Send, Paperclip, Smile, MoreVertical, Search,
   Info, Check, CheckCheck, Clock, User, X, Loader2, Users, Image as ImageIcon, Video, Mic, FileText,
-  Wifi, WifiOff, AlertTriangle, Bot
+  Wifi, WifiOff, AlertTriangle, Bot, Building2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
@@ -39,6 +39,12 @@ interface Message {
   status: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
   delivery_status?: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
   created_at: string;
+}
+
+interface WorkspaceTenant {
+  id: string;
+  company_name: string;
+  session_id?: string | null;
 }
 
 const formatRelativeTime = (value?: string) => {
@@ -288,6 +294,9 @@ const AgentWorkspace = () => {
   const [lastRealtimeAt, setLastRealtimeAt] = useState<number>(Date.now());
   const [lastSessionUpdateAt, setLastSessionUpdateAt] = useState<number>(0);
   const [timeTick, setTimeTick] = useState(Date.now());
+  const [workspaceTenants, setWorkspaceTenants] = useState<WorkspaceTenant[]>([]);
+  const [activeTenantId, setActiveTenantId] = useState('');
+  const [isLoadingTenants, setIsLoadingTenants] = useState(true);
 
   // Core Data
   const [chats, setChats] = useState<Chat[]>([]);
@@ -310,6 +319,39 @@ const AgentWorkspace = () => {
   const chatListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const chatOffsetRef = useRef(0);
+  const activeTenantIdRef = useRef(activeTenantId);
+
+  useEffect(() => {
+    activeTenantIdRef.current = activeTenantId;
+  }, [activeTenantId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWorkspaceTenants = async () => {
+      setIsLoadingTenants(true);
+      try {
+        const res = await api.get('/workspace/tenants');
+        const tenants: WorkspaceTenant[] = res.data?.status === 'success' ? res.data.data || [] : [];
+        if (cancelled) return;
+
+        setWorkspaceTenants(tenants);
+        setActiveTenantId((current) => {
+          if (tenants.some((tenant) => tenant.id === current)) return current;
+          const ownTenant = tenants.find((tenant) => tenant.id === String(user?.tenant_id || ''));
+          return ownTenant?.id || tenants[0]?.id || '';
+        });
+      } catch (error) {
+        console.error('Failed to load workspace tenants:', error);
+        if (!cancelled) toast.error('Gagal memuat akses inbox perusahaan');
+      } finally {
+        if (!cancelled) setIsLoadingTenants(false);
+      }
+    };
+
+    void loadWorkspaceTenants();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.tenant_id]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     window.requestAnimationFrame(() => {
@@ -331,6 +373,11 @@ const AgentWorkspace = () => {
 
   // --- 1. Fetch Chat List (Inbox) ---
   const fetchChats = useCallback(async ({ reset = false }: { reset?: boolean } = {}) => {
+    const tenantId = activeTenantId;
+    if (!tenantId) {
+      if (reset) setIsLoadingChats(false);
+      return;
+    }
     if (reset) {
       setIsLoadingChats(true);
       setHasMoreChats(true);
@@ -344,7 +391,8 @@ const AgentWorkspace = () => {
       // V2 Endpoint: GET /chats
       const offset = chatOffsetRef.current;
       const includeCount = reset ? '&include_count=true' : '';
-      const res = await api.get(`/chats?limit=${CHAT_PAGE_SIZE}&offset=${offset}${includeCount}`);
+      const res = await api.get(`/chats?limit=${CHAT_PAGE_SIZE}&offset=${offset}${includeCount}&tenant_id=${encodeURIComponent(tenantId)}`);
+      if (activeTenantIdRef.current !== tenantId) return;
       if (res.data.status === 'success') {
         const newChats = res.data.data || [];
         setChats((prev) => (reset ? newChats : [...prev, ...newChats]));
@@ -369,10 +417,12 @@ const AgentWorkspace = () => {
         setIsLoadingMoreChats(false);
       }
     }
-  }, []);
+  }, [activeTenantId]);
 
   // --- 2. Fetch Messages for Selected Chat ---
   const fetchMessages = useCallback(async (chatId: string, beforeId?: string) => {
+    const tenantId = activeTenantId;
+    if (!tenantId) return;
     if (beforeId) {
         setIsFetchingMore(true);
     } else {
@@ -383,8 +433,9 @@ const AgentWorkspace = () => {
     try {
       // V2 Endpoint: GET /chats/:id/messages
       // Use cursor-based pagination if beforeId is present
-      const url = `/chats/${chatId}/messages?limit=50${beforeId ? `&before=${beforeId}` : ''}`;
+      const url = `/chats/${chatId}/messages?limit=50${beforeId ? `&before=${beforeId}` : ''}&tenant_id=${encodeURIComponent(tenantId)}`;
       const res = await api.get(url);
+      if (activeTenantIdRef.current !== tenantId) return;
 
       if (res.data.status === 'success') {
         const newMessages = (res.data.data || []).map((message: Message) => ({
@@ -425,7 +476,7 @@ const AgentWorkspace = () => {
       setIsLoadingMessages(false);
       setIsFetchingMore(false);
     }
-  }, []);
+  }, [activeTenantId]);
 
   // Handle Scroll to Top (Infinite Scroll)
   const handleScroll = () => {
@@ -478,7 +529,7 @@ const AgentWorkspace = () => {
              const msgData = payload.data;
 
              // Tenant Isolation Check
-             if (user?.tenant_id && msgData.tenant_id && user.tenant_id !== msgData.tenant_id) {
+             if (activeTenantId && msgData.tenant_id && activeTenantId !== msgData.tenant_id) {
                return;
              }
 
@@ -543,6 +594,7 @@ const AgentWorkspace = () => {
           }
 
           if (payload.type === 'receipt') {
+            if (activeTenantId && payload.data?.tenant_id && payload.data.tenant_id !== activeTenantId) return;
             const receiptStatus = getReceiptStatus(payload.data?.receiptType);
             const receiptMessageIds = Array.isArray(payload.data?.messageId)
               ? payload.data.messageId.map((id: unknown) => String(id))
@@ -564,6 +616,7 @@ const AgentWorkspace = () => {
           }
 
           if (payload.type === 'message-status') {
+            if (activeTenantId && payload.data?.tenant_id && payload.data.tenant_id !== activeTenantId) return;
             const statusData = payload.data;
             const nextStatus = normalizeOutboundStatus(statusData?.delivery_status || statusData?.status);
             setMessages((prev) => prev.map((msg) => {
@@ -606,10 +659,13 @@ const AgentWorkspace = () => {
       }
       if (ws.current) ws.current.close();
     };
-  }, [user, fetchChats]);
+  }, [activeTenantId, fetchChats]);
 
   // Initial Fetch
   useEffect(() => {
+    setSelectedChat(null);
+    setMessages([]);
+    setSearchQuery('');
     void fetchChats({ reset: true });
   }, [fetchChats]);
 
@@ -632,7 +688,7 @@ const AgentWorkspace = () => {
 
     // Mark as read on backend (fire and forget)
     if (chat.unread_count > 0) {
-      api.put(`/chats/${chat.id}/read`).catch(err => {
+      api.put(`/chats/${chat.id}/read?tenant_id=${encodeURIComponent(activeTenantId)}`).catch(err => {
         console.warn('Failed to mark chat as read:', err);
       });
     }
@@ -642,7 +698,7 @@ const AgentWorkspace = () => {
   const handleReopenToAi = async (chatId: string) => {
     setIsReopeningAi(true);
     try {
-      const res = await api.put(`/chats/${chatId}/reopen-ai`);
+      const res = await api.put(`/chats/${chatId}/reopen-ai`, { tenant_id: activeTenantId });
       const updated = res.data?.data;
       if (updated) {
         setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, status: updated.status } : c)));
@@ -677,7 +733,8 @@ const AgentWorkspace = () => {
         phone: recipient,
         message_text: textToSend,
         chat_id: selectedChat.id,
-        is_group: selectedChat.is_group
+        is_group: selectedChat.is_group,
+        tenant_id: activeTenantId
       });
 
       if (res.data.status === 'success' || res.data.status === 'queued') {
@@ -754,7 +811,25 @@ const AgentWorkspace = () => {
         {/* Search Header */}
         <div className="border-b border-[#e9edef] bg-white px-4 py-4 dark:border-[#2a3942] dark:bg-[#111b21]">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-[22px] font-semibold tracking-tight text-[#111b21] dark:text-[#e9edef]">Chat</h2>
+            <div className="min-w-0">
+              <h2 className="text-[22px] font-semibold tracking-tight text-[#111b21] dark:text-[#e9edef]">Chat</h2>
+              {workspaceTenants.length > 1 ? (
+                <label className="mt-1 flex max-w-[230px] items-center gap-1.5 text-xs font-medium text-[#667781] dark:text-[#aebac1]">
+                  <Building2 size={13} className="shrink-0" />
+                  <select
+                    value={activeTenantId}
+                    onChange={(event) => setActiveTenantId(event.target.value)}
+                    disabled={isLoadingTenants}
+                    aria-label="Pilih inbox perusahaan"
+                    className="min-w-0 flex-1 cursor-pointer appearance-none bg-transparent pr-1 text-xs font-semibold text-[#0a5c46] outline-none disabled:cursor-wait disabled:opacity-60 dark:text-[#53bdeb]"
+                  >
+                    {workspaceTenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.company_name}</option>)}
+                  </select>
+                </label>
+              ) : workspaceTenants[0] ? (
+                <p className="mt-1 truncate text-xs font-medium text-[#667781] dark:text-[#aebac1]">{workspaceTenants[0].company_name}</p>
+              ) : null}
+            </div>
             <div className="flex items-center gap-1 text-[#54656f] dark:text-[#aebac1]">
               <button className="p-2 transition-colors hover:bg-[#f0f2f5] dark:hover:bg-[#202c33]" title="Status realtime">
                 {realtimeState === 'connected' ? <Wifi size={19} /> : <WifiOff size={19} />}

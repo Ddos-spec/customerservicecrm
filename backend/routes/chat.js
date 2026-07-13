@@ -18,6 +18,21 @@ function buildChatRouter(deps) {
         res.status(501).json({ status: 'error', message });
     };
 
+    const resolveTenantId = (user, requestedTenantId) => {
+        if (user.role === 'super_admin') {
+            return String(requestedTenantId || '').trim();
+        }
+        return user.tenant_id;
+    };
+
+    const assertChatBelongsToTenant = async (chatId, tenantId) => {
+        const result = await db.query(
+            'SELECT id FROM chats WHERE id = $1 AND tenant_id = $2 LIMIT 1',
+            [chatId, tenantId]
+        );
+        return result.rowCount > 0;
+    };
+
     // Removed global validateToken to allow session-based access for UI
     // router.use(validateToken);
 
@@ -34,30 +49,8 @@ function buildChatRouter(deps) {
             return res.status(401).json({ status: 'error', message: 'Session expired. Please login again.' });
         }
 
-        // Check tenant_id - super_admin doesn't have one
-        if (!user.tenant_id) {
-            // For super_admin, allow specifying tenant_id via query
-            if (user.role === 'super_admin' && req.query.tenant_id) {
-                try {
-                    const limit = parseInt(req.query.limit) || 50;
-                    const offset = parseInt(req.query.offset) || 0;
-                    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
-                    const normalizedStatus = status && status !== 'all' ? status : null;
-                    const includeCount = String(req.query.include_count || '').toLowerCase();
-                    const shouldIncludeCount = includeCount === 'true' || includeCount === '1';
-
-                    const [chats, totalContacts] = await Promise.all([
-                        db.getChatsByTenant(req.query.tenant_id, limit, offset, normalizedStatus),
-                        shouldIncludeCount ? db.getContactCountByTenant(req.query.tenant_id) : Promise.resolve(null)
-                    ]);
-
-                    const payload = { status: 'success', data: chats };
-                    if (shouldIncludeCount) payload.total_contacts = totalContacts;
-                    return res.json(payload);
-                } catch (error) {
-                    return res.status(500).json({ status: 'error', message: error.message });
-                }
-            }
+        const tenantId = resolveTenantId(user, req.query.tenant_id);
+        if (!tenantId) {
             return res.status(400).json({
                 status: 'error',
                 message: 'No tenant associated with this account. Please contact admin.'
@@ -73,8 +66,8 @@ function buildChatRouter(deps) {
             const shouldIncludeCount = includeCount === 'true' || includeCount === '1';
 
             const [chats, totalContacts] = await Promise.all([
-                db.getChatsByTenant(user.tenant_id, limit, offset, normalizedStatus),
-                shouldIncludeCount ? db.getContactCountByTenant(user.tenant_id) : Promise.resolve(null)
+                db.getChatsByTenant(tenantId, limit, offset, normalizedStatus),
+                shouldIncludeCount ? db.getContactCountByTenant(tenantId) : Promise.resolve(null)
             ]);
 
             const payload = { status: 'success', data: chats };
@@ -82,6 +75,35 @@ function buildChatRouter(deps) {
             res.json(payload);
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });
+        }
+    });
+
+    /**
+     * GET /api/v1/workspace/tenants
+     * Returns only the inboxes the current account is allowed to open.
+     */
+    router.get('/workspace/tenants', async (req, res) => {
+        const user = req.session?.user;
+        if (!user) return res.status(401).json({ status: 'error', message: 'Session expired. Please login again.' });
+
+        try {
+            const result = user.role === 'super_admin'
+                ? await db.query(`
+                    SELECT id, company_name, session_id
+                    FROM tenants
+                    WHERE session_id IS NOT NULL AND session_id <> ''
+                    ORDER BY company_name ASC
+                `)
+                : await db.query(`
+                    SELECT id, company_name, session_id
+                    FROM tenants
+                    WHERE id = $1
+                    LIMIT 1
+                `, [user.tenant_id]);
+
+            return res.json({ status: 'success', data: result.rows });
+        } catch (error) {
+            return res.status(500).json({ status: 'error', message: error.message });
         }
     });
 
@@ -95,6 +117,11 @@ function buildChatRouter(deps) {
 
         try {
             const { chatId } = req.params;
+            const tenantId = resolveTenantId(user, req.query.tenant_id);
+            if (!tenantId) return res.status(400).json({ status: 'error', message: 'Tenant ID is required' });
+            if (!await assertChatBelongsToTenant(chatId, tenantId)) {
+                return res.status(404).json({ status: 'error', message: 'Chat not found' });
+            }
             const limit = parseInt(req.query.limit) || 50;
             const beforeId = req.query.before || null; // Cursor for pagination
 
@@ -115,6 +142,11 @@ function buildChatRouter(deps) {
 
         try {
             const { chatId } = req.params;
+            const tenantId = resolveTenantId(user, req.query.tenant_id);
+            if (!tenantId) return res.status(400).json({ status: 'error', message: 'Tenant ID is required' });
+            if (!await assertChatBelongsToTenant(chatId, tenantId)) {
+                return res.status(404).json({ status: 'error', message: 'Chat not found' });
+            }
             const chat = await db.markChatAsRead(chatId);
             if (!chat) {
                 return res.status(404).json({ status: 'error', message: 'Chat not found' });
@@ -138,9 +170,7 @@ function buildChatRouter(deps) {
 
         try {
             const { chatId } = req.params;
-            const tenantId = user.role === 'super_admin'
-                ? (req.body?.tenant_id || req.query?.tenant_id || '').toString().trim()
-                : user.tenant_id;
+            const tenantId = resolveTenantId(user, req.body?.tenant_id || req.query?.tenant_id);
             if (!tenantId) return res.status(400).json({ status: 'error', message: 'Tenant ID is required' });
 
             const chat = await db.reopenChatToAi(chatId, tenantId);

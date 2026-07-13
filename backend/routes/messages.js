@@ -242,7 +242,7 @@ function buildMessagesRouter(deps) {
         if (!user) {
             return res.status(401).json({ status: 'error', code: 'SESSION_MISSING', message: 'Authentication required' });
         }
-        if (!['admin_agent', 'agent'].includes(user.role)) {
+        if (!['admin_agent', 'agent', 'super_admin'].includes(user.role)) {
             return res.status(403).json({ status: 'error', code: 'ROLE_DENIED', message: 'Access denied' });
         }
 
@@ -256,8 +256,12 @@ function buildMessagesRouter(deps) {
         
         let savedMsg = null;
         try {
-            // Get Tenant
-            const tenant = await db.getTenantById(user.tenant_id);
+            const requestedTenantId = (req.body?.tenant_id || '').toString().trim();
+            const tenantId = user.role === 'super_admin' ? requestedTenantId : user.tenant_id;
+            if (!tenantId) return res.status(400).json({ status: 'error', message: 'Tenant ID is required' });
+
+            // Super admin may select a tenant explicitly; all other roles are pinned to their own tenant.
+            const tenant = await db.getTenantById(tenantId);
             if (!tenant) return res.status(404).json({ status: 'error', message: 'Tenant not found' });
 
             // DB Logging
