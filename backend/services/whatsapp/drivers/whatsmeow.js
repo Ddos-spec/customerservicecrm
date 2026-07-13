@@ -1,6 +1,15 @@
 const WhatsAppProvider = require('../provider');
 const legacyClient = require('../../../wa-gateway-client');
 
+const gatewayMessageId = (result) => result?.data?.msgid
+    || result?.data?.messageId
+    || result?.data?.message_id
+    || result?.data?.id
+    || result?.messageId
+    || result?.message_id
+    || result?.id
+    || null;
+
 class WhatsmeowDriver extends WhatsAppProvider {
     constructor(config) {
         super(config);
@@ -24,7 +33,7 @@ class WhatsmeowDriver extends WhatsAppProvider {
         try {
             const result = await legacyClient.sendText(this.sessionId, to, text);
             return {
-                messageId: result.data?.id || result.id,
+                messageId: gatewayMessageId(result),
                 raw: result
             };
         } catch (error) {
@@ -36,7 +45,7 @@ class WhatsmeowDriver extends WhatsAppProvider {
         try {
             const result = await legacyClient.sendImage(this.sessionId, to, image, caption);
             return {
-                messageId: result.data?.id || result.id,
+                messageId: gatewayMessageId(result),
                 raw: result
             };
         } catch (error) {
