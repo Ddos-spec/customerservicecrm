@@ -312,6 +312,11 @@ function getAuthHeader(jid) {
     return { Authorization: `Bearer ${token}` };
 }
 
+// WhatsApp memakai satu asterisk untuk bold; Markdown **tebal** harus dinormalisasi sebelum dikirim.
+function normalizeWhatsAppFormatting(value) {
+    return String(value ?? '').replace(/(^|[^*])\*\*([^*\n]+?)\*\*(?!\*)/g, '$1*$2*');
+}
+
 function buildUrlEncoded(fields = {}) {
     const params = new URLSearchParams();
     Object.entries(fields).forEach(([key, value]) => {
@@ -538,7 +543,7 @@ async function sendText(jid, to, message, mentions = []) {
         : [];
     const send = () => postUrlEncoded('/send/text', buildUrlEncoded({
         msisdn: to,
-        message,
+        message: normalizeWhatsAppFormatting(message),
         ...(cleanMentions.length ? { mentions: JSON.stringify(cleanMentions) } : {})
     }), getAuthHeader(jid), jid);
 
