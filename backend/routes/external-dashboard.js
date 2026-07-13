@@ -884,6 +884,66 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
         }
     });
 
+    // Operational AI state for integrations authenticated by the tenant's own
+    // dashboard key. Never expose the model provider key or full prompt.
+    router.get('/ai-agent/status', async (req, res) => {
+        try {
+            const [aiConfig, aiHistory] = await Promise.all([
+                db.getTenantAiConfig(req.externalTenant.id),
+                db.query(`
+                    SELECT
+                        COUNT(*) FILTER (WHERE sender_name = 'AI Chatbot')::int AS reply_count,
+                        MAX(created_at) FILTER (WHERE sender_name = 'AI Chatbot') AS last_reply_at
+                    FROM messages m
+                    JOIN chats c ON c.id = m.chat_id
+                    WHERE c.tenant_id = $1
+                `, [req.externalTenant.id]),
+            ]);
+            const hasApiKey = Boolean(aiConfig?.openrouter_api_key);
+            const hasPrompt = Boolean(aiConfig?.system_prompt?.trim() && aiConfig.system_prompt.trim().length >= 20);
+            const enabled = (req.externalTenant.ai_mode || 'agent') === 'chatbot';
+
+            return res.json({
+                status: 'success',
+                data: {
+                    enabled,
+                    hasApiKey,
+                    hasPrompt,
+                    ready: hasApiKey && hasPrompt,
+                    model: aiConfig?.chat_model || null,
+                    replyCount: asNumber(aiHistory.rows[0]?.reply_count),
+                    lastReplyAt: aiHistory.rows[0]?.last_reply_at || null,
+                },
+            });
+        } catch (error) {
+            console.error('[External Dashboard API] AI status error:', error.message);
+            return res.status(500).json({ error: 'Failed to load AI Agent status' });
+        }
+    });
+
+    // AI may only be activated by a key belonging to this same tenant, and
+    // only after its private model key and prompt already exist in the tenant.
+    router.post('/ai-agent/enable', async (req, res) => {
+        try {
+            const aiConfig = await db.getTenantAiConfig(req.externalTenant.id);
+            const hasApiKey = Boolean(aiConfig?.openrouter_api_key);
+            const hasPrompt = Boolean(aiConfig?.system_prompt?.trim() && aiConfig.system_prompt.trim().length >= 20);
+            if (!hasApiKey || !hasPrompt) {
+                return res.status(409).json({
+                    status: 'error',
+                    message: 'AI belum siap: API key model atau instruksi tenant belum lengkap.',
+                    code: 'AI_CONFIGURATION_INCOMPLETE',
+                });
+            }
+
+            await db.updateTenantConfig(req.externalTenant.id, { ai_mode: 'chatbot' });
+            return res.json({ status: 'success', data: { enabled: true } });
+        } catch (error) {
+            console.error('[External Dashboard API] Enable AI error:', error.message);
+            return res.status(500).json({ error: 'Failed to enable AI Agent' });
+        }
+    });
+
     router.get('/customers', async (req, res) => {
         const tenantId = req.externalTenant.id;
         const limit = toPositiveInteger(req.query.limit, DEFAULT_LIMIT, MAX_LIMIT);
