@@ -533,41 +533,61 @@ async function checkRegistered(jid, phone) {
  * @param {string[]} mentions - Optional phone numbers/JIDs to mention in WhatsApp context
  */
 async function sendText(jid, to, message, mentions = []) {
+    const cleanMentions = Array.isArray(mentions)
+        ? mentions.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+    const send = () => postUrlEncoded('/send/text', buildUrlEncoded({
+        msisdn: to,
+        message,
+        ...(cleanMentions.length ? { mentions: JSON.stringify(cleanMentions) } : {})
+    }), getAuthHeader(jid), jid);
+
     try {
-        const cleanMentions = Array.isArray(mentions)
-            ? mentions.map((value) => String(value || '').trim()).filter(Boolean)
-            : [];
-        const form = buildUrlEncoded({
-            msisdn: to,
-            message,
-            ...(cleanMentions.length ? { mentions: JSON.stringify(cleanMentions) } : {})
-        });
-        return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
+        return await send();
     } catch (error) {
-        // RETRY LOGIC: If 500 (Client not logged in) or 401 (Unauthorized)
-        if (error?.response?.status === 500 || error?.response?.status === 401) {
-            console.warn(`[Gateway-Retry] Send failed (${error.response.status}). Attempting re-auth for ${jid}...`);
+        let sendError = error;
+        const configuredGatewayUrl = getSessionGatewayUrl(jid);
+        const hasCustomGateway = configuredGatewayUrl
+            && normalizeGatewayUrl(configuredGatewayUrl) !== normalizeGatewayUrl(DEFAULT_GATEWAY_URL);
+
+        // Tenant lama bisa menyimpan custom gateway URL yang sudah tidak memiliki
+        // endpoint kirim. Jika 404, coba gateway utama yang memegang session QR.
+        if (hasCustomGateway && error?.response?.status === 404) {
+            const previousToken = getSessionToken(jid);
+            console.warn(`[Gateway-Retry] Custom gateway for ${normalizeJid(jid)} returned 404 while sending; trying default gateway.`);
+            setSessionGatewayUrl(jid, null);
+            removeSessionToken(jid);
+            try {
+                const recovered = await reauthAndReconnect(jid);
+                if (recovered) {
+                    return await send();
+                }
+                throw new Error('Default gateway authentication failed');
+            } catch (fallbackError) {
+                // Jangan meninggalkan routing tenant tanpa konfigurasi jika fallback juga gagal.
+                setSessionGatewayUrl(jid, configuredGatewayUrl);
+                if (previousToken) setSessionToken(jid, previousToken);
+                sendError = fallbackError;
+            }
+        }
+
+        // Recovery normal untuk session/token yang telah kadaluarsa.
+        if (sendError?.response?.status === 500 || sendError?.response?.status === 401) {
+            console.warn(`[Gateway-Retry] Send failed (${sendError.response.status}). Attempting re-auth for ${jid}...`);
             try {
                 const recovered = await reauthAndReconnect(jid);
                 if (recovered) {
                     console.log(`[Gateway-Retry] Recovery successful for ${jid}. Retrying send...`);
-                    const cleanMentions = Array.isArray(mentions)
-                        ? mentions.map((value) => String(value || '').trim()).filter(Boolean)
-                        : [];
-                    const form = buildUrlEncoded({
-                        msisdn: to,
-                        message,
-                        ...(cleanMentions.length ? { mentions: JSON.stringify(cleanMentions) } : {})
-                    });
-                    return await postUrlEncoded('/send/text', form, getAuthHeader(jid), jid);
+                    return await send();
                 }
             } catch (retryErr) {
                 console.error(`[Gateway-Retry] Retry failed for ${jid}: ${retryErr.message}`);
+                sendError = retryErr;
             }
         }
-        
-        handleGatewayError(jid, error, error?.response);
-        throw new Error(`Send text failed: ${getGatewayErrorMessage(error)}`);
+
+        handleGatewayError(jid, sendError, sendError?.response);
+        throw new Error(`Send text failed: ${getGatewayErrorMessage(sendError)}`);
     }
 }
 

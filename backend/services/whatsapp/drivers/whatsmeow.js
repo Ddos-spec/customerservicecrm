@@ -6,9 +6,17 @@ class WhatsmeowDriver extends WhatsAppProvider {
         super(config);
         // Config must contain sessionId (the tenant's WA number)
         this.sessionId = config.sessionId;
-        
+        this.gatewayUrl = config.gatewayUrl || null;
+
         if (!this.sessionId) {
             throw new Error('WhatsmeowDriver requires sessionId');
+        }
+
+        // Routing per-tenant wajib dipasang sebelum send. Sebelumnya gateway_url
+        // hanya dipakai health check, sehingga pesan tenant kedua salah jatuh ke
+        // gateway default walaupun nomor sudah discan di gateway tenant sendiri.
+        if (this.gatewayUrl && typeof legacyClient.setSessionGatewayUrl === 'function') {
+            legacyClient.setSessionGatewayUrl(this.sessionId, this.gatewayUrl);
         }
     }
 

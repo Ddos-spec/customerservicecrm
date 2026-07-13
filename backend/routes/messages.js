@@ -254,6 +254,7 @@ function buildMessagesRouter(deps) {
         if (!rawPhone) return res.status(400).json({ status: 'error', message: 'Nomor tujuan wajib diisi' });
         if (!messageText) return res.status(400).json({ status: 'error', message: 'Pesan tidak boleh kosong' });
         
+        let savedMsg = null;
         try {
             // Get Tenant
             const tenant = await db.getTenantById(user.tenant_id);
@@ -277,7 +278,7 @@ function buildMessagesRouter(deps) {
                 await db.query("UPDATE chats SET status = 'escalated', updated_at = now() WHERE id = $1", [chat.id]);
             }
 
-            const savedMsg = await db.logMessage({
+            savedMsg = await db.logMessage({
                 chatId: chat.id,
                 senderType: 'agent',
                 senderId: user.id,
@@ -322,11 +323,22 @@ function buildMessagesRouter(deps) {
             });
 
         } catch (error) {
-            console.error('[Internal Message Error]', error);
-            const clientMessage = error.message.includes('Session') || error.message.includes('Offline') 
-                ? error.message 
-                : 'Terjadi kesalahan sistem saat mengirim pesan';
-            return res.status(503).json({ status: 'error', message: clientMessage });
+            const safeError = (error?.message || 'WhatsApp gateway rejected the outbound message').toString().slice(0, 1000);
+            console.error('[Internal Message Error]', safeError);
+            if (savedMsg?.id) {
+                await db.updateMessageDelivery({
+                    messageId: savedMsg.id,
+                    status: 'failed',
+                    failedAt: new Date(),
+                    deliveryError: safeError,
+                }).catch((updateError) => console.error('[Internal Message Delivery Status Error]', updateError.message));
+            }
+            return res.status(503).json({
+                status: 'error',
+                code: 'WHATSAPP_SEND_FAILED',
+                message: `Pesan tidak terkirim ke WhatsApp: ${safeError}`,
+                messageId: savedMsg?.id || null,
+            });
         }
     });
 

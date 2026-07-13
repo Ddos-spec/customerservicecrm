@@ -38,7 +38,8 @@ class ProviderFactory {
                     throw new Error(`Tenant ${tenant.company_name} has no WhatsApp Session ID`);
                 }
                 return new WhatsmeowDriver({
-                    sessionId: tenant.session_id
+                    sessionId: tenant.session_id,
+                    gatewayUrl: tenant.gateway_url || null,
                 });
         }
     }
