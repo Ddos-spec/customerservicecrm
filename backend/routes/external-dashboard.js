@@ -887,18 +887,18 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
     // Operational AI state for integrations authenticated by the tenant's own
     // dashboard key. Never expose the model provider key or full prompt.
     router.get('/ai-agent/status', async (req, res) => {
+        let aiConfig = null;
+        let configurationAvailable = true;
         try {
-            const [aiConfig, aiHistory] = await Promise.all([
-                db.getTenantAiConfig(req.externalTenant.id),
-                db.query(`
-                    SELECT
-                        COUNT(*) FILTER (WHERE sender_name = 'AI Chatbot')::int AS reply_count,
-                        MAX(m.created_at) FILTER (WHERE sender_name = 'AI Chatbot') AS last_reply_at
-                    FROM messages m
-                    JOIN chats c ON c.id = m.chat_id
-                    WHERE c.tenant_id = $1
-                `, [req.externalTenant.id]),
-            ]);
+            aiConfig = await db.getTenantAiConfig(req.externalTenant.id);
+        } catch (error) {
+            // Do not make the dashboard fail merely because an older tenant is
+            // missing the optional AI configuration table/migration.
+            configurationAvailable = false;
+            console.warn('[External Dashboard API] AI configuration unavailable:', error.message);
+        }
+
+        try {
             const hasApiKey = Boolean(aiConfig?.openrouter_api_key);
             const hasPrompt = Boolean(aiConfig?.system_prompt?.trim() && aiConfig.system_prompt.trim().length >= 20);
             const enabled = (req.externalTenant.ai_mode || 'agent') === 'chatbot';
@@ -910,9 +910,8 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
                     hasApiKey,
                     hasPrompt,
                     ready: hasApiKey && hasPrompt,
+                    configurationAvailable,
                     model: aiConfig?.chat_model || null,
-                    replyCount: asNumber(aiHistory.rows[0]?.reply_count),
-                    lastReplyAt: aiHistory.rows[0]?.last_reply_at || null,
                 },
             });
         } catch (error) {
