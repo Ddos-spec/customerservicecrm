@@ -10,6 +10,8 @@ const MAX_LIMIT = 200;
 const RECENT_LIMIT = 10;
 const MAX_MEDIA_SIZE_BYTES = 25 * 1024 * 1024;
 const MEDIA_TTL_MS = 24 * 60 * 60 * 1000;
+const CENTRAL_AI_CUSTOMER_SERVICE_WEBHOOK = process.env.CENTRAL_AI_CUSTOMER_SERVICE_WEBHOOK
+    || 'https://filter-bot-crmcutting.qk6yxt.easypanel.host/api/ai-operations/customer-service/incoming';
 
 const mediaDir = path.join(__dirname, '..', 'media');
 if (!fs.existsSync(mediaDir)) {
@@ -940,6 +942,42 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
         } catch (error) {
             console.error('[External Dashboard API] Enable AI error:', error.message);
             return res.status(500).json({ error: 'Failed to enable AI Agent' });
+        }
+    });
+
+    // Attach this WhatsApp number to the existing central CRM AI worker.
+    // The shared worker keeps one brain and one escalation/group flow; this
+    // tenant key only determines which CRM record is read when a reply is sent.
+    router.post('/ai-agent/connect-central-worker', async (req, res) => {
+        try {
+            const existing = await db.query(
+                'SELECT id FROM tenant_webhooks WHERE tenant_id = $1 AND url = $2 LIMIT 1',
+                [req.externalTenant.id, CENTRAL_AI_CUSTOMER_SERVICE_WEBHOOK],
+            );
+            if (existing.rowCount === 0) {
+                await db.createTenantWebhook(req.externalTenant.id, CENTRAL_AI_CUSTOMER_SERVICE_WEBHOOK);
+            }
+
+            const currentEvents = (req.externalTenant.webhook_events && typeof req.externalTenant.webhook_events === 'object')
+                ? req.externalTenant.webhook_events
+                : {};
+            await db.updateTenantConfig(req.externalTenant.id, {
+                webhook_events: {
+                    ...currentEvents,
+                    private: true,
+                    self: false,
+                    image: true,
+                    document: true,
+                },
+            });
+
+            return res.json({
+                status: 'success',
+                data: { connected: true, alreadyConnected: existing.rowCount > 0 },
+            });
+        } catch (error) {
+            console.error('[External Dashboard API] Central AI worker connection error:', error.message);
+            return res.status(500).json({ error: 'Failed to connect central AI worker' });
         }
     });
 
