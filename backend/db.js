@@ -474,20 +474,6 @@ async function getTenantAiConfig(tenantId) {
     return result.rows[0];
 }
 
-// A tenant can reuse an approved AI profile without copying its provider key.
-// Its chats and knowledge base remain tied to the receiving tenant.
-async function getResolvedTenantAiConfig(tenant) {
-    const tenantId = typeof tenant === 'object' ? tenant?.id : tenant;
-    const profileTenantId = typeof tenant === 'object' ? tenant?.ai_profile_tenant_id : null;
-    if (!tenantId) return null;
-
-    const ownConfig = await getTenantAiConfig(tenantId);
-    if (!profileTenantId || profileTenantId === tenantId) return ownConfig;
-
-    const profileConfig = await getTenantAiConfig(profileTenantId);
-    return profileConfig?.openrouter_api_key ? profileConfig : ownConfig;
-}
-
 async function upsertTenantAiConfig(tenantId, config) {
     const result = await query(`
         INSERT INTO tenant_ai_config (tenant_id, system_prompt, openrouter_api_key, chat_model, embedding_model, temperature, max_tokens, updated_at)
@@ -1033,7 +1019,6 @@ module.exports = {
     findUserByEmail, findUserById, getUserBySessionId, getTenantById, getTenantBySessionId, clearSessionReferences, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
     messageExistsByWaId,
     getTenantAiConfig,
-    getResolvedTenantAiConfig,
     upsertTenantAiConfig,
     getTenantFaqs,
     createTenantFaq,
@@ -1073,9 +1058,6 @@ module.exports = {
     ensureTenantAiModeColumn: async () => {
         await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) DEFAULT \'agent\'');
         await query("UPDATE tenants SET ai_mode = 'agent' WHERE ai_mode IS NULL OR trim(ai_mode) = ''");
-    },
-    ensureTenantAiProfileColumn: async () => {
-        await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS ai_profile_tenant_id UUID NULL REFERENCES tenants(id) ON DELETE SET NULL');
     },
     // AI Agent (RAG)
     ensureTenantAiConfigTable: async () => {

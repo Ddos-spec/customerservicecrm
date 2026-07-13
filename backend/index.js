@@ -2106,7 +2106,6 @@ if (!isTest) {
             await db.ensureTenantAnalyticsColumns();
             await db.ensureTenantApiKeyColumn();
             await db.ensureTenantAiModeColumn();
-            await db.ensureTenantAiProfileColumn();
             await db.ensureTenantAiConfigTable();
             await db.ensureKnowledgeDocumentsTable();
             await db.ensureKnowledgeChunksTable();
