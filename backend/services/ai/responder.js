@@ -102,7 +102,7 @@ async function logEscalation({ tenantId, chatId, triggerType, detail, messageId 
  * dan supaya fungsi ini gampang diuji tanpa provider WhatsApp asli.
  */
 async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, sendReply }) {
-    const config = await db.getTenantAiConfig(tenant.id);
+    const config = await db.getResolvedTenantAiConfig(tenant);
     if (!config.openrouter_api_key) {
         console.warn(`[AI Agent] Tenant ${tenant.id} belum mengisi API key OpenRouter — pesan dibiarkan masuk ke inbox agent seperti biasa.`);
         return;

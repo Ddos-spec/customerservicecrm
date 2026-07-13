@@ -890,7 +890,7 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
         let aiConfig = null;
         let configurationAvailable = true;
         try {
-            aiConfig = await db.getTenantAiConfig(req.externalTenant.id);
+            aiConfig = await db.getResolvedTenantAiConfig(req.externalTenant);
         } catch (error) {
             // Do not make the dashboard fail merely because an older tenant is
             // missing the optional AI configuration table/migration.
@@ -924,7 +924,7 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
     // only after its private model key and prompt already exist in the tenant.
     router.post('/ai-agent/enable', async (req, res) => {
         try {
-            const aiConfig = await db.getTenantAiConfig(req.externalTenant.id);
+            const aiConfig = await db.getResolvedTenantAiConfig(req.externalTenant);
             const hasApiKey = Boolean(aiConfig?.openrouter_api_key);
             const hasPrompt = Boolean(aiConfig?.system_prompt?.trim() && aiConfig.system_prompt.trim().length >= 20);
             if (!hasApiKey || !hasPrompt) {
@@ -940,6 +940,48 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
         } catch (error) {
             console.error('[External Dashboard API] Enable AI error:', error.message);
             return res.status(500).json({ error: 'Failed to enable AI Agent' });
+        }
+    });
+
+    // Link this tenant to the single already-active AI profile. The provider
+    // key stays in the source profile; only this tenant's traffic uses it.
+    router.post('/ai-agent/use-shared-profile', async (req, res) => {
+        try {
+            const candidates = await db.query(`
+                SELECT t.id, t.company_name, c.chat_model
+                FROM tenants t
+                JOIN tenant_ai_config c ON c.tenant_id = t.id
+                WHERE t.id <> $1
+                  AND COALESCE(t.ai_mode, 'agent') = 'chatbot'
+                  AND COALESCE(TRIM(c.openrouter_api_key), '') <> ''
+                  AND LENGTH(TRIM(COALESCE(c.system_prompt, ''))) >= 20
+                ORDER BY c.updated_at DESC
+                LIMIT 2
+            `, [req.externalTenant.id]);
+            if (candidates.rows.length !== 1) {
+                return res.status(409).json({
+                    status: 'error',
+                    message: candidates.rows.length === 0
+                        ? 'Belum ada profil AI aktif yang dapat dipakai bersama.'
+                        : 'Ada lebih dari satu profil AI aktif; profil sumber harus dipilih oleh admin.',
+                    code: 'SHARED_AI_PROFILE_UNAVAILABLE',
+                });
+            }
+
+            const source = candidates.rows[0];
+            await db.query(
+                `UPDATE tenants
+                 SET ai_profile_tenant_id = $1, ai_mode = 'chatbot'
+                 WHERE id = $2`,
+                [source.id, req.externalTenant.id],
+            );
+            return res.json({
+                status: 'success',
+                data: { enabled: true, model: source.chat_model },
+            });
+        } catch (error) {
+            console.error('[External Dashboard API] Shared AI profile error:', error.message);
+            return res.status(500).json({ error: 'Failed to activate shared AI profile' });
         }
     });
 
