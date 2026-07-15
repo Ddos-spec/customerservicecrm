@@ -4,10 +4,6 @@ jest.mock('../db', () => ({
     query: jest.fn(),
 }));
 
-jest.mock('../services/ai/escalation', () => ({
-    detectKeywordEscalation: jest.fn(),
-}));
-
 jest.mock('../services/ai/retrieval', () => ({
     retrieveTopK: jest.fn(),
 }));
@@ -18,7 +14,6 @@ jest.mock('../services/ai/openrouter', () => ({
 }));
 
 const db = require('../db');
-const { detectKeywordEscalation } = require('../services/ai/escalation');
 const { retrieveTopK } = require('../services/ai/retrieval');
 const { chatCompletion, createEmbeddings } = require('../services/ai/openrouter');
 const { handleIncomingMessage } = require('../services/ai/responder');
@@ -37,10 +32,8 @@ describe('AI responder', () => {
             system_prompt: 'Kamu adalah customer service toko yang ramah dan solutif.',
             temperature: 0.3,
             max_tokens: 500,
-            handoff_mode: 'agentic',
         });
         db.query.mockResolvedValue({ rows: [] });
-        detectKeywordEscalation.mockReturnValue({ shouldEscalate: false });
         createEmbeddings.mockResolvedValue([[0.1, 0.2]]);
         retrieveTopK.mockResolvedValue([]);
     });
@@ -79,7 +72,7 @@ describe('AI responder', () => {
         expect(sendReply).toHaveBeenCalledWith('Ada, ukuran XL tersedia.');
     });
 
-    it('mengalihkan chat ke manusia dan memberi kabar saat layanan AI gagal', async () => {
+    it('membiarkan chat tetap terbuka saat layanan AI gagal agar dapat dicoba lagi', async () => {
         createEmbeddings.mockRejectedValue(new Error('provider unavailable'));
         const sendReply = jest.fn();
 
@@ -91,15 +84,8 @@ describe('AI responder', () => {
             sendReply,
         });
 
-        expect(db.query).toHaveBeenCalledWith(
-            expect.stringContaining('INSERT INTO escalation_log'),
-            expect.arrayContaining(['tenant-1', 'chat-1', 'ai_service_error'])
-        );
-        expect(db.query).toHaveBeenCalledWith(
-            expect.stringContaining("UPDATE chats SET status = 'escalated'"),
-            ['chat-1']
-        );
-        expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('diteruskan ke tim customer service'));
+        expect(db.query).not.toHaveBeenCalled();
+        expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('kendala teknis'));
         expect(chatCompletion).not.toHaveBeenCalled();
     });
 
@@ -220,7 +206,7 @@ describe('AI responder', () => {
         );
     });
 
-    it('wajib handoff setelah waktu meeting dan pembuat link sudah jelas', async () => {
+    it('tidak memaksa handoff saat detail meeting lengkap tanpa marker dari system prompt', async () => {
         const firstMessage = 'Saya ingin meeting online hari Senin jam 13.00 WIB untuk bahas AI CS.';
         const latestMessage = 'Tolong link meeting disiapkan oleh admin my-aicustom.';
         db.getMessagesByChat.mockResolvedValue([
@@ -244,10 +230,33 @@ describe('AI responder', () => {
         });
 
         expect(chatCompletion).toHaveBeenCalledTimes(1);
-        expect(db.query).toHaveBeenCalledWith(
-            expect.stringContaining('INSERT INTO escalation_log'),
-            expect.arrayContaining(['tenant-1', 'chat-1', 'llm_handoff'])
-        );
+        expect(db.query).not.toHaveBeenCalled();
         expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('admin akan mengirim link'));
+    });
+
+    it('tidak memaksa handoff hanya karena customer menyebut admin atau refund', async () => {
+        const customerMessage = 'Saya mau komplain refund dan bicara dengan admin.';
+        db.getMessagesByChat.mockResolvedValue([
+            { message_type: 'text', body: customerMessage, is_from_me: false },
+        ]);
+        chatCompletion.mockResolvedValueOnce({
+            text: 'Baik, saya bantu cek kendalanya dulu. Nomor pesanannya berapa?',
+            model: 'test/chat-model',
+            id: 'generation-prompt-first',
+            usage: { prompt_tokens: 70, completion_tokens: 16 },
+        });
+        const sendReply = jest.fn();
+
+        await handleIncomingMessage({
+            tenant,
+            chat,
+            messageText: customerMessage,
+            savedMessage,
+            sendReply,
+        });
+
+        expect(chatCompletion).toHaveBeenCalledTimes(1);
+        expect(db.query).not.toHaveBeenCalled();
+        expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('Nomor pesanannya'));
     });
 });

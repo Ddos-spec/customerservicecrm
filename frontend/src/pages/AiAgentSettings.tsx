@@ -31,7 +31,6 @@ type AiConfig = {
   embedding_model: string;
   temperature: number;
   max_tokens: number;
-  handoff_mode: 'agentic' | 'guarded';
 };
 
 type AiModel = {
@@ -109,7 +108,6 @@ const emptyConfig: AiConfig = {
   embedding_model: 'openai/text-embedding-3-small',
   temperature: 0.3,
   max_tokens: 500,
-  handoff_mode: 'agentic',
 };
 
 function StatusBadge({ status, errorMessage }: { status: DocumentStatus; errorMessage?: string | null }) {
@@ -223,7 +221,6 @@ const AiAgentSettings = () => {
         embedding_model: config.embedding_model,
         temperature: config.temperature,
         max_tokens: config.max_tokens,
-        handoff_mode: config.handoff_mode,
       };
       if (apiKeyInput.trim()) payload.openrouter_api_key = apiKeyInput.trim();
 
@@ -480,18 +477,10 @@ const AiAgentSettings = () => {
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Tulis aturan bisnis dengan bahasa biasa. Sistem tetap menjaga AI agar tidak mengarang fakta.</p>
               </div>
 
-              <div>
-                <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Gaya Menangani Lead</label>
-                <select
-                  value={config.handoff_mode}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, handoff_mode: e.target.value as AiConfig['handoff_mode'] }))}
-                  className="w-full rounded-xl border border-gray-200 bg-white p-4 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                >
-                  <option value="agentic">AI Agent Sales — gali kebutuhan dan closing dulu</option>
-                  <option value="guarded">Handoff aman — serahkan lead lebih cepat</option>
-                </select>
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Rekomendasi: AI Agent Sales. AI tetap tidak mengarang fakta, tetapi tidak mengakhiri percakapan hanya karena lead tertarik atau baru menanyakan harga.
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
+                <p className="font-semibold">Handoff mengikuti System Prompt</p>
+                <p className="mt-1 text-xs leading-relaxed text-blue-800 dark:text-blue-200">
+                  Tentukan sendiri kapan AI harus berhenti dan menyerahkan chat ke admin melalui instruksi di System Prompt. Tidak ada aturan platform yang memaksa handoff berdasarkan kata kunci, minat lead, atau meeting.
                 </p>
               </div>
 
