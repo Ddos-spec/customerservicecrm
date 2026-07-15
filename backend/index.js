@@ -2113,6 +2113,16 @@ if (!isTest) {
             await db.ensureUserInvitesTable();
             await db.ensureInviteErrorColumn();
             await db.ensureSystemSettingsTable();
+            // Permintaan operasional: jeda AI tenant ai custom sampai policy-nya
+            // disederhanakan. Marker migrasi membuatnya one-time; tenant dapat
+            // diaktifkan lagi dari pengaturan tanpa dimatikan ulang saat restart.
+            const disabledAiTenant = await db.disableTenantAiOnce(
+                '6282121292938',
+                'migration:disable-ai-custom-2026-07-15',
+            );
+            if (disabledAiTenant) {
+                console.warn(`[AI Agent] Dinonaktifkan sementara untuk tenant ${disabledAiTenant.company_name} (${disabledAiTenant.id}).`);
+            }
             await db.ensureUserPhoneColumn();
             await db.ensureInvitePhoneColumn();
             await db.ensureMessageDeliveryColumns();

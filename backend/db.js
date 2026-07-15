@@ -1063,6 +1063,30 @@ module.exports = {
         await query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) DEFAULT \'agent\'');
         await query("UPDATE tenants SET ai_mode = 'agent' WHERE ai_mode IS NULL OR trim(ai_mode) = ''");
     },
+    disableTenantAiOnce: async (sessionId, migrationKey) => {
+        const client = await getClient();
+        try {
+            await client.query('BEGIN');
+            const alreadyApplied = await client.query('SELECT 1 FROM system_settings WHERE key = $1 LIMIT 1', [migrationKey]);
+            if (alreadyApplied.rowCount > 0) {
+                await client.query('ROLLBACK');
+                return false;
+            }
+
+            const disabled = await client.query(
+                "UPDATE tenants SET ai_mode = 'agent' WHERE session_id = $1 AND ai_mode <> 'agent' RETURNING id, company_name",
+                [sessionId],
+            );
+            await client.query('INSERT INTO system_settings (key, value) VALUES ($1, $2)', [migrationKey, new Date().toISOString()]);
+            await client.query('COMMIT');
+            return disabled.rows[0] || null;
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            client.release();
+        }
+    },
     // AI Agent (RAG)
     ensureTenantAiConfigTable: async () => {
         await query(`
