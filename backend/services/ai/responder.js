@@ -48,8 +48,17 @@ function meetingReadyForHandoff(history) {
     return hasMeetingIntent && hasSchedule && hasLinkDecision;
 }
 
+function isAgenticHandoffMode(config) {
+    return config?.handoff_mode === 'agentic';
+}
+
 async function classifyHandoff(config, history) {
     if (meetingReadyForHandoff(history)) return true;
+
+    // Mode agentic hanya untuk tenant yang memang memilih AI sebagai sales
+    // consultant. Handoff normal diputuskan oleh agent utama setelah discovery,
+    // bukan oleh classifier yang terlalu mudah mengalihkan lead hangat.
+    if (isAgenticHandoffMode(config)) return false;
 
     const latestCustomerMessage = [...history].reverse().find((message) => message.role === 'user')?.content || '';
     if (latestCustomerMessage.trim().length < HANDOFF_CLASSIFIER_MIN_CHARS) return false;
@@ -103,6 +112,7 @@ async function logEscalation({ tenantId, chatId, triggerType, detail, messageId 
  */
 async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, sendReply }) {
     const config = await db.getTenantAiConfig(tenant.id);
+    const agenticMode = isAgenticHandoffMode(config);
     if (!config.openrouter_api_key) {
         console.warn(`[AI Agent] Tenant ${tenant.id} belum mengisi API key OpenRouter — pesan dibiarkan masuk ke inbox agent seperti biasa.`);
         return;
@@ -141,7 +151,13 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
         const contextSection = relevantChunks.length > 0
             ? `Informasi relevan dari knowledge base:\n${relevantChunks.map((chunk) => `- ${chunk.content}`).join('\n')}`
             : 'Tidak ditemukan informasi spesifik di knowledge base untuk pesan ini.';
-        const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer pindah ke website, form, email, Calendly, telepon, atau channel lain. Semua konsultasi dan tindak lanjut dikoordinasikan di chat WhatsApp ini. Jika CUSTOMER SENDIRI mengajak meeting, bantu koordinasikan di WhatsApp: tanyakan waktu bila belum jelas dan tanyakan apakah link meeting dibuat customer atau perlu disiapkan admin.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, jangan mengarang. Jelaskan bahwa detailnya akan dipastikan admin di chat ini.\n4. Pahami riwayat percakapan. Jangan mengulang sapaan, pertanyaan, atau informasi yang sudah jelas. Beberapa pesan customer yang berurutan adalah satu konteks utuh.\n5. Bertindak sebagai sales consultant: gali kebutuhan seperlunya, hubungkan masalah customer dengan solusi yang relevan, jelaskan manfaat konkret, tangani keberatan, lalu ajukan satu pertanyaan closing. Jangan menyerah atau handoff hanya karena informasi awal sudah cukup.\n6. Lakukan handoff jika customer meminta manusia, siap deal, meminta proposal/harga khusus, sudah menerima rekomendasi dan ingin lanjut, atau butuh keputusan admin. Untuk meeting, selesaikan dulu hari/jam dan siapa yang membuat link; handoff setelah detail itu jelas. Beri konfirmasi singkat bahwa admin akan melanjutkan di chat ini, lalu tulis ${HANDOFF_MARKER} pada baris terakhir. Marker itu adalah perintah internal; jangan jelaskan artinya.`;
+        const factualGuidance = agenticMode
+            ? 'Jangan otomatis berkata admin akan menghubungi atau melakukan handoff. Jelaskan batas informasi itu secara singkat, lalu tetap bantu customer dengan satu pertanyaan discovery yang relevan agar kebutuhan dan data yang diperlukan lengkap.'
+            : 'Jelaskan bahwa detailnya akan dipastikan admin di chat ini.';
+        const handoffGuidance = agenticMode
+            ? 'Lakukan handoff HANYA jika customer secara eksplisit meminta manusia/admin, atau setelah kebutuhan inti sudah lengkap customer secara eksplisit meminta order diproses, proposal/penawaran formal dibuat, atau keputusan yang memang tidak bisa diberikan AI. Ketertarikan, pertanyaan harga awal, pertanyaan umum, dan "mau lanjut" saja BUKAN handoff — lanjutkan discovery terlebih dahulu.'
+            : 'Lakukan handoff jika customer meminta manusia, siap deal, meminta proposal/harga khusus, sudah menerima rekomendasi dan ingin lanjut, atau butuh keputusan admin.';
+        const systemPrompt = `${basePrompt}\n\n${contextSection}\n\nAturan:\n1. Kamu SEDANG mengobrol dengan customer di WhatsApp ini — chat ini SENDIRI adalah channel resminya. Jangan menyuruh customer pindah ke website, form, email, Calendly, telepon, atau channel lain. Semua konsultasi dan tindak lanjut dikoordinasikan di chat WhatsApp ini. Jika CUSTOMER SENDIRI mengajak meeting, bantu koordinasikan di WhatsApp: tanyakan waktu bila belum jelas dan tanyakan apakah link meeting dibuat customer atau perlu disiapkan admin.\n2. Untuk sapaan, basa-basi, atau pertanyaan umum, balas secara natural sesuai kepribadian di atas.\n3. Untuk klaim FAKTUAL (harga, kebijakan, fitur spesifik, data perusahaan), HANYA pakai informasi dari knowledge base — kalau tidak ada datanya, jangan mengarang. ${factualGuidance}\n4. Pahami riwayat percakapan. Jangan mengulang sapaan, pertanyaan, atau informasi yang sudah jelas. Beberapa pesan customer yang berurutan adalah satu konteks utuh.\n5. Bertindak sebagai sales consultant: gali kebutuhan seperlunya, hubungkan masalah customer dengan solusi yang relevan, jelaskan manfaat konkret, tangani keberatan, lalu ajukan satu pertanyaan closing. Jangan menyerah atau handoff hanya karena informasi awal sudah cukup.\n6. ${handoffGuidance} Untuk meeting, selesaikan dulu hari/jam dan siapa yang membuat link; handoff setelah detail itu jelas. Saat handoff benar-benar diperlukan, beri konfirmasi singkat bahwa admin melanjutkan di chat ini lalu tulis ${HANDOFF_MARKER} pada baris terakhir. Marker itu adalah perintah internal; jangan jelaskan artinya.`;
 
         const history = (await db.getMessagesByChat(chat.id, HISTORY_LIMIT))
             .filter((message) => message.message_type === 'text' && message.body?.trim())
@@ -211,7 +227,7 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
         return;
     }
 
-    if (looksUncertain(replyText)) {
+    if (!agenticMode && looksUncertain(replyText)) {
         await logEscalation({
             tenantId: tenant.id,
             chatId: chat.id,
@@ -223,7 +239,7 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
         return;
     }
 
-    await sendReply(replyText);
+    await sendReply(replyText || FALLBACK_ESCALATION_REPLY);
 }
 
 module.exports = {

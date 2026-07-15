@@ -37,6 +37,7 @@ describe('AI responder', () => {
             system_prompt: 'Kamu adalah customer service toko yang ramah dan solutif.',
             temperature: 0.3,
             max_tokens: 500,
+            handoff_mode: 'agentic',
         });
         db.query.mockResolvedValue({ rows: [] });
         detectKeywordEscalation.mockReturnValue({ shouldEscalate: false });
@@ -107,9 +108,6 @@ describe('AI responder', () => {
             { message_type: 'text', body: 'Saya punya toko dan ingin otomatisasi CS WhatsApp.', is_from_me: false },
         ]);
         chatCompletion.mockResolvedValueOnce({
-            text: 'CONTINUE',
-            model: 'test/chat-model',
-        }).mockResolvedValueOnce({
             text: 'Informasinya sudah cukup, Kak. Admin kami akan melanjutkan langsung di chat ini.\n\n[[ESCALATE_TO_HUMAN]]',
             model: 'test/chat-model',
             id: 'generation-handoff',
@@ -137,19 +135,16 @@ describe('AI responder', () => {
         expect(sendReply.mock.calls[0][0]).not.toContain('ESCALATE_TO_HUMAN');
     });
 
-    it('memaksa handoff ketika customer sudah menerima solusi dan ingin lanjut', async () => {
-        const qualifiedMessage = 'Solusi AI CS tadi cocok untuk toko online saya. Saya setuju dan mau lanjut, tolong hubungkan ke admin.';
+    it('tidak memaksa handoff hanya karena customer tertarik dan ingin lanjut', async () => {
+        const qualifiedMessage = 'Solusi AI CS tadi cocok untuk toko online saya. Saya setuju dan mau lanjut.';
         db.getMessagesByChat.mockResolvedValue([
             { message_type: 'text', body: qualifiedMessage, is_from_me: false },
         ]);
         chatCompletion.mockResolvedValueOnce({
-            text: 'HANDOFF',
+            text: 'Siap, Kak. Biar saya arahkan dengan tepat, produk atau alur WhatsApp mana yang paling ingin diotomatisasi lebih dulu?',
             model: 'test/chat-model',
-        }).mockResolvedValueOnce({
-            text: 'Kebutuhannya sudah jelas, Kak. Admin kami akan melanjutkan langsung di chat ini.',
-            model: 'test/chat-model',
-            id: 'generation-classified-handoff',
-            usage: { prompt_tokens: 80, completion_tokens: 14 },
+            id: 'generation-qualified-discovery',
+            usage: { prompt_tokens: 80, completion_tokens: 22 },
         });
         const sendReply = jest.fn();
 
@@ -161,12 +156,12 @@ describe('AI responder', () => {
             sendReply,
         });
 
-        expect(chatCompletion).toHaveBeenCalledTimes(2);
-        expect(db.query).toHaveBeenCalledWith(
+        expect(chatCompletion).toHaveBeenCalledTimes(1);
+        expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('produk atau alur WhatsApp'));
+        expect(db.query).not.toHaveBeenCalledWith(
             expect.stringContaining('INSERT INTO escalation_log'),
-            expect.arrayContaining(['tenant-1', 'chat-1', 'llm_handoff'])
+            expect.anything()
         );
-        expect(sendReply).toHaveBeenCalledWith('Kebutuhannya sudah jelas, Kak. Admin kami akan melanjutkan langsung di chat ini.');
     });
 
     it('tidak handoff terlalu cepat sebelum AI memetakan solusi dan melakukan closing', async () => {
@@ -175,9 +170,6 @@ describe('AI responder', () => {
             { message_type: 'text', body: discoveryMessage, is_from_me: false },
         ]);
         chatCompletion.mockResolvedValueOnce({
-            text: 'CONTINUE',
-            model: 'test/chat-model',
-        }).mockResolvedValueOnce({
             text: 'AI CS WhatsApp cocok untuk membantu pertanyaan stok dan status pesanan secara otomatis. Apakah fokus utama ini sudah sesuai, Kak?',
             model: 'test/chat-model',
             id: 'generation-sales-discovery',
@@ -206,9 +198,6 @@ describe('AI responder', () => {
             { message_type: 'text', body: meetingMessage, is_from_me: false },
         ]);
         chatCompletion.mockResolvedValueOnce({
-            text: 'CONTINUE',
-            model: 'test/chat-model',
-        }).mockResolvedValueOnce({
             text: 'Bisa, Kak. Untuk link meeting, apakah akan dibuat oleh Kakak atau perlu disiapkan admin kami?',
             model: 'test/chat-model',
             id: 'generation-meeting-coordination',

@@ -476,8 +476,8 @@ async function getTenantAiConfig(tenantId) {
 
 async function upsertTenantAiConfig(tenantId, config) {
     const result = await query(`
-        INSERT INTO tenant_ai_config (tenant_id, system_prompt, openrouter_api_key, chat_model, embedding_model, temperature, max_tokens, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+        INSERT INTO tenant_ai_config (tenant_id, system_prompt, openrouter_api_key, chat_model, embedding_model, temperature, max_tokens, handoff_mode, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
         ON CONFLICT (tenant_id) DO UPDATE SET
             system_prompt = EXCLUDED.system_prompt,
             openrouter_api_key = EXCLUDED.openrouter_api_key,
@@ -485,6 +485,7 @@ async function upsertTenantAiConfig(tenantId, config) {
             embedding_model = EXCLUDED.embedding_model,
             temperature = EXCLUDED.temperature,
             max_tokens = EXCLUDED.max_tokens,
+            handoff_mode = EXCLUDED.handoff_mode,
             updated_at = now()
         RETURNING *
     `, [
@@ -495,6 +496,7 @@ async function upsertTenantAiConfig(tenantId, config) {
         config.embedding_model || 'openai/text-embedding-3-small',
         config.temperature ?? 0.3,
         config.max_tokens ?? 500,
+        config.handoff_mode === 'agentic' ? 'agentic' : 'guarded',
     ]);
     return result.rows[0];
 }
@@ -1070,9 +1072,19 @@ module.exports = {
                 embedding_model TEXT NOT NULL DEFAULT 'openai/text-embedding-3-small',
                 temperature NUMERIC(3,2) NOT NULL DEFAULT 0.3,
                 max_tokens INTEGER NOT NULL DEFAULT 500,
+                handoff_mode VARCHAR(20) NOT NULL DEFAULT 'guarded',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
             )
+        `);
+        await query("ALTER TABLE tenant_ai_config ADD COLUMN IF NOT EXISTS handoff_mode VARCHAR(20) NOT NULL DEFAULT 'guarded'");
+        // Tenant ai custom memakai mode agentic agar AI melakukan discovery/closing,
+        // sementara tenant lain mempertahankan handoff guarded yang sudah ada.
+        await query(`
+            UPDATE tenant_ai_config
+            SET handoff_mode = 'agentic', updated_at = now()
+            WHERE tenant_id = 'be29e379-c096-4c74-ba6b-a232069d2b8a'::uuid
+              AND handoff_mode <> 'agentic'
         `);
     },
     ensureKnowledgeDocumentsTable: async () => {
