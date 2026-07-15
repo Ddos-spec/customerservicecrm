@@ -31,6 +31,7 @@ type AiConfig = {
   embedding_model: string;
   temperature: number;
   max_tokens: number;
+  handoff_mode: 'agentic' | 'guarded';
 };
 
 type AiModel = {
@@ -81,8 +82,8 @@ Tugas utama:
 - Jika customer sendiri mengajak meeting, bantu tentukan waktu dan tanyakan apakah link meeting dibuat customer atau perlu disiapkan admin.
 - Ajukan maksimal satu pertanyaan paling relevan setiap balasan dan jangan menanyakan informasi yang sudah diberikan.
 - Hubungkan masalah customer dengan solusi yang relevan, jelaskan manfaat konkretnya, tangani keberatan, lalu arahkan percakapan menuju keputusan.
-- Jangan menyerahkan lead terlalu cepat. Eskalasi setelah customer siap lanjut, meminta harga/proposal khusus, mengajak meeting, atau membutuhkan keputusan admin.
-- Jika informasi belum cukup atau customer meminta manusia, jelaskan dengan sopan bahwa admin akan membantu langsung di chat ini.
+- Jangan menyerahkan lead terlalu cepat. Lanjutkan discovery saat customer tertarik, baru menanyakan harga, atau berkata mau lanjut. Eskalasi hanya jika customer meminta manusia secara eksplisit, meminta proposal/order formal setelah kebutuhan inti lengkap, atau keputusan memang harus diambil admin.
+- Jika informasi belum cukup, jangan mengarang; jelaskan batasnya singkat lalu tanyakan satu detail yang paling relevan. Jika customer meminta manusia, jelaskan dengan sopan bahwa admin akan membantu langsung di chat ini.
 - Jangan mengulang pertanyaan yang sudah dijawab customer.
 - Fokus membantu customer menyelesaikan kebutuhannya, bukan sekadar memberi jawaban umum.`;
 
@@ -108,6 +109,7 @@ const emptyConfig: AiConfig = {
   embedding_model: 'openai/text-embedding-3-small',
   temperature: 0.3,
   max_tokens: 500,
+  handoff_mode: 'agentic',
 };
 
 function StatusBadge({ status, errorMessage }: { status: DocumentStatus; errorMessage?: string | null }) {
@@ -221,6 +223,7 @@ const AiAgentSettings = () => {
         embedding_model: config.embedding_model,
         temperature: config.temperature,
         max_tokens: config.max_tokens,
+        handoff_mode: config.handoff_mode,
       };
       if (apiKeyInput.trim()) payload.openrouter_api_key = apiKeyInput.trim();
 
@@ -475,6 +478,21 @@ const AiAgentSettings = () => {
                   className="w-full resize-y rounded-xl border border-gray-200 bg-white p-4 text-sm font-semibold text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
                 />
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Tulis aturan bisnis dengan bahasa biasa. Sistem tetap menjaga AI agar tidak mengarang fakta.</p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Gaya Menangani Lead</label>
+                <select
+                  value={config.handoff_mode}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, handoff_mode: e.target.value as AiConfig['handoff_mode'] }))}
+                  className="w-full rounded-xl border border-gray-200 bg-white p-4 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="agentic">AI Agent Sales — gali kebutuhan dan closing dulu</option>
+                  <option value="guarded">Handoff aman — serahkan lead lebih cepat</option>
+                </select>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Rekomendasi: AI Agent Sales. AI tetap tidak mengarang fakta, tetapi tidak mengakhiri percakapan hanya karena lead tertarik atau baru menanyakan harga.
+                </p>
               </div>
 
               <div>

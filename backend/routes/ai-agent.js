@@ -59,7 +59,7 @@ function serializeConfig(config, tenant) {
         embedding_model: config.embedding_model,
         temperature: Number(config.temperature),
         max_tokens: config.max_tokens,
-        handoff_mode: config.handoff_mode || 'guarded',
+        handoff_mode: config.handoff_mode || 'agentic',
     };
 }
 
@@ -131,7 +131,12 @@ function buildAiAgentRouter(deps) {
                 embedding_model: typeof body.embedding_model === 'string' && body.embedding_model.trim() ? body.embedding_model.trim() : existing.embedding_model,
                 temperature: body.temperature !== undefined ? Number(body.temperature) : Number(existing.temperature),
                 max_tokens: body.max_tokens !== undefined ? parseInt(body.max_tokens, 10) : existing.max_tokens,
-                handoff_mode: body.handoff_mode === 'agentic' ? 'agentic' : (existing.handoff_mode || 'guarded'),
+                handoff_mode: ['agentic', 'guarded'].includes(body.handoff_mode)
+                    ? body.handoff_mode
+                    : (existing.handoff_mode || 'agentic'),
+                handoff_mode_customized: ['agentic', 'guarded'].includes(body.handoff_mode)
+                    ? true
+                    : Boolean(existing.handoff_mode_customized),
             };
 
             if (!Number.isFinite(nextConfig.temperature) || nextConfig.temperature < 0 || nextConfig.temperature > 1) {
