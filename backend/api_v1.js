@@ -67,6 +67,7 @@ function initializeApi(
         phonePairing,
         scheduleMessageSend,
         validateWhatsAppRecipient,
+        db,
         validateToken,
         resolveAuthenticatedUser,
         refreshSession, // Add to deps

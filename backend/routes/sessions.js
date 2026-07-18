@@ -10,6 +10,7 @@ function buildSessionsRouter(deps) {
         deleteSession,
         log,
         refreshSession,
+        db,
     } = deps;
 
     // A tenant owner must only ever see or operate the WhatsApp device bound to
@@ -81,6 +82,13 @@ function buildSessionsRouter(deps) {
                 sessionId: sanitizedSessionId,
                 createdBy: currentUser ? currentUser.email : 'api-key'
             });
+            await db?.logActivity({
+                actorId: currentUser.id,
+                action: 'session.created',
+                entityType: 'whatsapp_session',
+                entityId: sanitizedSessionId,
+                summary: `${currentUser.name || 'Super Admin'} membuat sesi WhatsApp ${sanitizedSessionId}`,
+            }).catch((activityError) => log('Activity log skipped', 'SYSTEM', { error: activityError.message }));
             res.status(201).json({
                 status: 'success',
                 message: `Session ${sanitizedSessionId} created.`,
@@ -140,6 +148,14 @@ function buildSessionsRouter(deps) {
 
         try {
             const cleanup = await deleteSession(sessionId);
+            const currentUser = getCurrentUser(req);
+            await db?.logActivity({
+                actorId: currentUser?.id || null,
+                action: 'session.deleted',
+                entityType: 'whatsapp_session',
+                entityId: sessionId,
+                summary: `${currentUser?.name || 'Admin'} menghapus sesi WhatsApp ${sessionId}`,
+            }).catch((activityError) => log('Activity log skipped', 'SYSTEM', { error: activityError.message }));
             log('Session deleted', sessionId, { event: 'session-deleted', sessionId, cleanup });
             res.status(200).json({ status: 'success', message: `Session ${sessionId} deleted.`, cleanup });
         } catch (error) {
@@ -161,6 +177,14 @@ function buildSessionsRouter(deps) {
                 unlinkReferences: false,
                 reason: 'manual-disconnect'
             });
+            const currentUser = getCurrentUser(req);
+            await db?.logActivity({
+                actorId: currentUser?.id || null,
+                action: 'session.disconnected',
+                entityType: 'whatsapp_session',
+                entityId: sessionId,
+                summary: `${currentUser?.name || 'Admin'} memutuskan sesi WhatsApp ${sessionId}`,
+            }).catch((activityError) => log('Activity log skipped', 'SYSTEM', { error: activityError.message }));
             log('Session disconnected', sessionId, { event: 'session-disconnected', sessionId, cleanup });
             res.status(200).json({
                 status: 'success',

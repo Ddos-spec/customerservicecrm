@@ -91,7 +91,7 @@ function buildChatRouter(deps) {
                 ? await db.query(`
                     SELECT id, company_name, session_id
                     FROM tenants
-                    WHERE session_id IS NOT NULL AND session_id <> ''
+                    WHERE status = 'active'
                     ORDER BY company_name ASC
                 `)
                 : await db.query(`
