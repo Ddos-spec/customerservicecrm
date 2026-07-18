@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Smartphone, Search, RefreshCw, Wifi, WifiOff,
-  QrCode, Building2, Trash2, Plus, Activity, ChevronDown, ShieldAlert, Power
+  QrCode, Building2, Trash2, Plus, Activity, ChevronDown, ShieldAlert, Power, X
 } from 'lucide-react';
 import api from '../lib/api';
 import { createAuthenticatedWebSocket } from '../lib/realtime';
@@ -24,6 +24,8 @@ interface Session {
   deviceJid?: string | null;
   statusReason?: string | null;
 }
+
+const asDataUrl = (qr: string) => qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`;
 
 const SESSION_FILTERS = ['ALL', 'CONNECTED', 'UNASSIGNED', 'IDENTITY_MISMATCH', 'SCAN_QR_CODE', 'CONNECTING', 'DISCONNECTED', 'UNKNOWN'] as const;
 type SessionFilter = typeof SESSION_FILTERS[number];
@@ -125,6 +127,12 @@ const SuperAdminSessions = () => {
   const [activeFilter, setActiveFilter] = useState<SessionFilter>('ALL');
   const [expandedQrSessionId, setExpandedQrSessionId] = useState<string | null>(null);
   const [disconnectingSessionId, setDisconnectingSessionId] = useState<string | null>(null);
+  const [connectionSessionId, setConnectionSessionId] = useState<string | null>(null);
+  const [connectionMode, setConnectionMode] = useState<'qr' | 'pair'>('qr');
+  const [connectionQr, setConnectionQr] = useState('');
+  const [pairCode, setPairCode] = useState('');
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isGeneratingConnection, setIsGeneratingConnection] = useState(false);
   const ws = useRef<WebSocket | null>(null);
 
   const fetchSessions = async () => {
@@ -212,6 +220,42 @@ const SuperAdminSessions = () => {
       alert('Gagal disconnect session');
     } finally {
       setDisconnectingSessionId(null);
+    }
+  };
+
+  const closeConnectionModal = () => {
+    setConnectionSessionId(null);
+    setConnectionQr('');
+    setPairCode('');
+    setConnectionError(null);
+  };
+
+  const requestConnection = async (sessionId: string, mode: 'qr' | 'pair') => {
+    setConnectionSessionId(sessionId);
+    setConnectionMode(mode);
+    setConnectionQr('');
+    setPairCode('');
+    setConnectionError(null);
+    setIsGeneratingConnection(true);
+
+    try {
+      if (mode === 'qr') {
+        const response = await api.get(`/sessions/${sessionId}/qr`);
+        const qr = response.data?.session?.qr;
+        if (!qr) throw new Error(response.data?.message || 'Gateway tidak mengembalikan QR baru.');
+        setConnectionQr(asDataUrl(qr));
+      } else {
+        const response = await api.get(`/sessions/${sessionId}/pair`);
+        const code = response.data?.pairCode;
+        if (!code) throw new Error(response.data?.message || 'Gateway tidak mengembalikan kode telepon.');
+        setPairCode(code);
+      }
+      await fetchSessions();
+    } catch (error: any) {
+      console.error(`Failed to generate ${mode} connection for ${sessionId}:`, error);
+      setConnectionError(error?.response?.data?.message || error?.message || 'Gateway gagal membuat koneksi.');
+    } finally {
+      setIsGeneratingConnection(false);
     }
   };
 
@@ -389,7 +433,7 @@ const SuperAdminSessions = () => {
             filteredSessions.map((session) => {
               const statusMeta = getSessionPresentation(session);
               const StatusIcon = statusMeta.icon;
-              const hasQr = session.status === 'SCAN_QR_CODE' && session.qr;
+              const hasQr = Boolean(session.qr) && session.status !== 'CONNECTED';
               const isQrExpanded = expandedQrSessionId === session.sessionId;
 
               return (
@@ -418,6 +462,28 @@ const SuperAdminSessions = () => {
                       </span>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">
+                      {session.status !== 'CONNECTED' && (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void requestConnection(session.sessionId, 'qr')}
+                            title="Buat QR baru yang masih berlaku"
+                            className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-blue-700 transition-colors hover:bg-blue-100 focus:outline-none focus:ring-4 focus:ring-blue-500/15 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-900/40"
+                          >
+                            <QrCode size={16} />
+                            <span>QR baru</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void requestConnection(session.sessionId, 'pair')}
+                            title="Buat kode telepon baru"
+                            className="inline-flex items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-violet-700 transition-colors hover:bg-violet-100 focus:outline-none focus:ring-4 focus:ring-violet-500/15 dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-300 dark:hover:bg-violet-900/40"
+                          >
+                            <Smartphone size={16} />
+                            <span>Kode</span>
+                          </button>
+                        </div>
+                      )}
                       {session.status !== 'DISCONNECTED' && (
                         <button
                           onClick={() => handleDisconnectSession(session.sessionId)}
@@ -526,6 +592,49 @@ const SuperAdminSessions = () => {
           )}
         </div>
       </div>
+
+      {connectionSessionId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div role="dialog" aria-modal="true" aria-label="Hubungkan WhatsApp" className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5 dark:border-slate-800">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">Koneksi perangkat</p>
+                <h2 className="mt-1 text-lg font-black text-gray-900 dark:text-white">{connectionSessionId}</h2>
+              </div>
+              <button type="button" onClick={closeConnectionModal} className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-4 focus:ring-emerald-500/15 dark:hover:bg-slate-800 dark:hover:text-gray-200" aria-label="Tutup">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="mx-6 mt-5 grid grid-cols-2 rounded-2xl bg-gray-100 p-1 dark:bg-slate-800">
+              <button type="button" onClick={() => void requestConnection(connectionSessionId, 'qr')} disabled={isGeneratingConnection} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.14em] transition-colors disabled:opacity-60 ${connectionMode === 'qr' ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-950 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}>QR Code</button>
+              <button type="button" onClick={() => void requestConnection(connectionSessionId, 'pair')} disabled={isGeneratingConnection} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.14em] transition-colors disabled:opacity-60 ${connectionMode === 'pair' ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-950 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}>Kode telepon</button>
+            </div>
+
+            <div className="p-6 text-center">
+              {isGeneratingConnection ? (
+                <div className="py-12 text-sm font-semibold text-gray-500 dark:text-gray-400"><RefreshCw className="mx-auto mb-3 animate-spin text-emerald-600" size={30} />Membuat koneksi baru...</div>
+              ) : connectionError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left dark:border-rose-900/60 dark:bg-rose-950/30">
+                  <p className="text-sm font-bold text-rose-800 dark:text-rose-200">Koneksi belum dibuat</p>
+                  <p className="mt-2 text-xs leading-5 text-rose-700 dark:text-rose-300">{connectionError}</p>
+                  <button type="button" onClick={() => void requestConnection(connectionSessionId, connectionMode)} className="mt-4 rounded-xl bg-rose-700 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-rose-800 focus:outline-none focus:ring-4 focus:ring-rose-500/25">Coba lagi</button>
+                </div>
+              ) : connectionMode === 'qr' && connectionQr ? (
+                <div className="space-y-5">
+                  <div className="inline-flex rounded-2xl border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950"><img src={connectionQr} alt="QR WhatsApp" className="h-64 w-64" /></div>
+                  <div className="rounded-2xl bg-blue-50 p-4 text-left text-xs leading-5 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><strong className="block">Scan sekarang, jangan pakai QR lama.</strong>WhatsApp → Perangkat tertaut → Tautkan perangkat. Bila QR sudah lama terbuka, tekan “QR Code” untuk membuat yang baru.</div>
+                </div>
+              ) : connectionMode === 'pair' && pairCode ? (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border border-violet-200 bg-violet-50 px-5 py-7 dark:border-violet-900/60 dark:bg-violet-950/30"><p className="font-mono text-4xl font-black tracking-[0.18em] text-violet-700 dark:text-violet-300">{pairCode}</p></div>
+                  <p className="text-xs leading-5 text-gray-600 dark:text-gray-300">Di WhatsApp: Perangkat tertaut → Tautkan dengan nomor telepon → masukkan kode ini.</p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

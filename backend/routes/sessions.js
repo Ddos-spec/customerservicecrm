@@ -36,6 +36,7 @@ function buildSessionsRouter(deps) {
             sessionId,
             status: session?.status || 'UNKNOWN',
             qr: session?.qr || null,
+            qrExpiresAt: session?.qrExpiresAt || null,
             connectedNumber: session?.connectedNumber || null,
         };
     };
@@ -231,14 +232,19 @@ function buildSessionsRouter(deps) {
             if (!freshQr) {
                 throw new Error(gatewayResult?.message || 'Gateway tidak mengembalikan QR code');
             }
+            const qrTimeout = Number(gatewayResult?.data?.timeout || gatewayResult?.timeout || 0);
             activeSession.status = 'CONNECTING';
             activeSession.qr = freshQr;
+            activeSession.qrExpiresAt = qrTimeout > 0
+                ? new Date(Date.now() + (qrTimeout * 1000)).toISOString()
+                : null;
             sessions.set(sessionId, activeSession);
 
             log(`QR code regeneration initiated for ${sessionId}`, sessionId);
             res.status(200).json({
                 status: 'success',
                 message: 'QR code siap untuk dipindai.',
+                timeout: qrTimeout || null,
                 session: toSessionPayload(sessionId)
             });
         } catch (error) {

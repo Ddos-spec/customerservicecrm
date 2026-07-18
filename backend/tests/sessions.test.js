@@ -93,13 +93,15 @@ describe('tenant WhatsApp session access', () => {
 
     it('rotates a pending QR without deleting the tenant session', async () => {
         const sessions = new Map([['628111', { status: 'CONNECTING', qr: 'old-qr' }]]);
-        waGateway.login.mockResolvedValue({ status: true, data: { qrcode: 'fresh-qr' } });
+        waGateway.login.mockResolvedValue({ status: true, data: { qrcode: 'fresh-qr', timeout: 30 } });
         const { app, createSession, deleteSession } = createApp({ user: { role: 'admin_agent', session_id: '628111' }, sessions });
 
         const response = await request(app).get('/sessions/628111/qr');
 
         expect(response.status).toBe(200);
         expect(response.body.session.qr).toBe('fresh-qr');
+        expect(response.body.timeout).toBe(30);
+        expect(new Date(response.body.session.qrExpiresAt).getTime()).toBeGreaterThan(Date.now());
         expect(createSession).not.toHaveBeenCalled();
         expect(deleteSession).not.toHaveBeenCalled();
     });
