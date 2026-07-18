@@ -479,8 +479,13 @@ async function authenticate(username, password) {
 async function login(jid) {
     try {
         const form = buildUrlEncoded({ output: 'json' });
-        const payload = await postUrlEncoded('/login', form, getAuthHeader(jid), jid);
-        return payload;
+        // QR generation is an authenticated session operation.  Keeping it on
+        // the same recovery path as status/send calls means a stale per-tenant
+        // gateway URL cannot leave the UI showing a QR that the active gateway
+        // never receives.
+        return await withGatewayAuthOnly(jid, async () => (
+            postUrlEncoded('/login', form, getAuthHeader(jid), jid)
+        ));
     } catch (error) {
         throw new Error(`Login failed: ${error.message}`);
     }
@@ -494,8 +499,9 @@ async function login(jid) {
 async function loginWithPairingCode(jid) {
     try {
         const form = buildUrlEncoded({});
-        const payload = await postUrlEncoded('/login/pair', form, getAuthHeader(jid), jid);
-        return payload;
+        return await withGatewayAuthOnly(jid, async () => (
+            postUrlEncoded('/login/pair', form, getAuthHeader(jid), jid)
+        ));
     } catch (error) {
         throw new Error(`Pairing login failed: ${error.message}`);
     }
@@ -990,6 +996,24 @@ async function withGatewayAuthOnly(jid, operation) {
         assertGatewaySessionMatches(jid, result);
         return result;
     } catch (error) {
+        const configuredGatewayUrl = getSessionGatewayUrl(jid);
+        const hasCustomGateway = configuredGatewayUrl
+            && normalizeGatewayUrl(configuredGatewayUrl) !== normalizeGatewayUrl(DEFAULT_GATEWAY_URL);
+        const staleGatewayRoute = hasCustomGateway && error?.response?.status === 404;
+
+        // A legacy tenant can retain an AI/webhook URL in gateway_url. It has
+        // no WhatsApp endpoints, so QR/pairing/status must safely retry on the
+        // default gateway instead of falsely blaming the phone scan.
+        if (staleGatewayRoute) {
+            console.warn(`[Gateway] Stale custom gateway URL for ${normalizeJid(jid)} returned 404 during authenticated operation; retrying on default gateway.`);
+            setSessionGatewayUrl(jid, null);
+            removeSessionToken(jid);
+            await ensureToken();
+            const fallbackResult = await operation();
+            assertGatewaySessionMatches(jid, fallbackResult);
+            return fallbackResult;
+        }
+
         const shouldRetry = error?.response?.status === 401
             || error?.response?.status === 403
             || (error?.message || '').includes('Gateway session identity mismatch');
