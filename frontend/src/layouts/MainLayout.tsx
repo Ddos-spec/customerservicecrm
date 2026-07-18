@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import {
   Menu, X, LogOut,
   LayoutDashboard, Users, MessageSquare,
-  Clock, ChevronDown, FileCode2, Sun, Moon, Megaphone, Bot, CreditCard
+  Clock, ChevronDown, FileCode2, Sun, Moon, Megaphone, Bot, CreditCard, Link2, Sparkles
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useThemeStore } from '../store/useThemeStore';
@@ -44,6 +44,7 @@ const MainLayout = () => {
       case 'super_admin':
         return [
           { to: '/super-admin', icon: LayoutDashboard, label: 'Dashboard' },
+          { to: '/super-admin/chats', icon: MessageSquare, label: 'Global Inbox' },
           { to: '/super-admin/tenants', icon: Users, label: 'Kelola Tenant' },
           { to: '/super-admin/api-docs', icon: FileCode2, label: 'API Integrasi' },
         ];
@@ -53,6 +54,8 @@ const MainLayout = () => {
           { to: '/admin/chat', icon: MessageSquare, label: 'Workspace' },
           { to: '/admin/history', icon: Clock, label: 'Riwayat' },
           { to: '/admin/chatbot', icon: Bot, label: 'AI Agent' },
+          { to: '/admin/assistant', icon: Sparkles, label: 'AI Assistant' },
+          { to: '/admin/integrations', icon: Link2, label: 'Integrasi' },
           { to: '/admin/agents', icon: Users, label: 'Tim Staff' },
           { to: '/admin/marketing', icon: Megaphone, label: 'Marketing' },
           { to: '/admin/billing', icon: CreditCard, label: 'Langganan' },

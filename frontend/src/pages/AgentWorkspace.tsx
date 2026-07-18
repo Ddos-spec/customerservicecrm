@@ -1,11 +1,12 @@
 import { Fragment, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
-  Send, Paperclip, Smile, MoreVertical, Search,
+  Send, Search,
   Info, Check, CheckCheck, Clock, User, X, Loader2, Users, Image as ImageIcon, Video, Mic, FileText,
-  Wifi, WifiOff, AlertTriangle, Bot, Building2
+  Wifi, WifiOff, AlertTriangle, Bot, Building2, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
+import { createAuthenticatedWebSocket } from '../lib/realtime';
 import { useAuthStore } from '../store/useAuthStore';
 
 // --- Interfaces based on V2 DB Schema ---
@@ -283,11 +284,13 @@ const buildWhatsAppNumberHref = (phone?: string) => {
 };
 
 const CHAT_PAGE_SIZE = 100;
+type InboxFilter = 'all' | 'unread' | 'groups' | 'open' | 'escalated';
 
 const AgentWorkspace = () => {
   const { user } = useAuthStore();
   const [messageText, setMessageText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>('all');
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [realtimeState, setRealtimeState] = useState<'connecting' | 'connected' | 'reconnecting' | 'offline'>('connecting');
@@ -318,12 +321,34 @@ const AgentWorkspace = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatListRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const chatOffsetRef = useRef(0);
   const activeTenantIdRef = useRef(activeTenantId);
+  const selectedChatIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     activeTenantIdRef.current = activeTenantId;
   }, [activeTenantId]);
+
+  useEffect(() => {
+    selectedChatIdRef.current = selectedChat?.id || null;
+  }, [selectedChat?.id]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (event.key === 'Escape') {
+        if (isInfoOpen) setIsInfoOpen(false);
+        else if (document.activeElement === composerRef.current) composerRef.current?.blur();
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [isInfoOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -493,12 +518,6 @@ const AgentWorkspace = () => {
   // --- 3. WebSocket Connection (Real-time) ---
   useEffect(() => {
     let isUnmounted = false;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL
-      ? new URL(import.meta.env.VITE_API_URL).host
-      : window.location.host;
-    const wsUrl = `${protocol}//${host}`;
-
     const connect = () => {
       if (isUnmounted) return;
 
@@ -506,8 +525,14 @@ const AgentWorkspace = () => {
         return;
       }
 
+      const socket = createAuthenticatedWebSocket();
+      if (!socket) {
+        setRealtimeState('offline');
+        return;
+      }
+
       setRealtimeState(reconnectAttemptRef.current > 0 ? 'reconnecting' : 'connecting');
-      ws.current = new WebSocket(wsUrl);
+      ws.current = socket;
 
       ws.current.onopen = () => {
         reconnectAttemptRef.current = 0;
@@ -534,6 +559,7 @@ const AgentWorkspace = () => {
              }
 
              const incomingChatId = msgData.chat_id; // V2 uses chat_id
+             const isCurrentChat = selectedChatIdRef.current === incomingChatId;
 
              // 1. Update Messages if current chat is open
              setSelectedChat((current) => {
@@ -568,6 +594,10 @@ const AgentWorkspace = () => {
                return current;
              });
 
+             if (isCurrentChat && !msgData.isFromMe) {
+               void api.put(`/chats/${incomingChatId}/read?tenant_id=${encodeURIComponent(activeTenantIdRef.current)}`).catch(() => {});
+             }
+
              // 2. Update Chat List (Move to top, update preview)
              setChats((prev) => {
                const existingChatIndex = prev.findIndex(c => c.id === incomingChatId);
@@ -579,7 +609,7 @@ const AgentWorkspace = () => {
                       ...prev[existingChatIndex],
                       last_message_preview: newPreview,
                       last_message_time: new Date().toISOString(),
-                      unread_count: msgData.isFromMe ? prev[existingChatIndex].unread_count : (prev[existingChatIndex].unread_count + 1)
+                      unread_count: msgData.isFromMe || isCurrentChat ? 0 : (prev[existingChatIndex].unread_count + 1)
                   };
                   const newChats = [...prev];
                   newChats.splice(existingChatIndex, 1);
@@ -784,12 +814,28 @@ const AgentWorkspace = () => {
     }
   };
 
-  const filteredChats = chats.filter(c =>
-    (c.display_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.phone_number || '').includes(searchQuery)
-  );
+  const filteredChats = chats.filter((chat) => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const matchesSearch = !normalizedQuery
+      || (chat.display_name || '').toLowerCase().includes(normalizedQuery)
+      || (chat.phone_number || '').includes(normalizedQuery);
+    if (!matchesSearch) return false;
+    if (inboxFilter === 'unread') return chat.unread_count > 0;
+    if (inboxFilter === 'groups') return chat.is_group;
+    if (inboxFilter === 'open') return chat.status === 'open';
+    if (inboxFilter === 'escalated') return chat.status === 'escalated';
+    return true;
+  });
   const openChatsCount = chats.filter((chat) => chat.status === 'open').length;
   const unreadChatsCount = chats.filter((chat) => chat.unread_count > 0).length;
+  const escalatedChatsCount = chats.filter((chat) => chat.status === 'escalated').length;
+  const inboxFilters: Array<{ id: InboxFilter; label: string; count?: number }> = [
+    { id: 'all', label: 'Semua' },
+    { id: 'unread', label: 'Belum dibaca', count: unreadChatsCount },
+    { id: 'escalated', label: 'Perlu agent', count: escalatedChatsCount },
+    { id: 'open', label: 'Open', count: openChatsCount },
+    { id: 'groups', label: 'Grup' },
+  ];
   const isRealtimeStale = realtimeState === 'connected' && timeTick - lastRealtimeAt > 120000;
   const isSessionStale = realtimeState === 'connected'
     && lastSessionUpdateAt > 0
@@ -831,11 +877,11 @@ const AgentWorkspace = () => {
               ) : null}
             </div>
             <div className="flex items-center gap-1 text-[#54656f] dark:text-[#aebac1]">
-              <button className="p-2 transition-colors hover:bg-[#f0f2f5] dark:hover:bg-[#202c33]" title="Status realtime">
+              <span className="p-2" title={realtimeLabel} aria-label={realtimeLabel}>
                 {realtimeState === 'connected' ? <Wifi size={19} /> : <WifiOff size={19} />}
-              </button>
-              <button className="p-2 transition-colors hover:bg-[#f0f2f5] dark:hover:bg-[#202c33]" title="Menu">
-                <MoreVertical size={20} />
+              </span>
+              <button onClick={() => void fetchChats({ reset: true })} className="rounded-lg p-2 transition-colors hover:bg-[#f0f2f5] dark:hover:bg-[#202c33]" title="Muat ulang inbox" aria-label="Muat ulang inbox">
+                <RefreshCw size={18} className={isLoadingChats ? 'animate-spin' : ''} />
               </button>
             </div>
           </div>
@@ -844,7 +890,8 @@ const AgentWorkspace = () => {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#667781] dark:text-[#8696a0]" size={17} />
             <input
               type="text"
-              placeholder="Cari atau mulai obrolan baru"
+              ref={searchInputRef}
+              placeholder="Cari nama atau nomor • Ctrl K"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-lg border-0 bg-[#f0f2f5] py-2.5 pl-11 pr-4 text-sm text-[#111b21] outline-none placeholder:text-[#667781] focus:bg-[#e9edef] dark:bg-[#202c33] dark:text-[#e9edef] dark:placeholder:text-[#8696a0] dark:focus:bg-[#26343d]"
@@ -852,11 +899,13 @@ const AgentWorkspace = () => {
           </div>
 
           <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 text-[13px] font-semibold">
-            <span className="shrink-0 rounded-full bg-[#0a5c46] px-4 py-2 text-[#d9fdd3]">Semua</span>
-            <span className="shrink-0 rounded-full border border-[#d1d7db] px-4 py-2 text-[#54656f] dark:border-[#2a3942] dark:text-[#aebac1]">Belum dibaca {unreadChatsCount || ''}</span>
-            <span className="shrink-0 rounded-full border border-[#d1d7db] px-4 py-2 text-[#54656f] dark:border-[#2a3942] dark:text-[#aebac1]">Grup</span>
-            <span className="shrink-0 rounded-full border border-[#d1d7db] px-4 py-2 text-[#54656f] dark:border-[#2a3942] dark:text-[#aebac1]">Open {openChatsCount}</span>
-            <span className="shrink-0 rounded-full border border-[#d1d7db] px-4 py-2 text-[#54656f] dark:border-[#2a3942] dark:text-[#aebac1]">Kontak {typeof totalContacts === 'number' ? totalContacts.toLocaleString('id-ID') : '-'}</span>
+            {inboxFilters.map((filter) => {
+              const isActive = inboxFilter === filter.id;
+              return <button key={filter.id} type="button" onClick={() => setInboxFilter(filter.id)} aria-pressed={isActive} className={`shrink-0 rounded-full px-4 py-2 transition-colors ${isActive ? 'bg-[#0a5c46] text-[#d9fdd3]' : 'border border-[#d1d7db] text-[#54656f] hover:bg-[#f0f2f5] dark:border-[#2a3942] dark:text-[#aebac1] dark:hover:bg-[#202c33]'}`}>
+                {filter.label}{typeof filter.count === 'number' && filter.count > 0 ? ` ${filter.count}` : ''}
+              </button>;
+            })}
+            <span className="shrink-0 px-1 text-xs font-medium text-[#667781] dark:text-[#8696a0]">{typeof totalContacts === 'number' ? `${totalContacts.toLocaleString('id-ID')} kontak` : ''}</span>
           </div>
         </div>
 
@@ -929,7 +978,7 @@ const AgentWorkspace = () => {
             ))
           ) : (
             <div className="p-10 text-center text-sm text-[#667781] dark:text-[#8696a0]">
-              Belum ada percakapan yang cocok.
+              {inboxFilter === 'all' ? 'Belum ada percakapan yang cocok.' : 'Tidak ada chat pada filter ini.'}
             </div>
           )}
           {!isLoadingChats && isLoadingMoreChats && (
@@ -983,14 +1032,8 @@ const AgentWorkspace = () => {
                         </div>
                       </div>
                       <div className="flex items-center space-x-1 text-[#54656f] dark:text-[#aebac1]">
-                        <button className="p-2 transition-colors hover:bg-[#e9edef] dark:hover:bg-[#2a3942]" title="Cari pesan">
-                            <Search size={20} />
-                        </button>
                         <button className="p-2 transition-colors hover:bg-[#e9edef] dark:hover:bg-[#2a3942]" title="Info" onClick={() => setIsInfoOpen(!isInfoOpen)}>
                             <Info size={20} />
-                        </button>
-                        <button className="p-2 transition-colors hover:bg-[#e9edef] dark:hover:bg-[#2a3942]" title="More">
-                            <MoreVertical size={20} />
                         </button>
                       </div>
                     </div>
@@ -1042,9 +1085,6 @@ const AgentWorkspace = () => {
                     ref={messagesContainerRef}
                     onScroll={handleScroll}
                     className="min-h-0 flex-1 overflow-y-auto bg-[#efeae2] bg-repeat px-6 py-4 dark:bg-[#0b141a] sm:px-8 lg:px-14"
-                    style={{
-                      backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
-                    }}
                 >
                     {isFetchingMore && (
                         <div className="flex justify-center py-2">
@@ -1153,23 +1193,21 @@ const AgentWorkspace = () => {
 
                 {/* Input Area */}
                 <div className="z-10 shrink-0 border-t border-[#d1d7db] bg-[#f0f2f5] px-3 py-2.5 dark:border-[#2a3942] dark:bg-[#202c33] sm:px-4">
-                    <div className="flex w-full items-center gap-2">
-                        <button className="p-2.5 text-[#54656f] transition-colors hover:bg-[#e9edef] hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-[#2a3942] dark:hover:text-[#e9edef]" title="Lampiran">
-                            <Paperclip size={20} />
-                        </button>
-
-                        <button className="p-2.5 text-[#54656f] transition-colors hover:bg-[#e9edef] hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-[#2a3942] dark:hover:text-[#e9edef]" title="Emoji">
-                          <Smile size={20} />
-                        </button>
-
+                    <div className="flex w-full items-end gap-2">
                         <div className="flex min-w-0 flex-1 items-center rounded-lg bg-white px-4 py-2 dark:bg-[#2a3942]">
-                             <input
-                                type="text"
+                             <textarea
+                                ref={composerRef}
                                 value={messageText}
                                 onChange={(e) => setMessageText(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                placeholder="Ketik pesan"
-                                className="min-w-0 flex-1 border-none bg-transparent py-1.5 text-[15px] text-[#111b21] outline-none placeholder:text-[#667781] focus:ring-0 dark:text-[#e9edef] dark:placeholder:text-[#8696a0]"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    void handleSendMessage();
+                                  }
+                                }}
+                                placeholder="Ketik pesan • Enter kirim • Shift+Enter baris baru"
+                                rows={1}
+                                className="min-h-[32px] max-h-32 min-w-0 flex-1 resize-y border-none bg-transparent py-1.5 text-[15px] leading-5 text-[#111b21] outline-none placeholder:text-[#667781] focus:ring-0 dark:text-[#e9edef] dark:placeholder:text-[#8696a0]"
                                 autoComplete="off"
                             />
                         </div>

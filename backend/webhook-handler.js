@@ -250,7 +250,7 @@ function broadcast(data) {
 
     const message = JSON.stringify(data);
     wss.clients.forEach(client => {
-        if (client.readyState === 1) { // OPEN
+        if (client.readyState === 1 && (!wss.canClientReceive || wss.canClientReceive(client, data))) {
             client.send(message);
         }
     });
@@ -367,6 +367,17 @@ const aiReplyBatcher = createReplyBatcher({
             chat: currentChat,
             messageText: combinedMessage,
             savedMessage: latest.savedMessage,
+            // The model request can take several seconds. Re-check ownership
+            // immediately before sending so a human reply during generation is
+            // never followed by a stale AI message.
+            canAutoReply: async () => {
+                const [chatState, tenantState] = await Promise.all([
+                    db.query('SELECT status FROM chats WHERE id = $1 AND tenant_id = $2 LIMIT 1', [currentChat.id, currentTenant.id]),
+                    db.getTenantById(currentTenant.id),
+                ]);
+                return chatState.rows[0]?.status !== 'escalated'
+                    && (tenantState?.ai_mode || 'agent') === 'chatbot';
+            },
             sendReply: (replyText) => sendChatbotAutoReply(currentTenant, currentChat, latest.targetJid, replyText),
         });
     },
@@ -703,16 +714,20 @@ async function handleReceipt(sessionId, data) {
     } catch (error) {
         console.warn(`[Webhook] Failed to persist receipt ${type} for ${messageId}: ${error.message}`);
     }
+    const tenantIds = [...new Set(updatedMessages.map((message) => message.tenant_id).filter(Boolean))];
+    const tenantId = tenantIds.length === 1 ? tenantIds[0] : null;
 
     // Broadcast to WebSocket clients
     broadcast({
         type: 'receipt',
         sessionId,
+        tenantId,
         data: {
             receiptType: type,
             messageId,
             from,
             timestamp,
+            tenant_id: tenantId,
             messages: updatedMessages.map((message) => ({
                 db_id: message.id,
                 chat_id: message.chat_id,
@@ -774,22 +789,10 @@ async function handleConnection(sessionId, data) {
     // Extract phone number from JID (format: 628123456789@s.whatsapp.net)
     const connectedNumber = jid ? jid.split('@')[0] : null;
 
-    // Broadcast to WebSocket clients
-    broadcast({
-        type: 'session-update',
-        data: [{
-            sessionId,
-            status: status === 'connected' ? 'CONNECTED' :
-                status === 'disconnected' ? 'DISCONNECTED' :
-                    status === 'logged_out' ? 'LOGGED_OUT' : 'UNKNOWN',
-            reason,
-            connectedNumber,
-        }],
-    });
-
     console.log(`[Webhook] Connection status: ${status} for session ${sessionId}${connectedNumber ? ` (${connectedNumber})` : ''}`);
 
-    // Emit 'connection' event (handled by index.js listener)
+    // index.js updates the canonical session model and broadcasts the enriched,
+    // tenant-scoped snapshot. Do not publish this raw gateway event first.
     module.exports.emit('connection', sessionId, { status, reason, connectedNumber });
 
     // Notify admins when a session disconnects/logs out

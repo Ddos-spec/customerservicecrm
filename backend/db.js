@@ -67,6 +67,36 @@ async function getTenantBySessionId(sessionId) {
     return result.rows[0] || null;
 }
 
+async function getSessionOwnerships(sessionIds) {
+    const ids = [...new Set((sessionIds || [])
+        .map((sessionId) => String(sessionId || '').trim())
+        .filter(Boolean))];
+    if (ids.length === 0) return [];
+
+    const result = await query(`
+        SELECT
+            t.session_id,
+            t.id AS tenant_id,
+            t.company_name AS tenant_name,
+            owner.id AS owner_id,
+            owner.name AS owner_name,
+            owner.email AS owner_email
+        FROM tenants t
+        LEFT JOIN LATERAL (
+            SELECT id, name, email
+            FROM users
+            WHERE tenant_id = t.id
+              AND role = 'admin_agent'
+              AND status = 'active'
+            ORDER BY created_at ASC
+            LIMIT 1
+        ) owner ON TRUE
+        WHERE t.session_id = ANY($1::text[])
+    `, [ids]);
+
+    return result.rows;
+}
+
 async function clearSessionReferences(sessionId) {
     const normalized = String(sessionId || '').trim();
     if (!normalized) {
@@ -403,7 +433,7 @@ async function updateMessageDelivery({ messageId, waMessageId, status, delivered
         UPDATE messages
         SET ${fields.join(', ')}
         WHERE id = $${idx}
-        RETURNING *
+        RETURNING messages.*, (SELECT tenant_id FROM chats WHERE chats.id = messages.chat_id) AS tenant_id
     `, values);
     return result.rows[0] || null;
 }
@@ -417,7 +447,7 @@ async function markMessageOutboundSent(messageId, waMessageId) {
             sent_at = COALESCE(sent_at, now()),
             delivery_error = NULL
         WHERE id = $1
-        RETURNING *
+        RETURNING messages.*, (SELECT tenant_id FROM chats WHERE chats.id = messages.chat_id) AS tenant_id
     `, [messageId, waMessageId || null]);
     return result.rows[0] || null;
 }
@@ -457,7 +487,7 @@ async function updateMessageReceiptByWaId(waMessageIds, receiptType, timestamp) 
             END
             ${timestampSql}
         WHERE wa_message_id = ANY($1::text[])
-        RETURNING *
+        RETURNING messages.*, (SELECT tenant_id FROM chats WHERE chats.id = messages.chat_id) AS tenant_id
     `, params);
     return result.rows;
 }
@@ -934,6 +964,75 @@ async function reopenChatToAi(chatId, tenantId) {
     return result.rows[0] || null;
 }
 
+async function ensureActivityEventsTable() {
+    await query(`
+        CREATE TABLE IF NOT EXISTS activity_events (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+            actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            action VARCHAR(100) NOT NULL,
+            entity_type VARCHAR(80),
+            entity_id TEXT,
+            summary TEXT NOT NULL,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+        )
+    `);
+    await query('CREATE INDEX IF NOT EXISTS idx_activity_events_tenant_created ON activity_events (tenant_id, created_at DESC)');
+    await query('CREATE INDEX IF NOT EXISTS idx_activity_events_actor_created ON activity_events (actor_id, created_at DESC)');
+}
+
+async function logActivity({ tenantId = null, actorId = null, action, entityType = null, entityId = null, summary, metadata = {} }) {
+    if (!action || !summary) return null;
+    const result = await query(`
+        INSERT INTO activity_events (tenant_id, actor_id, action, entity_type, entity_id, summary, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        RETURNING *
+    `, [tenantId, actorId, action, entityType, entityId, summary, JSON.stringify(metadata || {})]);
+    return result.rows[0] || null;
+}
+
+async function getActivityFeed({ tenantId = null, limit = 20 }) {
+    const normalizedLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    const params = [normalizedLimit];
+    const tenantFilter = tenantId ? `WHERE e.tenant_id = $${params.push(tenantId)}` : '';
+    const result = await query(`
+        SELECT e.id, e.tenant_id, e.actor_id, e.action, e.entity_type, e.entity_id,
+               e.summary, e.metadata, e.created_at,
+               COALESCE(u.name, 'Sistem') AS actor_name,
+               t.company_name AS tenant_name
+        FROM activity_events e
+        LEFT JOIN users u ON u.id = e.actor_id
+        LEFT JOIN tenants t ON t.id = e.tenant_id
+        ${tenantFilter}
+        ORDER BY e.created_at DESC
+        LIMIT $1
+    `, params);
+    return result.rows;
+}
+
+async function getTeamPerformance(tenantId, range = '30days') {
+    const result = await query(`
+        SELECT u.id, u.name, u.email,
+               COUNT(m.id) FILTER (WHERE m.is_from_me = true) AS outbound_messages,
+               COUNT(DISTINCT m.chat_id) FILTER (WHERE m.is_from_me = true) AS handled_chats,
+               MAX(m.created_at) FILTER (WHERE m.is_from_me = true) AS last_reply_at
+        FROM users u
+        LEFT JOIN messages m ON m.sender_id = u.id::text
+          AND m.is_from_me = true
+          AND m.created_at >= now() - CASE $2
+            WHEN 'today' THEN interval '1 day'
+            WHEN '7days' THEN interval '7 days'
+            WHEN '90days' THEN interval '90 days'
+            ELSE interval '30 days'
+          END
+        WHERE u.tenant_id = $1 AND u.role IN ('admin_agent', 'agent')
+        GROUP BY u.id, u.name, u.email
+        ORDER BY outbound_messages DESC, last_reply_at DESC NULLS LAST
+    `, [tenantId, range]);
+    return result.rows;
+}
+
 function buildChatRangeCondition(range) {
     switch (range) {
         case 'today':
@@ -1020,7 +1119,7 @@ async function getSuperAdminStats(range = null) {
 module.exports = {
     query, getClient, pool,
     // Users & Tenants
-    findUserByEmail, findUserById, getUserBySessionId, getTenantById, getTenantBySessionId, clearSessionReferences, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
+    findUserByEmail, findUserById, getUserBySessionId, getTenantById, getTenantBySessionId, getSessionOwnerships, clearSessionReferences, getAllTenants: async () => (await query('SELECT * FROM tenants ORDER BY created_at DESC')).rows,
     messageExistsByWaId,
     getTenantAiConfig,
     upsertTenantAiConfig,
@@ -1044,6 +1143,7 @@ module.exports = {
     },
     deleteUser: async (id) => (await query('DELETE FROM users WHERE id = $1 RETURNING id', [id])).rows[0],
     getUsersByTenant: async (tid) => (await query('SELECT * FROM users WHERE tenant_id = $1', [tid])).rows,
+    getSuperAdmins: async () => (await query("SELECT * FROM users WHERE role = 'super_admin' ORDER BY created_at DESC")).rows,
     getUsersByTenantWithPhone: async (tid, roles) => (await query('SELECT * FROM users WHERE tenant_id = $1 AND role = ANY($2::text[]) AND phone_number IS NOT NULL', [tid, roles])).rows,
     getSuperAdminsWithPhone: async () => (await query("SELECT * FROM users WHERE role = 'super_admin' AND phone_number IS NOT NULL")).rows,
     getTenantSeatLimit: async () => 100, // Hardcoded for now
@@ -1314,6 +1414,7 @@ module.exports = {
     syncContacts, getContactsByTenant, getContactCountByTenant, getContactByJid, getPnByLid,
     // Chats & Messages
     getOrCreateChat, logMessage, getChatsByTenant, getMessagesByChat, markChatAsRead, reopenChatToAi,
+    ensureActivityEventsTable, logActivity, getActivityFeed, getTeamPerformance,
     updateMessageDelivery,
     markMessageOutboundSent,
     updateMessageReceiptByWaId,

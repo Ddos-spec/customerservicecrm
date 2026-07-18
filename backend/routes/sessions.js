@@ -9,34 +9,59 @@ function buildSessionsRouter(deps) {
         getSessionsDetails,
         deleteSession,
         log,
-        phonePairing,
         refreshSession,
     } = deps;
+
+    // A tenant owner must only ever see or operate the WhatsApp device bound to
+    // their tenant.  Apart from being an access-control boundary, this prevents
+    // one tenant accidentally regenerating another tenant's QR/login state.
+    const getCurrentUser = (req) => deps.resolveAuthenticatedUser?.(req) || req.session?.user || null;
+    const canAccessSession = (req, sessionId) => {
+        const user = getCurrentUser(req);
+        return Boolean(user && (
+            user.role === 'super_admin'
+            || (user.role === 'admin_agent' && String(user.session_id || '') === String(sessionId || ''))
+        ));
+    };
+    const requireSessionAccess = (req, res, next) => {
+        if (!canAccessSession(req, req.params.sessionId)) {
+            return res.status(403).json({ status: 'error', message: 'Anda tidak memiliki akses ke sesi WhatsApp ini.' });
+        }
+        next();
+    };
+    const toSessionPayload = (sessionId) => {
+        const session = sessions.get(sessionId);
+        return {
+            sessionId,
+            status: session?.status || 'UNKNOWN',
+            qr: session?.qr || null,
+            connectedNumber: session?.connectedNumber || null,
+        };
+    };
+
+    async function ensureSessionForConnection(sessionId) {
+        const existing = sessions.get(sessionId);
+        if (existing?.status === 'CONNECTED') return existing;
+
+        // Do not logout/recreate a known device merely to display a QR or a
+        // phone-pairing code. Recreating used to invalidate a working tenant
+        // device and made unrelated tenants reconnect after an update.
+        if (!sessions.has(sessionId)) {
+            await createSession(sessionId);
+        }
+        return sessions.get(sessionId);
+    }
 
     router.post('/sessions', async (req, res) => {
         // ... (truncated for brevity, logic remains same)
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
 
-        const currentUser = req.session && req.session.adminAuthed ? {
-            email: req.session.userEmail,
-            role: req.session.userRole
-        } : null;
-
+        const currentUser = getCurrentUser(req);
         if (!currentUser) {
-            const masterKey = req.headers['x-master-key'];
-            const requiredMasterKey = process.env.MASTER_API_KEY;
-
-            if (requiredMasterKey && masterKey !== requiredMasterKey) {
-                log('Unauthorized session creation attempt', 'SYSTEM', {
-                    event: 'auth-failed',
-                    endpoint: req.originalUrl,
-                    ip: req.ip
-                });
-                return res.status(401).json({
-                    status: 'error',
-                    message: 'Master API key required for session creation'
-                });
-            }
+            return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
+        if (currentUser.role !== 'super_admin') {
+            return res.status(403).json({ status: 'error', message: 'Only super admin can create a new WhatsApp session' });
         }
 
         const { sessionId } = req.body;
@@ -70,19 +95,29 @@ function buildSessionsRouter(deps) {
         }
     });
 
-    router.get('/sessions', (req, res) => {
+    router.get('/sessions', async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl });
 
-        const currentUser = req.session && req.session.adminAuthed ? {
-            email: req.session.userEmail,
-            role: req.session.userRole
-        } : null;
+        const user = getCurrentUser(req);
+        if (!user) {
+            return res.status(401).json({ status: 'error', message: 'Authentication required' });
+        }
 
-        let sessionsData = [];
-        if (currentUser) {
-            sessionsData = getSessionsDetails(currentUser.email, currentUser.role === 'admin');
-        } else {
-            sessionsData = getSessionsDetails();
+        try {
+            await deps.refreshSessionOwnerships?.();
+        } catch (error) {
+            // Ownership metadata must never make the session control plane
+            // unavailable. The UI will explicitly mark a session as unmapped
+            // instead of inventing an owner when the lookup fails.
+            log('Session ownership lookup failed', 'SYSTEM', {
+                event: 'session-ownership-lookup-failed',
+                error: error.message,
+            });
+        }
+
+        let sessionsData = getSessionsDetails();
+        if (user.role !== 'super_admin') {
+            sessionsData = sessionsData.filter((session) => String(session.sessionId) === String(user.session_id || ''));
         }
 
         // Trigger background refresh for stale sessions
@@ -95,18 +130,13 @@ function buildSessionsRouter(deps) {
         return res.status(200).json(sessionsData);
     });
 
-    router.delete('/sessions/:sessionId', async (req, res) => {
+    router.delete('/sessions/:sessionId', requireSessionAccess, async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
 
         const { sessionId } = req.params;
         if (!sessionId) {
             return res.status(400).json({ status: 'error', message: 'sessionId parameter is required' });
         }
-
-        const currentUser = req.session && req.session.adminAuthed ? {
-            email: req.session.userEmail,
-            role: req.session.userRole
-        } : null;
 
         try {
             const cleanup = await deleteSession(sessionId);
@@ -118,7 +148,7 @@ function buildSessionsRouter(deps) {
         }
     });
 
-    router.post('/sessions/:sessionId/disconnect', async (req, res) => {
+    router.post('/sessions/:sessionId/disconnect', requireSessionAccess, async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
 
         const { sessionId } = req.params;
@@ -143,33 +173,49 @@ function buildSessionsRouter(deps) {
         }
     });
 
-    router.get('/sessions/:sessionId/qr', async (req, res) => {
+    router.get('/sessions/:sessionId/qr', requireSessionAccess, async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl });
 
         const { sessionId } = req.params;
-        const session = sessions.get(sessionId);
 
         log(`QR code regeneration requested for ${sessionId}`, sessionId);
 
         try {
-            if (phonePairing) {
-                await phonePairing.deletePairing(sessionId);
+            const activeSession = await ensureSessionForConnection(sessionId);
+            if (activeSession?.status === 'CONNECTED') {
+                return res.status(409).json({
+                    status: 'error',
+                    message: 'WhatsApp sudah terhubung. Putuskan koneksi secara eksplisit bila memang ingin mengganti perangkat.'
+                });
             }
 
-            const sessionOwner = session ? session.owner : null;
-
-            if (sessions.has(sessionId)) {
-                try {
-                    await deleteSession(sessionId, { unlinkReferences: false, reason: 'qr-regeneration' });
-                } catch (e) { log('Ignored deleteSession error', sessionId); }
+            // Rotate only the pending login challenge. The gateway disconnects
+            // its temporary, unpaired client and issues a fresh QR; it does not
+            // logout a linked WhatsApp device.
+            const gatewayResult = await waGateway.login(sessionId);
+            const freshQr = gatewayResult?.data?.qrcode || gatewayResult?.qrcode || null;
+            const gatewayMessage = (gatewayResult?.message || '').toLowerCase();
+            if (gatewayMessage.includes('reconnected') || gatewayMessage.includes('already connected')) {
+                activeSession.status = 'CONNECTED';
+                activeSession.qr = null;
+                sessions.set(sessionId, activeSession);
+                return res.status(409).json({
+                    status: 'error',
+                    message: 'WhatsApp sudah terhubung. Putuskan koneksi secara eksplisit bila memang ingin mengganti perangkat.'
+                });
             }
-
-            await createSession(sessionId, sessionOwner);
+            if (!freshQr) {
+                throw new Error(gatewayResult?.message || 'Gateway tidak mengembalikan QR code');
+            }
+            activeSession.status = 'CONNECTING';
+            activeSession.qr = freshQr;
+            sessions.set(sessionId, activeSession);
 
             log(`QR code regeneration initiated for ${sessionId}`, sessionId);
             res.status(200).json({
                 status: 'success',
-                message: 'QR code regeneration initiated. Please wait for the QR code to appear.'
+                message: 'QR code siap untuk dipindai.',
+                session: toSessionPayload(sessionId)
             });
         } catch (error) {
             log(`Error regenerating QR for ${sessionId}: ${error.message}`, sessionId, { error });
@@ -180,7 +226,7 @@ function buildSessionsRouter(deps) {
         }
     });
 
-    router.get('/sessions/:sessionId/pair', async (req, res) => {
+    router.get('/sessions/:sessionId/pair', requireSessionAccess, async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl });
 
         const { sessionId } = req.params;
@@ -189,22 +235,23 @@ function buildSessionsRouter(deps) {
         }
 
         try {
-            const session = sessions.get(sessionId);
-            const sessionOwner = session ? session.owner : null;
-
-            // Recreate session to get a fresh token before requesting pair code
-            if (sessions.has(sessionId)) {
-                try {
-                    await deleteSession(sessionId, { unlinkReferences: false, reason: 'pair-code-regeneration' });
-                } catch (e) { log('Ignored deleteSession error', sessionId); }
+            const activeSession = await ensureSessionForConnection(sessionId);
+            if (activeSession?.status === 'CONNECTED') {
+                return res.status(409).json({
+                    status: 'error',
+                    message: 'WhatsApp sudah terhubung. Putuskan koneksi secara eksplisit bila memang ingin mengganti perangkat.'
+                });
             }
-            await createSession(sessionId, sessionOwner);
 
             const result = await waGateway.loginWithPairingCode(sessionId);
+            const pairCode = result?.data?.paircode || result?.paircode || null;
+            if (!pairCode) {
+                throw new Error(result?.message || 'Gateway tidak mengembalikan kode telepon');
+            }
             res.status(200).json({
                 status: 'success',
-                pairCode: result.paircode,
-                timeout: result.timeout,
+                pairCode,
+                timeout: result?.data?.timeout || result?.timeout || 160,
             });
         } catch (error) {
             log('Pair code error', sessionId, { event: 'pair-code-error', error: error.message });

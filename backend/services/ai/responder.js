@@ -35,7 +35,12 @@ async function logEscalation({ tenantId, chatId, triggerType, detail, messageId 
  * `sendReply` di-inject oleh caller (webhook-handler.js) untuk menghindari circular require
  * dan supaya fungsi ini gampang diuji tanpa provider WhatsApp asli.
  */
-async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, sendReply }) {
+async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, sendReply, canAutoReply }) {
+    const isStillSafeToReply = async () => {
+        if (typeof canAutoReply !== 'function') return true;
+        return Boolean(await canAutoReply());
+    };
+
     const config = await db.getTenantAiConfig(tenant.id);
     if (!config.openrouter_api_key) {
         console.warn(`[AI Agent] Tenant ${tenant.id} belum mengisi API key OpenRouter — pesan dibiarkan masuk ke inbox agent seperti biasa.`);
@@ -99,16 +104,34 @@ async function handleIncomingMessage({ tenant, chat, messageText, savedMessage, 
             completionTokens: completion.usage?.completion_tokens,
         });
     } catch (error) {
-        console.error('[AI Agent] Generation failed; chat remains open for retry', {
+        console.error('[AI Agent] Generation failed; escalating chat to a human', {
             tenantId: tenant.id,
             chatId: chat.id,
             error: error.message,
+        });
+        if (!await isStillSafeToReply()) {
+            console.info(`[AI Agent] Provider failure reply dibatalkan; chat ${chat.id} sudah diambil alih manusia atau AI dimatikan.`);
+            return;
+        }
+        // A provider failure must not silently leave the customer stranded or
+        // let the bot repeatedly retry. Put the chat in the human queue and
+        // leave one transparent message in the same WhatsApp conversation.
+        await logEscalation({
+            tenantId: tenant.id,
+            chatId: chat.id,
+            triggerType: 'ai_provider_failure',
+            detail: error.message,
+            messageId: savedMessage?.id,
         });
         await sendReply(SERVICE_FAILURE_REPLY);
         return;
     }
 
     const replyText = stripHandoffMarker(completion.text);
+    if (!await isStillSafeToReply()) {
+        console.info(`[AI Agent] Balasan generasi ${completion.id || '-'} dibatalkan; chat ${chat.id} sudah diambil alih manusia atau AI dimatikan.`);
+        return;
+    }
     if (requestsHumanHandoff(completion.text)) {
         await logEscalation({
             tenantId: tenant.id,

@@ -24,11 +24,14 @@ const { buildSearchRouter } = require('./routes/search');
 const { buildSyncRouter } = require('./routes/sync'); // Import Sync Router
 const { buildMarketingRouter } = require('./routes/marketing');
 const { buildAiAgentRouter } = require('./routes/ai-agent');
+const { buildTenantAssistantRouter } = require('./routes/tenant-assistant');
 const { buildAnalyticsRouter } = require('./routes/analytics');
 const { buildDebugRouter } = require('./routes/debug'); // Import Debug Router
+const { buildActivityRouter } = require('./routes/activity');
 const { buildExternalDashboardRouter } = require('./routes/external-dashboard');
 const metaWebhookRouter = require('./routes/webhook-meta'); // Import Meta Webhook
 const waGateway = require('./wa-gateway-client');
+const { resolveAuthenticatedUser } = require('./auth');
 
 const router = express.Router();
 const MAX_MESSAGES_PER_BATCH = parseInt(process.env.MAX_MESSAGES_PER_BATCH || '50', 10);
@@ -49,7 +52,8 @@ function initializeApi(
     validateWhatsAppRecipient,
     getSessionContacts,
     refreshSession, // New parameter
-    waGateway
+    waGateway,
+    refreshSessionOwnerships
 ) {
     const validateToken = buildTokenValidator(sessionTokens);
 
@@ -64,7 +68,9 @@ function initializeApi(
         scheduleMessageSend,
         validateWhatsAppRecipient,
         validateToken,
-        refreshSession // Add to deps
+        resolveAuthenticatedUser,
+        refreshSession, // Add to deps
+        refreshSessionOwnerships
     };
 
     router.use(helmet());
@@ -242,7 +248,9 @@ function initializeApi(
     router.use('/webhook/meta', metaWebhookRouter); // Mount Meta Webhook
     router.use('/marketing', buildMarketingRouter({ db, validateToken }));
     router.use('/ai-agent', buildAiAgentRouter({ db }));
-    router.use('/analytics', buildAnalyticsRouter({ db, validateToken }));
+    router.use('/assistant', buildTenantAssistantRouter({ db, resolveAuthenticatedUser }));
+    router.use('/analytics', buildAnalyticsRouter({ db, validateToken, resolveAuthenticatedUser }));
+    router.use('/activity', buildActivityRouter({ db, resolveAuthenticatedUser }));
     router.use('/debug', buildDebugRouter({ db })); // Mount Debug Router
     router.use(buildSearchRouter({ validateToken }));
 

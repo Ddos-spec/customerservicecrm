@@ -10,6 +10,7 @@ interface AgentUser {
   email: string;
   status: string;
   role: string;
+  phone_number?: string | null;
 }
 
 interface UserInvite {
@@ -41,6 +42,9 @@ const AgentManagement = () => {
     email: '',
     phone_number: ''
   });
+  const [editingAgent, setEditingAgent] = useState<AgentUser | null>(null);
+  const [editFormData, setEditFormData] = useState({ name: '', email: '', phone_number: '' });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const fetchAgents = async () => {
     setIsLoading(true);
@@ -149,6 +153,44 @@ const AgentManagement = () => {
     } catch (error: any) {
       console.error('Failed to delete agent:', error);
       toast.error(error.response?.data?.error || 'Gagal menghapus staff');
+    }
+  };
+
+  const openEditAgent = (agent: AgentUser) => {
+    setEditingAgent(agent);
+    setEditFormData({
+      name: agent.name || '',
+      email: agent.email || '',
+      phone_number: agent.phone_number || '',
+    });
+  };
+
+  const handleEditAgent = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingAgent) return;
+    if (!editFormData.name.trim() || !editFormData.email.trim()) {
+      toast.error('Nama dan email staff wajib diisi.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const response = await api.patch(`/admin/users/${editingAgent.id}`, {
+        name: editFormData.name.trim(),
+        email: editFormData.email.trim(),
+        phone_number: editFormData.phone_number.trim(),
+      });
+      const updated = response.data?.user as AgentUser | undefined;
+      setAgents((current) => current.map((agent) => (
+        agent.id === editingAgent.id ? { ...agent, ...updated } : agent
+      )));
+      setEditingAgent(null);
+      toast.success('Data staff diperbarui');
+    } catch (error: any) {
+      console.error('Failed to update staff:', error);
+      toast.error(error.response?.data?.error || 'Gagal memperbarui staff');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -273,7 +315,10 @@ const AgentManagement = () => {
                   </div>
 
                   <div className="flex items-center space-x-3 mt-8 pt-6 border-t border-gray-50 dark:border-slate-700">
-                    <button className="flex-1 flex items-center justify-center space-x-2 py-3 bg-gray-950 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-gray-200 dark:shadow-black/30">
+                    <button
+                      onClick={() => openEditAgent(agent)}
+                      className="flex-1 flex items-center justify-center space-x-2 py-3 bg-gray-950 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-gray-200 dark:shadow-black/30"
+                    >
                       <Edit2 size={14} />
                       <span>Edit</span>
                     </button>
@@ -374,6 +419,32 @@ const AgentManagement = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {editingAgent && (
+        <div className="fixed inset-0 z-[101] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-md rounded-[2.5rem] bg-white p-10 shadow-2xl dark:bg-slate-900">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Manajemen Tim</p>
+                <h2 className="mt-1 text-2xl font-black text-gray-900 dark:text-white">Edit Staff</h2>
+              </div>
+              <button onClick={() => setEditingAgent(null)} aria-label="Tutup edit staff"><X className="text-gray-400 dark:text-gray-500" /></button>
+            </div>
+            <form onSubmit={handleEditAgent} className="space-y-4">
+              <input required placeholder="Nama lengkap" value={editFormData.name} onChange={(event) => setEditFormData((current) => ({ ...current, name: event.target.value }))} className="w-full rounded-xl bg-gray-50 p-4 text-sm font-bold text-gray-900 placeholder:text-gray-400 dark:bg-slate-800 dark:text-white" />
+              <input required type="email" placeholder="Email kerja" value={editFormData.email} onChange={(event) => setEditFormData((current) => ({ ...current, email: event.target.value }))} className="w-full rounded-xl bg-gray-50 p-4 text-sm font-bold text-gray-900 placeholder:text-gray-400 dark:bg-slate-800 dark:text-white" />
+              <input type="tel" placeholder="No. WhatsApp (opsional)" value={editFormData.phone_number} onChange={(event) => setEditFormData((current) => ({ ...current, phone_number: event.target.value }))} className="w-full rounded-xl bg-gray-50 p-4 text-sm font-bold text-gray-900 placeholder:text-gray-400 dark:bg-slate-800 dark:text-white" />
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditingAgent(null)} disabled={isSavingEdit} className="flex-1 rounded-xl border border-gray-200 py-3 text-xs font-black uppercase tracking-widest text-gray-600 dark:border-slate-700 dark:text-gray-300">Batal</button>
+                <button disabled={isSavingEdit} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-xs font-black uppercase tracking-widest text-white disabled:bg-blue-400">
+                  {isSavingEdit && <Loader2 className="animate-spin" size={16} />}
+                  {isSavingEdit ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

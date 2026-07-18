@@ -1,30 +1,37 @@
-// Activity Logger - Dummy Version (Disabled Feature)
-// This file is kept to prevent 'ReferenceError' in other modules that import it.
+const db = require('./db');
 
+// Compatibility facade for legacy callers. Unlike the former no-op stub, every
+// method persists a privacy-safe event in activity_events.
 class ActivityLogger {
-    constructor(encryptionKey) {
-        // No-op
+    async record(action, payload = {}) {
+        return db.logActivity({
+            tenantId: payload.tenantId || payload.tenant_id || null,
+            actorId: payload.actorId || payload.actor_id || null,
+            action,
+            entityType: payload.entityType || payload.entity_type || null,
+            entityId: payload.entityId || payload.entity_id || null,
+            summary: payload.summary || action,
+            metadata: payload.metadata || {},
+        });
     }
 
-    async logLogin() { return true; }
-    async logUserCreate() { return true; }
-    async logUserUpdate() { return true; }
-    async logUserDelete() { return true; }
-    async logSessionCreate() { return true; }
-    async logSessionDelete() { return true; }
-    async logMessageSend() { return true; }
-    async logCampaignCreate() { return true; }
-    async logCampaignStart() { return true; }
-    async logCampaignPause() { return true; }
-    async logCampaignResume() { return true; }
-    async logCampaignComplete() { return true; }
-    async logCampaignDelete() { return true; }
-    async logCampaignMessage() { return true; }
-    async logCampaignRetry() { return true; }
+    logLogin(payload) { return this.record('auth.login', payload); }
+    logUserCreate(payload) { return this.record('user.created', payload); }
+    logUserUpdate(payload) { return this.record('user.updated', payload); }
+    logUserDelete(payload) { return this.record('user.deleted', payload); }
+    logSessionCreate(payload) { return this.record('session.created', payload); }
+    logSessionDelete(payload) { return this.record('session.deleted', payload); }
+    logMessageSend(payload) { return this.record('message.queued', payload); }
+    logCampaignCreate(payload) { return this.record('campaign.created', payload); }
+    logCampaignStart(payload) { return this.record('campaign.started', payload); }
+    logCampaignPause(payload) { return this.record('campaign.paused', payload); }
+    logCampaignResume(payload) { return this.record('campaign.resumed', payload); }
+    logCampaignComplete(payload) { return this.record('campaign.completed', payload); }
+    logCampaignDelete(payload) { return this.record('campaign.deleted', payload); }
+    logCampaignMessage(payload) { return this.record('campaign.message_sent', payload); }
+    logCampaignRetry(payload) { return this.record('campaign.retry', payload); }
 
-    async getActivities() { return []; }
-    async getUserActivities() { return []; }
-    async getActivitySummary() { return { total: 0, byType: {} }; }
+    getActivities({ tenantId, limit } = {}) { return db.getActivityFeed({ tenantId, limit }); }
 }
 
 module.exports = ActivityLogger;

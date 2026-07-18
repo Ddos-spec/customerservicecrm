@@ -496,7 +496,7 @@ const AiAgentSettings = () => {
                   className="w-full rounded-xl border border-gray-200 bg-white p-4 text-sm font-semibold text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
                 />
                 <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  Key tidak pernah ditampilkan kembali. Biaya pemakaian dibayar langsung melalui akun OpenRouter tenant.
+                  Satu key dipakai untuk AI Customer Service dan AI Assistant internal tenant. Menyimpan key tidak otomatis menyalakan balasan customer; biaya pemakaian dibayar melalui akun OpenRouter tenant.
                 </p>
               </div>
 

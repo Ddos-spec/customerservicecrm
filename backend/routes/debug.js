@@ -1,15 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { validateToken } = require('../auth');
+const { resolveAuthenticatedUser } = require('../auth');
 
 function buildDebugRouter(deps) {
     const { db } = deps;
 
     // Helper untuk auth session
     const requireOwner = (req, res) => {
-        const user = req.session?.user;
+        const user = resolveAuthenticatedUser(req);
         if (!user) {
             res.status(401).json({ status: 'error', message: 'Authentication required' });
+            return null;
+        }
+        if (!['super_admin', 'admin_agent'].includes(user.role)) {
+            res.status(403).json({ status: 'error', message: 'Owner access required' });
             return null;
         }
         return { user, tenantId: user.tenant_id };

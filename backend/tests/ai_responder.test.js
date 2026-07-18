@@ -72,7 +72,7 @@ describe('AI responder', () => {
         expect(sendReply).toHaveBeenCalledWith('Ada, ukuran XL tersedia.');
     });
 
-    it('membiarkan chat tetap terbuka saat layanan AI gagal agar dapat dicoba lagi', async () => {
+    it('mengarahkan ke manusia saat layanan AI gagal agar customer tidak dibiarkan menunggu', async () => {
         createEmbeddings.mockRejectedValue(new Error('provider unavailable'));
         const sendReply = jest.fn();
 
@@ -84,9 +84,42 @@ describe('AI responder', () => {
             sendReply,
         });
 
-        expect(db.query).not.toHaveBeenCalled();
+        expect(db.query).toHaveBeenCalledWith(
+            expect.stringContaining('INSERT INTO escalation_log'),
+            expect.arrayContaining(['tenant-1', 'chat-1', 'ai_provider_failure'])
+        );
+        expect(db.query).toHaveBeenCalledWith(
+            expect.stringContaining("UPDATE chats SET status = 'escalated'"),
+            ['chat-1']
+        );
         expect(sendReply).toHaveBeenCalledWith(expect.stringContaining('kendala teknis'));
         expect(chatCompletion).not.toHaveBeenCalled();
+    });
+
+    it('membatalkan balasan yang selesai setelah manusia mengambil alih chat', async () => {
+        db.getMessagesByChat.mockResolvedValue([
+            { message_type: 'text', body: 'Tolong cek pesanan saya', is_from_me: false },
+        ]);
+        chatCompletion.mockResolvedValueOnce({
+            text: 'Baik, saya bantu cek nomor pesanan Anda.',
+            model: 'test/chat-model',
+            id: 'generation-after-takeover',
+        });
+        const sendReply = jest.fn();
+        const canAutoReply = jest.fn().mockResolvedValue(false);
+
+        await handleIncomingMessage({
+            tenant,
+            chat,
+            messageText: 'Tolong cek pesanan saya',
+            savedMessage,
+            sendReply,
+            canAutoReply,
+        });
+
+        expect(canAutoReply).toHaveBeenCalledTimes(1);
+        expect(sendReply).not.toHaveBeenCalled();
+        expect(db.query).not.toHaveBeenCalled();
     });
 
     it('menyembunyikan marker handoff dan benar-benar menghentikan AI di chat', async () => {

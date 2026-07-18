@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/api';
+import { createAuthenticatedWebSocket } from '../lib/realtime';
 import { toast } from 'sonner';
 
 interface Stats {
@@ -148,7 +149,10 @@ const AdminDashboard = () => {
     setConnectMode('qr');
     setPairCode('');
     try {
-      await api.get(`/sessions/${sessionId}/qr`);
+      const res = await api.get(`/sessions/${sessionId}/qr`);
+      const session = res.data?.session;
+      if (session?.qr) setQrUrl(asDataUrl(session.qr));
+      if (session?.connectedNumber) setConnectedNumber(session.connectedNumber);
       setIsQrModalOpen(true);
     } catch (error) {
       console.error('Failed to request QR:', error);
@@ -201,13 +205,9 @@ const AdminDashboard = () => {
 
   // WebSocket for real-time session updates
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL
-      ? new URL(import.meta.env.VITE_API_URL).host 
-      : window.location.host;
-
-    const wsUrl = `${protocol}//${host}`;
-    ws.current = new WebSocket(wsUrl);
+    const socket = createAuthenticatedWebSocket();
+    if (!socket) return;
+    ws.current = socket;
 
     ws.current.onmessage = (event) => {
       try {

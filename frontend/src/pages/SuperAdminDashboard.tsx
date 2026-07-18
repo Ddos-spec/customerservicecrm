@@ -7,6 +7,7 @@ import {
   Bell, Wifi, ArrowRight
 } from 'lucide-react';
 import api from '../lib/api';
+import { createAuthenticatedWebSocket } from '../lib/realtime';
 
 interface Stats {
   tenants: { total: string; active: string };
@@ -113,14 +114,9 @@ const SuperAdminDashboard = () => {
 
   // WebSocket Connection for Real-time Updates
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL 
-      ? new URL(import.meta.env.VITE_API_URL).host 
-      : window.location.host;
-    
-    const wsUrl = `${protocol}//${host}`;
-    
-    ws.current = new WebSocket(wsUrl);
+    const socket = createAuthenticatedWebSocket();
+    if (!socket) return;
+    ws.current = socket;
 
     ws.current.onmessage = (event) => {
       try {
@@ -188,8 +184,8 @@ const SuperAdminDashboard = () => {
       icon: MessageSquare,
       color: 'text-emerald-600',
       trend: `${stats?.chats?.total_unread || '0'} Unread`,
-      onClick: () => navigate('/super-admin/chats'), // Nanti bisa diarahkan ke global chat log jika ada
-      description: 'Lihat semua percakapan'
+      onClick: () => navigate('/super-admin/tenants'),
+      description: 'Pilih tenant untuk membuka workspace chat'
     },
     {
       label: 'Total Perusahaan (Tenants)',

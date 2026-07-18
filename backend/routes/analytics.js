@@ -3,10 +3,10 @@ const { extractKeywords } = require('../utils/stopwords');
 
 function buildAnalyticsRouter(deps) {
     const router = express.Router();
-    const { db } = deps;
+    const { db, resolveAuthenticatedUser } = deps;
 
     const requireOwner = (req, res) => {
-        const user = req.session?.user;
+        const user = resolveAuthenticatedUser?.(req) || req.session?.user;
         if (!user) {
             res.status(401).json({ status: 'error', message: 'Authentication required' });
             return null;
@@ -105,6 +105,21 @@ function buildAnalyticsRouter(deps) {
         } catch (error) {
             console.error('Error updating tenant category:', error);
             res.status(500).json({ status: 'error', message: 'Internal server error' });
+        }
+    });
+
+    // GET /api/v1/analytics/team-performance
+    // Derived from actual agent-authored messages, not a UI-only score.
+    router.get('/team-performance', async (req, res) => {
+        const ctx = requireOwner(req, res);
+        if (!ctx) return;
+        try {
+            const range = typeof req.query.range === 'string' ? req.query.range : '30days';
+            const members = await db.getTeamPerformance(ctx.tenantId, range);
+            return res.json({ success: true, members });
+        } catch (error) {
+            console.error('Team performance error:', error.message);
+            return res.status(500).json({ success: false, error: 'Gagal memuat performa tim' });
         }
     });
 

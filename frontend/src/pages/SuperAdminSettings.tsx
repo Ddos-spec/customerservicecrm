@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Bell, RefreshCw, Loader2, CheckCircle2, Wifi, WifiOff, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
+import { createAuthenticatedWebSocket } from '../lib/realtime';
 
 const SuperAdminSettings = () => {
   const NOTIFIER_ID = 'notifier';
@@ -32,13 +33,9 @@ const SuperAdminSettings = () => {
 
   // WebSocket Connection
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL
-      ? new URL(import.meta.env.VITE_API_URL).host
-      : window.location.host;
-
-    const wsUrl = `${protocol}//${host}`;
-    ws.current = new WebSocket(wsUrl);
+    const socket = createAuthenticatedWebSocket();
+    if (!socket) return;
+    ws.current = socket;
 
     ws.current.onmessage = (event) => {
       try {

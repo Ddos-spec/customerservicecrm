@@ -23,10 +23,20 @@ interface Stats {
   };
 }
 
+interface TeamPerformanceMember {
+  id: string;
+  name: string;
+  email: string;
+  outbound_messages: number | string;
+  handled_chats: number | string;
+  last_reply_at?: string | null;
+}
+
 const AdminReports = () => {
   const { user } = useAuthStore();
   const [stats, setStats] = useState<Stats | null>(null);
   const [dateRange, setDateRange] = useState('7days');
+  const [teamPerformance, setTeamPerformance] = useState<TeamPerformanceMember[]>([]);
 
   const toNumber = (value?: number | string) => {
     const parsed = Number(value ?? 0);
@@ -79,10 +89,12 @@ const AdminReports = () => {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await api.get('/admin/stats', { params: { range: dateRange } });
-      if (res.data.success) {
-        setStats(res.data.stats);
-      }
+      const [statsRes, teamRes] = await Promise.all([
+        api.get('/admin/stats', { params: { range: dateRange } }),
+        api.get('/analytics/team-performance', { params: { range: dateRange } }),
+      ]);
+      if (statsRes.data.success) setStats(statsRes.data.stats);
+      if (teamRes.data?.success) setTeamPerformance(teamRes.data.members || []);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     }
@@ -317,16 +329,35 @@ const AdminReports = () => {
         </div>
       </div>
 
-      {/* Coming Soon */}
-      <div className="bg-gray-50 dark:bg-slate-900/50 rounded-2xl border-2 border-dashed border-gray-300 dark:border-slate-700 p-12 text-center">
-        <BarChart3 className="mx-auto mb-4 text-gray-400" size={48} />
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-          More Analytics Coming Soon
-        </h3>
-        <p className="text-gray-500 dark:text-gray-400">
-          Advanced charts, agent performance metrics, and export options will be available soon.
-        </p>
+      <div className="crm-surface">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Performa Tim</h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Berbasis pesan manual yang benar-benar tercatat pada rentang waktu terpilih.</p>
+          </div>
+          <Users className="text-blue-600" size={22} />
+        </div>
+        {teamPerformance.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[580px] text-left text-sm">
+              <thead className="border-b border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:border-slate-700">
+                <tr><th className="pb-3">Staff</th><th className="pb-3 text-right">Pesan manual</th><th className="pb-3 text-right">Chat ditangani</th><th className="pb-3 text-right">Balasan terakhir</th></tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
+                {teamPerformance.map((member) => (
+                  <tr key={member.id}>
+                    <td className="py-4"><p className="font-bold text-gray-900 dark:text-white">{member.name}</p><p className="text-xs text-gray-400">{member.email}</p></td>
+                    <td className="py-4 text-right font-bold text-blue-600 dark:text-blue-400">{toNumber(member.outbound_messages)}</td>
+                    <td className="py-4 text-right font-bold text-gray-900 dark:text-white">{toNumber(member.handled_chats)}</td>
+                    <td className="py-4 text-right text-xs text-gray-500 dark:text-gray-400">{member.last_reply_at ? new Date(member.last_reply_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Belum ada'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-slate-900 dark:text-gray-400">Belum ada pesan manual tercatat pada rentang ini.</p>}
       </div>
+
     </div>
   );
 };

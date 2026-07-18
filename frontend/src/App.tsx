@@ -22,11 +22,12 @@ const AdminReports = lazy(() => import('./pages/AdminReports'));
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'));
 const AiAgentSettings = lazy(() => import('./pages/AiAgentSettings'));
 const BillingPage = lazy(() => import('./pages/BillingPage'));
+const TenantIntegrations = lazy(() => import('./pages/TenantIntegrations'));
+const TenantAssistant = lazy(() => import('./pages/TenantAssistant'));
 const CampaignList = lazy(() => import('./pages/marketing/CampaignList'));
 const CreateCampaign = lazy(() => import('./pages/marketing/CreateCampaign'));
 const ContactGroups = lazy(() => import('./pages/marketing/ContactGroups'));
 const CampaignDetail = lazy(() => import('./pages/marketing/CampaignDetail'));
-const DebugAnalytics = lazy(() => import('./pages/DebugAnalytics')); // TEMP DEBUG
 
 const RouteLoader = () => (
   <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500 dark:bg-slate-950 dark:text-slate-400">
@@ -99,15 +100,13 @@ function App() {
             <Route path="/invite/:token" element={<InviteAccept />} />
             <Route path="/subscribe" element={<BillingPage />} />
 
-            {/* Debug Route (Remove later) */}
-            <Route path="/debug-analytics" element={<DebugAnalytics />} />
-
             {/* Super Admin Routes */}
             <Route element={<ProtectedRoute allowedRoles={['super_admin']} />}>
               <Route path="/super-admin" element={<MainLayout />}>
                 <Route index element={<SuperAdminDashboard />} />
                 <Route path="tickets/*" element={<Navigate to="/super-admin" replace />} />
                 <Route path="users" element={<SuperAdminUsers />} />
+                <Route path="chats" element={<AgentWorkspace />} />
                 <Route path="sessions" element={<SuperAdminSessions />} />
                 <Route path="tenants" element={<TenantManagement />} />
                 <Route path="settings" element={<SuperAdminSettings />} />
@@ -126,6 +125,8 @@ function App() {
                 <Route path="agents" element={<AgentManagement />} />
                 <Route path="chatbot" element={<AiAgentSettings />} />
                 <Route path="billing" element={<BillingPage />} />
+                <Route path="integrations" element={<TenantIntegrations />} />
+                <Route path="assistant" element={<TenantAssistant />} />
                 <Route path="marketing" element={<CampaignList />} />
                 <Route path="marketing/create" element={<CreateCampaign />} />
                 <Route path="marketing/:id" element={<CampaignDetail />} />

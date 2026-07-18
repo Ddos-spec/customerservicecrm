@@ -1255,6 +1255,95 @@ router.delete('/tenants/:id/webhooks/:webhookId', requireRole('super_admin'), as
     }
 });
 
+// ===== TENANT OWNER INTEGRATION SETTINGS =====
+// Owners may configure their own outbound webhooks without gaining access to
+// another tenant's gateway, session ID, or Meta credentials.
+function requireTenantOwner(req, res, next) {
+    const user = resolveAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    if (user.role !== 'admin_agent' || !user.tenant_id) {
+        return res.status(403).json({ success: false, error: 'Forbidden - Tenant owner access required' });
+    }
+    req.tenantOwner = user;
+    next();
+}
+
+router.get('/tenant/integrations', requireTenantOwner, async (req, res) => {
+    try {
+        const tenant = await db.getTenantById(req.tenantOwner.tenant_id);
+        if (!tenant) return res.status(404).json({ success: false, error: 'Tenant not found' });
+
+        const webhooks = await db.getTenantWebhooks(tenant.id);
+        res.json({
+            success: true,
+            tenant: {
+                id: tenant.id,
+                company_name: tenant.company_name,
+                session_id: tenant.session_id,
+                wa_provider: tenant.wa_provider || 'whatsmeow',
+                webhook_events: normalizeWebhookEventsConfig(tenant.webhook_events),
+                api_key: tenant.api_key || null,
+            },
+            webhooks,
+        });
+    } catch (error) {
+        console.error('Error fetching tenant integration settings:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch tenant integration settings' });
+    }
+});
+
+router.put('/tenant/integrations/webhook-events', requireTenantOwner, async (req, res) => {
+    try {
+        const webhook_events = normalizeWebhookEventsConfig(req.body?.webhook_events);
+        const tenant = await db.updateTenantConfig(req.tenantOwner.tenant_id, { webhook_events });
+        res.json({ success: true, webhook_events: normalizeWebhookEventsConfig(tenant?.webhook_events) });
+    } catch (error) {
+        console.error('Error updating tenant webhook events:', error);
+        res.status(500).json({ success: false, error: 'Failed to update webhook events' });
+    }
+});
+
+router.post('/tenant/integrations/webhooks', requireTenantOwner, async (req, res) => {
+    try {
+        const url = (req.body?.url || '').trim();
+        if (!url) return res.status(400).json({ success: false, error: 'Webhook URL is required' });
+        if (!isValidHttpUrl(url)) {
+            return res.status(400).json({ success: false, error: 'Webhook URL must be valid public http/https' });
+        }
+
+        const webhook = await db.createTenantWebhook(req.tenantOwner.tenant_id, url);
+        res.status(201).json({ success: true, webhook });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ success: false, error: 'Webhook URL already exists for this tenant' });
+        }
+        console.error('Error creating tenant webhook:', error);
+        res.status(500).json({ success: false, error: 'Failed to save tenant webhook' });
+    }
+});
+
+router.delete('/tenant/integrations/webhooks/:webhookId', requireTenantOwner, async (req, res) => {
+    try {
+        const deleted = await db.deleteTenantWebhook(req.tenantOwner.tenant_id, req.params.webhookId);
+        if (!deleted) return res.status(404).json({ success: false, error: 'Webhook not found' });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting tenant webhook:', error);
+        res.status(500).json({ success: false, error: 'Failed to delete tenant webhook' });
+    }
+});
+
+router.post('/tenant/integrations/regenerate-key', requireTenantOwner, async (req, res) => {
+    try {
+        const apiKey = 'sk_' + crypto.randomBytes(24).toString('hex');
+        const tenant = await db.updateTenantConfig(req.tenantOwner.tenant_id, { api_key: apiKey });
+        res.json({ success: true, api_key: tenant?.api_key || apiKey });
+    } catch (error) {
+        console.error('Error regenerating tenant API key:', error);
+        res.status(500).json({ success: false, error: 'Failed to regenerate API key' });
+    }
+});
+
 // ===== SUPER ADMIN FEATURES (API Key & Impersonation) =====
 
 /**
@@ -1441,8 +1530,15 @@ router.post('/invites/:id/resend', requireAuth, async (req, res) => {
  */
 router.get('/users', requireAuth, async (req, res) => {
     try {
-        const { tenant_id } = req.query;
+        const { tenant_id, role } = req.query;
         const user = req.session.user;
+
+        // Super admin directory includes system-level accounts, which do not
+        // have a tenant_id. Keep this explicit instead of querying with NULL.
+        if (user.role === 'super_admin' && role === 'super_admin') {
+            const users = await db.getSuperAdmins();
+            return res.json({ success: true, users, seat_limit: null, pending_invites: 0 });
+        }
 
         const targetTenantId = user.role === 'super_admin'
             ? (tenant_id ? tenant_id.toString().trim() : null)
@@ -1829,6 +1925,15 @@ router.patch('/users/:id', requireRole('super_admin', 'admin_agent'), async (req
 
         // 4. Perform Update
         const updatedUser = await db.updateUser(id, updates);
+        await db.logActivity({
+            tenantId: targetUser.tenant_id,
+            actorId: currentUser.id,
+            action: 'user.updated',
+            entityType: 'user',
+            entityId: id,
+            summary: `${currentUser.name || 'Admin'} memperbarui staff ${updatedUser.name}`,
+            metadata: { changed_fields: Object.keys(updates).filter((field) => field !== 'password_hash') },
+        }).catch((activityError) => console.warn('Activity log user update skipped:', activityError.message));
         
         // Remove password hash from response
         delete updatedUser.password_hash;
@@ -1867,6 +1972,15 @@ router.delete('/users/:id', requireRole('super_admin', 'admin_agent'), async (re
         }
 
         await db.deleteUser(id);
+        await db.logActivity({
+            tenantId: targetUser.tenant_id,
+            actorId: currentUser.id,
+            action: 'user.deleted',
+            entityType: 'user',
+            entityId: id,
+            summary: `${currentUser.name || 'Admin'} menghapus staff ${targetUser.name}`,
+            metadata: { role: targetUser.role },
+        }).catch((activityError) => console.warn('Activity log user delete skipped:', activityError.message));
         res.json({ success: true, message: 'User deleted' });
     } catch (error) {
         console.error('Error deleting user:', error);
@@ -2055,5 +2169,6 @@ module.exports = {
     requireTenantAccess,
     ensureSuperAdmin,
     syncContactsForTenant,
-    setSessionDeleteHandler
+    setSessionDeleteHandler,
+    resolveAuthenticatedUser
 };

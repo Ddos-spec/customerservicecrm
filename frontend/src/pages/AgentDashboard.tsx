@@ -6,6 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/api';
+import { createAuthenticatedWebSocket } from '../lib/realtime';
 import { toast } from 'sonner';
 
 const formatRelativeTime = (value?: string) => {
@@ -54,6 +55,7 @@ const AgentDashboard = () => {
   const [qrUrl, setQrUrl] = useState('');
   const [connectedNumber, setConnectedNumber] = useState<string>('');
   const [adminContact, setAdminContact] = useState<{ name: string; email: string } | null>(null);
+  const [activities, setActivities] = useState<Array<{ id: string; summary: string; actor_name: string; created_at: string }>>([]);
 
   // UI States
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -107,6 +109,15 @@ const AgentDashboard = () => {
     }
   }, []);
 
+  const fetchActivities = useCallback(async () => {
+    try {
+      const res = await api.get('/activity', { params: { limit: 6 } });
+      if (res.data?.success) setActivities(res.data.events || []);
+    } catch (error) {
+      console.error('Failed to fetch activities:', error);
+    }
+  }, []);
+
   const fetchSessionStatus = useCallback(async () => {
     if (!sessionId) {
       setWaStatus('disconnected');
@@ -140,14 +151,9 @@ const AgentDashboard = () => {
 
   // WebSocket Connection
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL 
-      ? new URL(import.meta.env.VITE_API_URL).host 
-      : window.location.host;
-    
-    const wsUrl = `${protocol}//${host}`;
-    
-    ws.current = new WebSocket(wsUrl);
+    const socket = createAuthenticatedWebSocket();
+    if (!socket) return;
+    ws.current = socket;
 
     ws.current.onmessage = (event) => {
       try {
@@ -262,11 +268,12 @@ Terima kasih.`);
         fetchDashboardStats(),
         fetchRecentChats(),
         fetchAdminContact(),
+        fetchActivities(),
         fetchSessionStatus()
       ]);
     };
     void loadInitialData();
-  }, [fetchDashboardStats, fetchRecentChats, fetchAdminContact, fetchSessionStatus]);
+  }, [fetchDashboardStats, fetchRecentChats, fetchAdminContact, fetchActivities, fetchSessionStatus]);
 
   // Parse Stats V2
   const totalChats = parseInt(stats?.chats?.total_chats || '0');
@@ -445,7 +452,7 @@ Terima kasih.`);
           </div>
         </div>
 
-        {/* Right Sidebar - Support/Activity */}
+        {/* Right Sidebar - Support */}
         <div className="crm-panel-stack">
           
           {/* Quick Action Card */}
@@ -462,15 +469,23 @@ Terima kasih.`);
               Pusat Bantuan
             </button>
           </div>
-          
-           {/* Placeholder for Team Activity (Not yet implemented in V2 Backend) */}
-           <div className="crm-surface opacity-60">
-             <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-               <Activity size={18} className="mr-2 text-gray-400" />
-               Aktivitas Tim
-             </h3>
-             <p className="text-xs text-gray-500 italic">Fitur log aktivitas akan segera hadir.</p>
-           </div>
+
+          <div className="crm-surface">
+            <div className="mb-4 flex items-center gap-2">
+              <Activity size={18} className="text-blue-600" />
+              <h3 className="font-bold text-gray-900 dark:text-white">Aktivitas Operasional</h3>
+            </div>
+            {activities.length ? (
+              <div className="space-y-3">
+                {activities.map((activity) => (
+                  <div key={activity.id} className="border-l-2 border-blue-200 pl-3 dark:border-blue-900">
+                    <p className="text-xs font-semibold leading-5 text-gray-700 dark:text-gray-200">{activity.summary}</p>
+                    <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{new Date(activity.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Belum ada aktivitas operasional yang tercatat untuk tenant ini.</p>}
+          </div>
         </div>
       </div>
 

@@ -293,6 +293,17 @@ function buildMessagesRouter(deps) {
                 status: 'queued',
                 isFromMe: true
             });
+            // Keep a privacy-safe audit trail: metadata identifies the action,
+            // never the customer message body.
+            await db.logActivity({
+                tenantId: tenant.id,
+                actorId: user.id,
+                action: 'message.queued',
+                entityType: 'chat',
+                entityId: chat.id,
+                summary: `${user.name || 'Staff'} mengirim pesan ke ${chat.display_name || chat.phone_number || 'customer'}`,
+                metadata: { channel: 'whatsapp', is_group: isGroup },
+            }).catch((activityError) => console.warn('Activity log message skipped:', activityError.message));
 
             let result = null;
             let responseMsg = savedMsg;

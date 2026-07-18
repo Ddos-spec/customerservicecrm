@@ -2,15 +2,19 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Smartphone, Search, RefreshCw, Wifi, WifiOff,
-  QrCode, User, Building2, Trash2, Plus, Activity, ChevronDown, ShieldAlert, Power
+  QrCode, Building2, Trash2, Plus, Activity, ChevronDown, ShieldAlert, Power
 } from 'lucide-react';
 import api from '../lib/api';
+import { createAuthenticatedWebSocket } from '../lib/realtime';
 
 interface Session {
   sessionId: string;
   status: string;
   qr?: string;
+  tenantId?: string | null;
+  tenantName?: string | null;
   owner?: string;
+  ownerName?: string | null;
   ownerType?: string;
   connectedNumber?: string;
   lastSeen?: string;
@@ -21,7 +25,7 @@ interface Session {
   statusReason?: string | null;
 }
 
-const SESSION_FILTERS = ['ALL', 'CONNECTED', 'IDENTITY_MISMATCH', 'SCAN_QR_CODE', 'CONNECTING', 'DISCONNECTED', 'UNKNOWN'] as const;
+const SESSION_FILTERS = ['ALL', 'CONNECTED', 'UNASSIGNED', 'IDENTITY_MISMATCH', 'SCAN_QR_CODE', 'CONNECTING', 'DISCONNECTED', 'UNKNOWN'] as const;
 type SessionFilter = typeof SESSION_FILTERS[number];
 
 const getStatusMeta = (status?: string) => {
@@ -32,6 +36,13 @@ const getStatusMeta = (status?: string) => {
         helper: 'Session aktif dan siap menerima pesan.',
         icon: Wifi,
         chipClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700',
+      };
+    case 'UNASSIGNED':
+      return {
+        label: 'Belum dipetakan',
+        helper: 'Gateway terhubung, tetapi belum ada tenant yang secara resmi memiliki sesi ini.',
+        icon: ShieldAlert,
+        chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-700',
       };
     case 'CONNECTING':
       return {
@@ -71,6 +82,26 @@ const getStatusMeta = (status?: string) => {
   }
 };
 
+const isMappedToTenant = (session: Session) => Boolean(session.tenantId && session.ownerType === 'tenant');
+
+const getSessionPresentation = (session: Session) => {
+  if (session.status === 'CONNECTED' && !isMappedToTenant(session)) {
+    return getStatusMeta('UNASSIGNED');
+  }
+
+  if (session.status === 'CONNECTED' && !session.connectedNumber) {
+    return {
+      ...getStatusMeta('CONNECTED'),
+      label: 'Connected · cek device',
+      helper: session.statusReason || 'Gateway terhubung, tetapi nomor device belum berhasil diverifikasi. Jangan gunakan untuk operasional sebelum nomor tampil.',
+      icon: ShieldAlert,
+      chipClass: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-700',
+    };
+  }
+
+  return getStatusMeta(session.status);
+};
+
 const formatDetailedDate = (value?: string) => {
   if (!value) return '-';
   const date = new Date(value);
@@ -88,6 +119,8 @@ const SuperAdminSessions = () => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastVerifiedAt, setLastVerifiedAt] = useState<Date | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<SessionFilter>('ALL');
   const [expandedQrSessionId, setExpandedQrSessionId] = useState<string | null>(null);
@@ -100,9 +133,14 @@ const SuperAdminSessions = () => {
       const res = await api.get('/sessions');
       if (Array.isArray(res.data)) {
         setSessions(res.data);
+        setLoadError(null);
+        setLastVerifiedAt(new Date());
+      } else {
+        setLoadError('Format status session tidak valid. Data lama tidak boleh dijadikan acuan.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch sessions:', error);
+      setLoadError(error?.response?.data?.message || 'Status session gagal dimuat. Data yang tampil mungkin sudah tidak terbaru.');
     } finally {
       setIsLoading(false);
     }
@@ -110,26 +148,31 @@ const SuperAdminSessions = () => {
 
   // WebSocket for real-time updates
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL
-      ? new URL(import.meta.env.VITE_API_URL).host
-      : window.location.host;
-
-    const wsUrl = `${protocol}//${host}`;
-    ws.current = new WebSocket(wsUrl);
+    let isDisposed = false;
+    const socket = createAuthenticatedWebSocket();
+    if (!socket) return;
+    ws.current = socket;
 
     ws.current.onmessage = (event) => {
       try {
-        const payload = JSON.parse(event.data);
-        if (payload.type === 'session-update') {
-          setSessions(payload.data);
-        }
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'session-update') {
+            setSessions(payload.data);
+            setLoadError(null);
+            setLastVerifiedAt(new Date());
+          }
       } catch (err) {
         console.error('WebSocket message error:', err);
       }
     };
 
+    ws.current.onclose = () => {
+      if (isDisposed) return;
+      setLoadError((current) => current || 'Koneksi realtime terputus. Gunakan Refresh untuk memverifikasi ulang status session.');
+    };
+
     return () => {
+      isDisposed = true;
       if (ws.current) {
         ws.current.close();
       }
@@ -142,12 +185,15 @@ const SuperAdminSessions = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm(`Hapus session ${sessionId}?`)) return;
+  const handleDeleteSession = async (session: Session) => {
+    const tenantWarning = session.tenantName
+      ? ` Ini juga akan melepas mapping tenant ${session.tenantName}.`
+      : '';
+    if (!confirm(`Hapus session ${session.sessionId}? Device WhatsApp akan logout.${tenantWarning}`)) return;
 
     try {
-      await api.delete(`/sessions/${sessionId}`);
-      setSessions(sessions.filter(s => s.sessionId !== sessionId));
+      await api.delete(`/sessions/${session.sessionId}`);
+      setSessions(sessions.filter(s => s.sessionId !== session.sessionId));
     } catch (error) {
       console.error('Failed to delete session:', error);
       alert('Gagal menghapus session');
@@ -170,7 +216,8 @@ const SuperAdminSessions = () => {
   };
 
   const filteredSessions = sessions.filter(session => {
-    if (activeFilter !== 'ALL' && session.status !== activeFilter) return false;
+    if (activeFilter === 'UNASSIGNED' && isMappedToTenant(session)) return false;
+    if (activeFilter !== 'ALL' && activeFilter !== 'UNASSIGNED' && session.status !== activeFilter) return false;
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -190,10 +237,17 @@ const SuperAdminSessions = () => {
     },
     {
       label: 'Connected',
-      count: sessions.filter(s => s.status === 'CONNECTED').length,
-      helper: 'Siap kirim/terima pesan.',
+      count: sessions.filter(s => s.status === 'CONNECTED' && isMappedToTenant(s) && Boolean(s.connectedNumber)).length,
+      helper: 'Tenant terpetakan dan device terverifikasi.',
       icon: Wifi,
       accent: 'emerald',
+    },
+    {
+      label: 'Belum dipetakan',
+      count: sessions.filter(s => !isMappedToTenant(s)).length,
+      helper: 'Tidak dihitung sebagai koneksi tenant.',
+      icon: ShieldAlert,
+      accent: 'amber',
     },
     {
       label: 'Pending QR',
@@ -204,7 +258,7 @@ const SuperAdminSessions = () => {
     },
     {
       label: 'Need Attention',
-      count: sessions.filter(s => s.status === 'DISCONNECTED' || s.status === 'UNKNOWN' || s.status === 'IDENTITY_MISMATCH').length,
+      count: sessions.filter(s => !isMappedToTenant(s) || s.status === 'DISCONNECTED' || s.status === 'UNKNOWN' || s.status === 'IDENTITY_MISMATCH').length,
       helper: 'Butuh pengecekan atau reconnect.',
       icon: ShieldAlert,
       accent: 'rose',
@@ -236,17 +290,18 @@ const SuperAdminSessions = () => {
               className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white shadow-xl shadow-emerald-200 transition-all hover:bg-emerald-700 dark:shadow-emerald-950/40"
             >
               <Plus size={18} />
-              <span>New Session</span>
+              <span>Atur Notifier</span>
             </button>
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           {stats.map((stat) => {
             const accentClasses = {
               slate: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
               emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
               blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+              amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
               rose: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
             }[stat.accent];
 
@@ -283,7 +338,11 @@ const SuperAdminSessions = () => {
             </div>
             <div className="flex flex-wrap gap-2">
               {SESSION_FILTERS.map((filter) => {
-                const count = filter === 'ALL' ? sessions.length : sessions.filter((session) => session.status === filter).length;
+                  const count = filter === 'ALL'
+                    ? sessions.length
+                    : filter === 'UNASSIGNED'
+                      ? sessions.filter((session) => !isMappedToTenant(session)).length
+                      : sessions.filter((session) => session.status === filter).length;
                 const active = activeFilter === filter;
                 return (
                   <button
@@ -303,8 +362,15 @@ const SuperAdminSessions = () => {
           </div>
 
           <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-xs text-gray-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-gray-400">
-            Session lama yang tidak punya owner sah seharusnya tidak lagi dianggap aktif. Jika status terlihat aneh, gunakan refresh untuk memaksa verifikasi ulang.
+            Hanya session dengan tenant dan nomor device terverifikasi yang dihitung siap operasional. Session tanpa mapping ditandai untuk ditetapkan atau dihapus—bukan koneksi tenant.
+            {lastVerifiedAt && <span className="ml-1 font-semibold text-gray-700 dark:text-gray-200">Terakhir diverifikasi: {lastVerifiedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.</span>}
           </div>
+          {loadError && (
+            <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200 sm:flex-row sm:items-center sm:justify-between">
+              <span>{loadError}</span>
+              <button type="button" onClick={fetchSessions} className="shrink-0 rounded-xl bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-rose-700 transition-colors hover:bg-rose-100 focus:outline-none focus:ring-4 focus:ring-rose-500/15 dark:bg-slate-900 dark:text-rose-200 dark:hover:bg-slate-800">Coba lagi</button>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -321,7 +387,7 @@ const SuperAdminSessions = () => {
             </div>
           ) : (
             filteredSessions.map((session) => {
-              const statusMeta = getStatusMeta(session.status);
+              const statusMeta = getSessionPresentation(session);
               const StatusIcon = statusMeta.icon;
               const hasQr = session.status === 'SCAN_QR_CODE' && session.qr;
               const isQrExpanded = expandedQrSessionId === session.sessionId;
@@ -342,7 +408,7 @@ const SuperAdminSessions = () => {
                             {session.sessionId}
                           </h3>
                           <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-                            {session.owner ? `Owner: ${session.owner}` : 'Belum terhubung ke tenant atau owner'}
+                            {session.tenantName ? `Tenant: ${session.tenantName}` : 'Belum dipetakan ke tenant'}
                           </p>
                         </div>
                       </div>
@@ -368,7 +434,7 @@ const SuperAdminSessions = () => {
                         </button>
                       )}
                       <button
-                        onClick={() => handleDeleteSession(session.sessionId)}
+                        onClick={() => handleDeleteSession(session)}
                         title="Hapus session dan bersihkan referensi"
                         className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-rose-600 transition-colors hover:bg-rose-50 dark:hover:bg-rose-900/20"
                       >
@@ -382,9 +448,10 @@ const SuperAdminSessions = () => {
                     <div className="rounded-2xl bg-gray-50 p-4 dark:bg-slate-800/80">
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Kepemilikan</p>
                       <div className="mt-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                        {session.ownerType === 'tenant' ? <Building2 size={14} /> : <User size={14} />}
-                        <span className="truncate font-medium">{session.owner || 'Tanpa owner'}</span>
+                        {isMappedToTenant(session) ? <Building2 size={14} /> : <ShieldAlert size={14} className="text-amber-600 dark:text-amber-300" />}
+                        <span className="truncate font-medium">{session.tenantName || 'Belum dipetakan'}</span>
                       </div>
+                      {session.ownerName && <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">PIC owner: {session.ownerName}</p>}
                     </div>
                     <div className="rounded-2xl bg-gray-50 p-4 dark:bg-slate-800/80">
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Nomor Terhubung</p>
@@ -417,6 +484,17 @@ const SuperAdminSessions = () => {
                       )}
                     </div>
                   </div>
+
+                  {!isMappedToTenant(session) && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/super-admin/tenants')}
+                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus:ring-4 focus:ring-amber-500/15 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40"
+                    >
+                      <Building2 size={16} />
+                      Tetapkan ke tenant
+                    </button>
+                  )}
 
                   {hasQr && (
                     <div className="mt-4 border-t border-gray-100 pt-4 dark:border-slate-700">

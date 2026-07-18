@@ -17,7 +17,7 @@ const fs = require('fs');
 const { createClient } = require('redis');
 const { initializeApi } = require('./api_v1');
 const { buildExternalDashboardRouter } = require('./routes/external-dashboard');
-const { router: authRouter, ensureSuperAdmin, syncContactsForTenant, setSessionDeleteHandler } = require('./auth');
+const { router: authRouter, ensureSuperAdmin, syncContactsForTenant, setSessionDeleteHandler, requireRole, resolveAuthenticatedUser } = require('./auth');
 const db = require('./db');
 const { initializeGatewayApi } = require('./gateway-api');
 require('dotenv').config();
@@ -141,7 +141,41 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const WS_AUTH_PROTOCOL = 'crm-auth-v1';
+
+function getWebSocketUser(req) {
+    const offeredProtocols = String(req.headers?.['sec-websocket-protocol'] || '')
+        .split(',')
+        .map((protocol) => protocol.trim())
+        .filter(Boolean);
+    if (!offeredProtocols.includes(WS_AUTH_PROTOCOL)) return null;
+
+    const authToken = offeredProtocols.find((protocol) => protocol !== WS_AUTH_PROTOCOL);
+    if (!authToken) return null;
+
+    return resolveAuthenticatedUser({
+        headers: { authorization: `Bearer ${authToken}` },
+        session: {},
+    });
+}
+
+const wss = new WebSocketServer({
+    server,
+    verifyClient: (info, done) => {
+        const user = getWebSocketUser(info.req);
+        if (!user) {
+            done(false, 401, 'Authentication required');
+            return;
+        }
+        info.req.crmUser = user;
+        done(true);
+    },
+    handleProtocols: (protocols) => (protocols.has(WS_AUTH_PROTOCOL) ? WS_AUTH_PROTOCOL : false),
+});
+
+wss.on('connection', (client, req) => {
+    client.crmUser = req.crmUser || getWebSocketUser(req);
+});
 
 function buildRedisClient() {
     return createClient({
@@ -181,8 +215,32 @@ if (!isTest) {
 const sessions = new Map();
 // Store JWT tokens: sessionId -> token
 const sessionTokens = new Map();
+// Runtime session state is deliberately separate from tenant ownership. The
+// gateway only knows a device/session; the database is authoritative for who
+// is allowed to use it in the CRM.
+const sessionOwnerships = new Map();
 const outboundQueueWorkerId = `backend-${process.pid}-${crypto.randomUUID()}`;
 const sessionIdentityMismatchLogCache = new Map();
+
+function canWebSocketUserAccessSession(user, sessionId, tenantId = null) {
+    if (!user) return false;
+    if (user.role === 'super_admin') return true;
+    if (tenantId && String(user.tenant_id || '') === String(tenantId)) return true;
+    return Boolean(sessionId && String(user.session_id || '') === String(sessionId));
+}
+
+function canWebSocketClientReceive(client, payload) {
+    const tenantId = payload?.tenantId || payload?.data?.tenant_id || null;
+    const sessionId = payload?.sessionId
+        || payload?.data?.sessionId
+        || (Array.isArray(payload?.data) ? payload.data[0]?.sessionId : null)
+        || null;
+    return canWebSocketUserAccessSession(client?.crmUser, sessionId, tenantId);
+}
+
+// Realtime publishers in webhook-handler use this same guard. Keep the
+// authorization boundary on the server; client-side filtering is never enough.
+wss.canClientReceive = canWebSocketClientReceive;
 
 // Initialize Alert System with internal dependencies
 initAlertSystem(db, scheduleMessageSend, sessions);
@@ -788,8 +846,9 @@ function isGatewaySendSuccess(result) {
 function broadcastMessageStatus(message) {
     if (!message?.id) return;
     const status = message.delivery_status || message.status || 'sent';
-    const payload = JSON.stringify({
+    const payload = {
         type: 'message-status',
+        tenantId: message.tenant_id || null,
         data: {
             db_id: message.id,
             id: message.id,
@@ -801,13 +860,15 @@ function broadcastMessageStatus(message) {
             delivered_at: message.delivered_at || null,
             read_at: message.read_at || null,
             failed_at: message.failed_at || null,
-            delivery_error: message.delivery_error || null
+            delivery_error: message.delivery_error || null,
+            tenant_id: message.tenant_id || null,
         }
-    });
+    };
+    const serializedPayload = JSON.stringify(payload);
 
     wss.clients.forEach(client => {
-        if (client.readyState === 1) {
-            client.send(payload);
+        if (client.readyState === 1 && canWebSocketClientReceive(client, payload)) {
+            client.send(serializedPayload);
         }
     });
 }
@@ -1225,6 +1286,34 @@ async function recoverMissedGatewayEvents() {
 }
 
 // --- Session Management (via Go Gateway) ---
+async function refreshSessionOwnerships() {
+    const sessionIds = Array.from(sessionTokens.keys());
+    const activeSessionIds = new Set(sessionIds);
+
+    for (const sessionId of sessionOwnerships.keys()) {
+        if (!activeSessionIds.has(sessionId)) sessionOwnerships.delete(sessionId);
+    }
+
+    if (sessionIds.length === 0) return;
+
+    const ownerships = await db.getSessionOwnerships(sessionIds);
+    const foundSessionIds = new Set();
+    ownerships.forEach((ownership) => {
+        const sessionId = String(ownership.session_id || '').trim();
+        if (!sessionId) return;
+        foundSessionIds.add(sessionId);
+        sessionOwnerships.set(sessionId, {
+            tenantId: ownership.tenant_id,
+            tenantName: ownership.tenant_name,
+            ownerName: ownership.owner_name || ownership.owner_email || null,
+        });
+    });
+
+    sessionIds.forEach((sessionId) => {
+        if (!foundSessionIds.has(sessionId)) sessionOwnerships.delete(sessionId);
+    });
+}
+
 function getSessionsDetails() {
     // Self-healing: If memory is empty, try to load from disk immediately
     if (sessionTokens.size === 0) {
@@ -1237,11 +1326,17 @@ function getSessionsDetails() {
     return allSessionIds
         .map(id => {
             const session = sessions.get(id);
+            const ownership = sessionOwnerships.get(id);
             return {
                 sessionId: id,
                 status: session?.status || 'UNKNOWN',
                 qr: session?.qr || null,
                 connectedNumber: session?.connectedNumber || null,
+                tenantId: ownership?.tenantId || null,
+                tenantName: ownership?.tenantName || null,
+                owner: ownership?.tenantName || null,
+                ownerName: ownership?.ownerName || null,
+                ownerType: ownership ? 'tenant' : null,
                 identityMismatch: Boolean(session?.identityMismatch),
                 expectedNumber: session?.expectedNumber || null,
                 detectedNumber: session?.detectedNumber || null,
@@ -1324,6 +1419,7 @@ async function refreshSession(sessionId) {
         try {
             const statusResp = await waGateway.getSessionStatus(sessionId);
             const identity = buildGatewayIdentityDiagnostic(sessionId, statusResp);
+            const reportedDeviceNumber = extractDevicePhone(identity.deviceJid);
             if (identity.mismatch) {
                 logger.error(`[Refresh] Identity mismatch for session ${sessionId}: ${identity.reason}`);
                 updateSessionStatus(sessionId, 'IDENTITY_MISMATCH', null, {
@@ -1333,6 +1429,19 @@ async function refreshSession(sessionId) {
                     connectedNumber: identity.detectedPhone,
                     deviceJid: identity.deviceJid,
                     statusReason: identity.reason
+                });
+                return;
+            }
+
+            if (identity.connected) {
+                updateSessionStatus(sessionId, 'CONNECTED', null, {
+                    connectedNumber: reportedDeviceNumber || null,
+                    deviceJid: identity.deviceJid,
+                    expectedNumber: null,
+                    detectedNumber: reportedDeviceNumber || null,
+                    statusReason: reportedDeviceNumber
+                        ? null
+                        : 'Gateway melaporkan connected, tetapi identitas device belum tersedia. Refresh lagi untuk verifikasi nomor perangkat.',
                 });
                 return;
             }
@@ -1392,7 +1501,9 @@ function updateSessionStatus(sessionId, status, qr = null, extras = {}) {
         Object.assign(current, extras || {});
         if (status === 'CONNECTED') {
             current.identityMismatch = false;
-            current.statusReason = null;
+            if (!Object.prototype.hasOwnProperty.call(extras, 'statusReason')) {
+                current.statusReason = null;
+            }
         }
         sessions.set(sessionId, current);
         persistSessionStatus(sessionId, {
@@ -1405,11 +1516,13 @@ function updateSessionStatus(sessionId, status, qr = null, extras = {}) {
 }
 
 function broadcastSessionUpdate() {
-    const data = JSON.stringify({ type: 'session-update', data: getSessionsDetails() });
+    const sessionsData = getSessionsDetails();
     wss.clients.forEach(client => {
-        if (client.readyState === 1) {
-            client.send(data);
-        }
+        if (client.readyState !== 1 || !client.crmUser) return;
+        const visibleSessions = client.crmUser.role === 'super_admin'
+            ? sessionsData
+            : sessionsData.filter((session) => canWebSocketUserAccessSession(client.crmUser, session.sessionId, session.tenantId));
+        client.send(JSON.stringify({ type: 'session-update', data: visibleSessions }));
     });
 }
 
@@ -1715,7 +1828,16 @@ app.get('/', (req, res) => res.json({
     gateway: 'go-whatsapp-gateway'
 }));
 app.get('/ping', (req, res) => res.send('pong'));
-app.get('/sessions', (req, res) => res.status(200).json(getSessionsDetails()));
+// Legacy route retained for the Super Admin console only. Session ids and QR
+// payloads must never be exposed as a public gateway inventory.
+app.get('/sessions', requireRole('super_admin'), async (_req, res) => {
+    try {
+        await refreshSessionOwnerships();
+    } catch (error) {
+        logger.warn(`Legacy session ownership lookup failed: ${error.message}`);
+    }
+    res.status(200).json(getSessionsDetails());
+});
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 app.get('/api/v1/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
@@ -1852,7 +1974,7 @@ app.get('/api/v1/health/infra', async (req, res) => {
 });
 
 // DEBUG: Check Session/Proxy Config
-app.get('/api/v1/debug/config', (req, res) => {
+app.get('/api/v1/debug/config', requireRole('super_admin'), (req, res) => {
     res.json({
         env: process.env.NODE_ENV,
         isProd: isProd,
@@ -2020,7 +2142,8 @@ app.use('/api/v1', initializeApi(
     validateWhatsAppRecipient,
     getSessionContacts,
     refreshSession,
-    waGateway
+    waGateway,
+    refreshSessionOwnerships
 ));
 
 // --- Self-Healing: Sync with DB ---
@@ -2127,6 +2250,7 @@ if (!isTest) {
             await db.ensureInvitePhoneColumn();
             await db.ensureMessageDeliveryColumns();
             await db.ensureOutboundMessageJobsTable();
+            await db.ensureActivityEventsTable();
             await db.ensureContactSyncTrigger(); // Update Trigger Logic (Force Sync)
         } catch (err) {
             console.error('Database setup error:', err.message);
