@@ -1,0 +1,173 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - link [ref=e804] [cursor=pointer]:
+              - /url: /
+              - img "Home" [ref=e805]
+            - generic [ref=e44]:
+              - generic [ref=e45]: Easypanel
+              - generic [ref=e46]:
+                - generic [ref=e47]: v2.32.2
+                - button [ref=e48] [cursor=pointer]
+                - combobox [ref=e54]:
+                  - option "BR"
+                  - option "DA"
+                  - option "DE"
+                  - option "EN" [selected]
+                  - option "ES"
+                  - option "FA"
+                  - option "FR"
+                  - option "HI"
+                  - option "ID"
+                  - option "IT"
+                  - option "JA"
+                  - option "KA"
+                  - option "NL"
+                  - option "PL"
+                  - option "PT"
+                  - option "RO"
+                  - option "RU"
+                  - option "TH"
+                  - option "TR"
+                  - option "VI"
+                  - option "CN"
+          - generic [ref=e55]:
+            - link "Dashboard" [ref=e1277] [cursor=pointer]:
+              - /url: /
+            - link "Actions" [ref=e1282] [cursor=pointer]:
+              - /url: /actions
+            - link "Monitor" [ref=e1286] [cursor=pointer]:
+              - /url: /monitor
+            - link "Domains" [ref=e1290] [cursor=pointer]:
+              - /url: /domains
+            - link "Settings" [ref=e1295] [cursor=pointer]:
+              - /url: /settings
+          - generic [ref=e80]:
+            - link "Documentation" [ref=e1300] [cursor=pointer]:
+              - /url: https://easypanel.io/docs
+            - link "Discord Discord" [ref=e1309] [cursor=pointer]:
+              - /url: https://discord.gg/9bcDSXcZQ7
+              - img "Discord" [ref=e1310]
+              - generic [ref=e1312]: Discord
+            - link "Feedback" [ref=e1318] [cursor=pointer]:
+              - /url: https://my.easypanel.io/feedback
+            - link "Changelog" [ref=e1327] [cursor=pointer]:
+              - /url: https://my.easypanel.io/changelog
+          - link "Buy License" [ref=e1337] [cursor=pointer]:
+            - /url: /buy-license
+          - button "Quick Search ⌘ K" [ref=e1343] [cursor=pointer]:
+            - generic [ref=e1347]: Quick Search
+            - generic [ref=e1348]: ⌘ K
+          - generic [ref=e131]:
+            - heading "Command Palette" [level=2] [ref=e818]
+            - paragraph [ref=e133]: Search for a command to run...
+          - button "163.61.44.41" [ref=e1350] [cursor=pointer]
+          - generic [ref=e1360]:
+            - generic [ref=e1363]: Dark Mode
+            - generic [ref=e1364]:
+              - switch "Dark Mode" [ref=e1365]
+              - checkbox [ref=e1366]
+          - button "Logout" [ref=e1367] [cursor=pointer]
+        - generic [ref=e1375]:
+          - generic [ref=e1376]: User
+          - link [ref=e1378] [cursor=pointer]:
+            - /url: /settings/user/authentication
+          - generic [ref=e1385]: Server
+          - generic [ref=e1386]:
+            - link [ref=e1387] [cursor=pointer]:
+              - /url: /settings/server/general
+            - link [ref=e1394] [cursor=pointer]:
+              - /url: /settings/server/github
+            - link [ref=e1401] [cursor=pointer]:
+              - /url: /settings/server/license
+            - link [ref=e1409] [cursor=pointer]:
+              - /url: /settings/server/analytics
+            - link [ref=e1414] [cursor=pointer]:
+              - /url: /settings/server/users
+            - link [ref=e1423] [cursor=pointer]:
+              - /url: /settings/server/cluster
+            - link [ref=e1432] [cursor=pointer]:
+              - /url: /settings/server/branding
+            - link [ref=e1440] [cursor=pointer]:
+              - /url: /settings/server/notifications
+            - link [ref=e1447] [cursor=pointer]:
+              - /url: /settings/server/certificates
+            - link [ref=e1454] [cursor=pointer]:
+              - /url: /settings/server/snapshots
+            - link [ref=e1462] [cursor=pointer]:
+              - /url: /settings/server/cloudflare-tunnel
+            - link [ref=e1468] [cursor=pointer]:
+              - /url: /settings/server/storage-providers
+            - link [ref=e1478] [cursor=pointer]:
+              - /url: /settings/server/docker-builders
+            - link [ref=e1484] [cursor=pointer]:
+              - /url: /settings/server/middlewares
+            - link [ref=e1491] [cursor=pointer]:
+              - /url: /settings/server/monitoring
+      - generic [ref=e1499]:
+        - generic [ref=e1540]:
+          - generic [ref=e1541]:
+            - button [ref=e1542] [cursor=pointer]
+            - button [ref=e1546] [cursor=pointer]
+            - button [ref=e1550] [cursor=pointer]
+            - button [ref=e1554] [cursor=pointer]
+            - generic [ref=e1558]:
+              - checkbox "Daily Docker Cleanup" [checked] [ref=e1560]
+              - generic [ref=e1563]: Daily Docker Cleanup
+          - paragraph [ref=e1565]: "Uptime: 0 days, 3 hours, 50 minutes"
+        - generic [ref=e1566]:
+          - generic [ref=e1567]:
+            - paragraph [ref=e1569]: Panel Domain
+            - generic [ref=e1572]:
+              - group [ref=e1574]:
+                - generic [ref=e1575]: Default Domain
+                - button "qk6yxt.easypanel.host" [ref=e1577] [cursor=pointer]
+              - group [ref=e1583]:
+                - generic [ref=e1584]: Custom Domain
+                - textbox "Custom Domain" [ref=e1586]
+                - generic [ref=e1587]: Make sure this domain points to the server's IP address
+              - group [ref=e1588]:
+                - generic [ref=e1589]: Serve on IP address
+                - checkbox "Serve on IP address" [checked] [ref=e1591]
+              - button "Save" [ref=e1595] [cursor=pointer]
+          - generic [ref=e1596]:
+            - paragraph [ref=e1598]: Service Domain
+            - generic [ref=e1599]:
+              - alert [ref=e1600]:
+                - generic [ref=e1604]:
+                  - text: Custom service domain is available only if you have a license.
+                  - link "Buy License" [ref=e1605] [cursor=pointer]:
+                    - /url: /buy-license
+              - generic [ref=e1607]:
+                - group [ref=e1609]:
+                  - generic [ref=e1610]: Default Domain
+                  - button "*.qk6yxt.easypanel.host" [ref=e1612] [cursor=pointer]
+                - group [ref=e1618]:
+                  - generic [ref=e1619]: Custom Domain
+                  - textbox "Custom Domain" [ref=e1621]
+                  - generic [ref=e1622]: New services will use this domain instead of the default one
+                - alert [ref=e1623]:
+                  - paragraph [ref=e1627]:
+                    - text: "Configure a wildcard DNS record:"
+                    - code [ref=e1628]: "*.yourdomain.com → A → server IP"
+                - button "Save" [ref=e1630] [cursor=pointer]
+          - generic [ref=e1634]:
+            - group [ref=e1635]:
+              - generic [ref=e1636]: Let's Encrypt Email*
+              - textbox "Let's Encrypt Email" [ref=e1638]: heri.scaleup@gmail.com
+              - generic [ref=e1639]: This email address is used for SSL certificates
+            - button "Save" [ref=e1641] [cursor=pointer]
+    - region "Notifications alt+T":
+      - list:
+        - listitem [ref=e1654]:
+          - generic [ref=e1659]: Traefik service was restarted
+  - generic:
+    - region "Notifications-top"
+    - region "Notifications-top-left"
+    - region "Notifications-top-right"
+    - region "Notifications-bottom-left"
+    - region "Notifications-bottom"
+    - region "Notifications-bottom-right"

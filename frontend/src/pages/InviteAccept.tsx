@@ -65,7 +65,7 @@ const InviteAccept = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900 px-6 py-12">
       <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-lg w-full p-10 border border-gray-100 dark:border-slate-700">
         <div className="flex items-center space-x-3 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 flex items-center justify-center">
             <ShieldCheck size={24} />
           </div>
           <div>
@@ -124,7 +124,7 @@ const InviteAccept = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2"
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center space-x-2"
             >
               {isSubmitting && <Loader2 className="animate-spin" size={16} />}
               <span>{isSubmitting ? 'Memproses...' : 'Aktifkan Akun'}</span>

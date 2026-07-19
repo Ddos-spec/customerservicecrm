@@ -5,6 +5,7 @@ import { useThemeStore } from './store/useThemeStore';
 import { useAuthStore } from './store/useAuthStore';
 
 const Login = lazy(() => import('./pages/Login'));
+const LandingPage = lazy(() => import('./pages/LandingPage'));
 const MainLayout = lazy(() => import('./layouts/MainLayout'));
 const ProtectedRoute = lazy(() => import('./components/ProtectedRoute'));
 const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
@@ -30,9 +31,12 @@ const ContactGroups = lazy(() => import('./pages/marketing/ContactGroups'));
 const CampaignDetail = lazy(() => import('./pages/marketing/CampaignDetail'));
 
 const RouteLoader = () => (
-  <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-    <div className="rounded-3xl border border-slate-200 bg-white px-6 py-5 text-sm font-semibold shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      Memuat command center...
+  <div className="app-loader">
+    <div className="app-loader__orb" aria-hidden="true" />
+    <div className="app-loader__content">
+      <div className="brand-mark brand-mark--small"><span>W</span></div>
+      <p>Menyiapkan command center</p>
+      <span className="app-loader__line" />
     </div>
   </div>
 );
@@ -96,6 +100,7 @@ function App() {
         <Toaster position="top-right" expand={true} richColors />
         <Suspense fallback={<RouteLoader />}>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/invite/:token" element={<InviteAccept />} />
             <Route path="/subscribe" element={<BillingPage />} />
@@ -143,7 +148,7 @@ function App() {
               </Route>
             </Route>
 
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

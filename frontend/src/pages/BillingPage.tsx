@@ -35,10 +35,10 @@ const BillingPage = () => {
   const plans = ['Bulanan', '3 Bulan', 'Tahunan'];
 
   return (
-    <div className="min-h-[calc(100vh-7rem)] overflow-hidden rounded-[2rem] border border-emerald-100 dark:border-emerald-900 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_34%),linear-gradient(135deg,_#f7fee7_0%,_#f8fafc_48%,_#ecfeff_100%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.22),_transparent_34%),linear-gradient(135deg,_#020617_0%,_#0f172a_55%,_#022c22_100%)] p-4 sm:p-8">
+    <div className="min-h-[calc(100vh-7rem)] overflow-hidden rounded-[2rem] border border-blue-100 dark:border-blue-900 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_34%),linear-gradient(135deg,_#f7fee7_0%,_#f8fafc_48%,_#ecfeff_100%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.22),_transparent_34%),linear-gradient(135deg,_#020617_0%,_#0f172a_55%,_#022c22_100%)] p-4 sm:p-8">
       <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
         <section className="space-y-6 py-4 sm:py-8">
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-4 py-2 text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700 shadow-sm dark:border-emerald-800 dark:bg-slate-950/60 dark:text-emerald-300">
+          <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-[11px] font-black uppercase tracking-[0.24em] text-blue-700 shadow-sm dark:border-blue-800 dark:bg-slate-950/60 dark:text-blue-300">
             <ShieldCheck size={15} />
             Transfer Manual Aman
           </div>
@@ -60,8 +60,8 @@ const BillingPage = () => {
                 onClick={() => setSelectedPlan(plan)}
                 className={`rounded-2xl border px-4 py-4 text-left transition-all ${
                   selectedPlan === plan
-                    ? 'border-emerald-500 bg-emerald-600 text-white shadow-xl shadow-emerald-500/20'
-                    : 'border-white/80 bg-white/75 text-slate-700 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200'
+                    ? 'border-blue-500 bg-blue-600 text-white shadow-xl shadow-blue-500/20'
+                    : 'border-white/80 bg-white/75 text-slate-700 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200'
                 }`}
               >
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Paket</p>
@@ -74,7 +74,7 @@ const BillingPage = () => {
           <div className="grid gap-3 sm:grid-cols-3">
             {['Transfer ke rekening BCA', 'Kirim bukti pembayaran', 'Akun diproses admin'].map((step, index) => (
               <div key={step} className="rounded-2xl border border-white/80 bg-white/70 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
-                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-sm font-black text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-sm font-black text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
                   {index + 1}
                 </div>
                 <p className="text-sm font-black text-slate-900 dark:text-white">{step}</p>
@@ -84,14 +84,14 @@ const BillingPage = () => {
         </section>
 
         <aside className="relative">
-          <div className="absolute -inset-4 rounded-[2.5rem] bg-emerald-400/20 blur-3xl" />
-          <div className="relative overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-2xl shadow-emerald-900/10 backdrop-blur dark:border-slate-700 dark:bg-slate-950/85">
+          <div className="absolute -inset-4 rounded-[2.5rem] bg-blue-400/20 blur-3xl" />
+          <div className="relative overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-2xl shadow-blue-900/10 backdrop-blur dark:border-slate-700 dark:bg-slate-950/85">
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600 dark:text-emerald-300">Tujuan Pembayaran</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-600 dark:text-blue-300">Tujuan Pembayaran</p>
                 <h2 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">Rekening BCA</h2>
               </div>
-              <div className="rounded-2xl bg-emerald-600 p-3 text-white shadow-lg shadow-emerald-600/25">
+              <div className="rounded-2xl bg-blue-600 p-3 text-white shadow-lg shadow-blue-600/25">
                 <CreditCard size={24} />
               </div>
             </div>
@@ -108,7 +108,7 @@ const BillingPage = () => {
                   <button
                     type="button"
                     onClick={() => copyToClipboard(BANK_ACCOUNT, 'Nomor rekening berhasil dicopy')}
-                    className="rounded-xl bg-white p-3 text-emerald-700 shadow-sm transition-colors hover:bg-emerald-50 dark:bg-slate-800 dark:text-emerald-300 dark:hover:bg-slate-700"
+                    className="rounded-xl bg-white p-3 text-blue-700 shadow-sm transition-colors hover:bg-blue-50 dark:bg-slate-800 dark:text-blue-300 dark:hover:bg-slate-700"
                     aria-label="Copy nomor rekening"
                   >
                     <Copy size={18} />
@@ -137,7 +137,7 @@ const BillingPage = () => {
               <button
                 type="button"
                 onClick={() => copyToClipboard(confirmationTemplate.replace('Paket:', `Paket: ${selectedPlan}`), 'Template konfirmasi berhasil dicopy')}
-                className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-black uppercase tracking-widest text-emerald-700 transition-transform hover:-translate-y-0.5 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                className="flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm font-black uppercase tracking-widest text-blue-700 transition-transform hover:-translate-y-0.5 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200"
               >
                 <ReceiptText size={18} />
                 Copy Format Konfirmasi
@@ -151,15 +151,15 @@ const BillingPage = () => {
                 'Aktivasi dilakukan setelah pembayaran terkonfirmasi.'
               ].map((item) => (
                 <div key={item} className="flex items-start gap-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                  <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-500" size={18} />
+                  <CheckCircle2 className="mt-0.5 shrink-0 text-blue-500" size={18} />
                   <span>{item}</span>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 flex items-center justify-between rounded-2xl bg-emerald-600 px-5 py-4 text-white">
+            <div className="mt-6 flex items-center justify-between rounded-2xl bg-blue-600 px-5 py-4 text-white">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100">Pilihan Saat Ini</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100">Pilihan Saat Ini</p>
                 <p className="text-lg font-black">{selectedPlan}</p>
               </div>
               <ArrowRight size={22} />

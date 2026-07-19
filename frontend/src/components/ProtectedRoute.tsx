@@ -11,9 +11,12 @@ const ProtectedRoute = ({ allowedRoles }: ProtectedRouteProps) => {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-        <div className="rounded-3xl border border-slate-200 bg-white px-6 py-5 text-sm font-semibold shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          Memvalidasi sesi...
+      <div className="app-loader">
+        <div className="app-loader__orb" aria-hidden="true" />
+        <div className="app-loader__content">
+          <div className="brand-mark brand-mark--small"><span>W</span></div>
+          <p>Memvalidasi sesi</p>
+          <span className="app-loader__line" />
         </div>
       </div>
     );

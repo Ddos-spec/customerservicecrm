@@ -1,0 +1,185 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - link [ref=e723] [cursor=pointer]:
+              - /url: /
+            - generic [ref=e44]:
+              - generic [ref=e45]: Easypanel
+              - generic [ref=e46]:
+                - generic [ref=e47]: v2.32.2
+                - button [ref=e48] [cursor=pointer]
+                - combobox [ref=e54]
+          - generic [ref=e55]:
+            - link [ref=e725] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e395]: Dashboard
+            - link [ref=e726] [cursor=pointer]:
+              - /url: /actions
+              - generic [ref=e399]: Actions
+            - link [ref=e727] [cursor=pointer]:
+              - /url: /monitor
+              - generic [ref=e403]: Monitor
+            - link [ref=e728] [cursor=pointer]:
+              - /url: /domains
+              - generic [ref=e408]: Domains
+            - link [ref=e729] [cursor=pointer]:
+              - /url: /settings
+              - generic [ref=e413]: Settings
+          - generic [ref=e80]:
+            - link [ref=e730] [cursor=pointer]:
+              - /url: https://easypanel.io/docs
+              - generic [ref=e417]: Documentation
+            - link [ref=e731] [cursor=pointer]:
+              - /url: https://discord.gg/9bcDSXcZQ7
+              - generic [ref=e426]: Discord
+            - link [ref=e733] [cursor=pointer]:
+              - /url: https://my.easypanel.io/feedback
+              - generic [ref=e435]: Feedback
+            - link [ref=e734] [cursor=pointer]:
+              - /url: https://my.easypanel.io/changelog
+              - generic [ref=e445]: Changelog
+          - link [ref=e735] [cursor=pointer]:
+            - /url: /buy-license
+            - generic [ref=e456]: Buy License
+          - button [ref=e736] [cursor=pointer]:
+            - generic [ref=e461]: Quick Search
+            - generic [ref=e462]: ⌘ K
+          - generic [ref=e131]:
+            - heading [level=2] [ref=e737]: Command Palette
+            - paragraph [ref=e133]: Search for a command to run...
+          - button [ref=e738] [cursor=pointer]:
+            - generic [ref=e469]: 163.61.44.41
+          - generic [ref=e474]:
+            - generic [ref=e477]: Dark Mode
+            - generic [ref=e478]:
+              - switch [ref=e739]
+              - checkbox [ref=e480]
+          - button [ref=e740] [cursor=pointer]:
+            - generic [ref=e485]: Logout
+        - generic [ref=e487]:
+          - generic [ref=e488]:
+            - button [ref=e741] [cursor=pointer]:
+              - generic [ref=e493]: postgres
+            - generic [ref=e498]:
+              - generic [ref=e499]: Services
+              - link [ref=e500] [cursor=pointer]:
+                - /url: /projects/postgres/create
+            - generic [ref=e505]:
+              - link [ref=e742] [cursor=pointer]:
+                - /url: /projects/postgres/app/customerservicecrm
+                - generic [ref=e510]: customerservicecrm
+              - link [ref=e743] [cursor=pointer]:
+                - /url: /projects/postgres/app/posting-kilat-backend
+                - generic [ref=e515]: posting-kilat-backend
+              - link [ref=e744] [cursor=pointer]:
+                - /url: /projects/postgres/redis/redis
+                - generic [ref=e520]: redis
+              - link [ref=e745] [cursor=pointer]:
+                - /url: /projects/postgres/postgres/scrapdatan8n
+                - generic [ref=e525]: scrapdatan8n
+              - link [ref=e746] [cursor=pointer]:
+                - /url: /projects/postgres/app/wa-gateway
+                - generic [ref=e530]: wa-gateway
+          - generic [ref=e536]:
+            - link [ref=e747] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm
+              - generic [ref=e538]: Overview
+            - link [ref=e748] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/source
+              - generic [ref=e543]: Source
+            - link [ref=e749] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/deployments
+              - generic [ref=e550]: Deployments
+            - link [ref=e750] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/environment
+              - generic [ref=e559]: Environment
+            - link [ref=e751] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/domains
+              - generic [ref=e566]: Domains
+            - link [ref=e752] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/redirects
+              - generic [ref=e573]: Redirects
+            - link [ref=e753] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/scripts
+              - generic [ref=e579]: Scripts
+            - link [ref=e754] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/security
+              - generic [ref=e586]: Security
+            - link [ref=e755] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/resources
+              - generic [ref=e594]: Resources
+            - link [ref=e756] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/maintenance
+              - generic [ref=e601]: Maintenance
+            - link [ref=e757] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/storage
+              - generic [ref=e607]: Storage
+            - link [ref=e758] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/advanced
+              - generic [ref=e613]: Advanced
+      - generic [ref=e157]:
+        - generic [ref=e619]:
+          - generic [ref=e620]:
+            - link [ref=e759] [cursor=pointer]:
+              - /url: /projects/postgres
+              - text: postgres
+            - generic [ref=e622]: /
+            - generic [ref=e623]: customerservicecrm
+            - generic [ref=e624]: app
+            - button [ref=e760] [cursor=pointer]
+          - generic [ref=e630]:
+            - link [ref=e761] [cursor=pointer]:
+              - /url: /projects/postgres/create
+              - text: Service
+            - link [ref=e762] [cursor=pointer]:
+              - /url: /projects/postgres/create?tab=templates
+              - text: Templates
+            - link [ref=e763] [cursor=pointer]:
+              - /url: /projects/postgres/settings
+        - generic [ref=e646]:
+          - generic [ref=e648]:
+            - generic [ref=e649]:
+              - button [ref=e764] [cursor=pointer]: Deploy
+              - button [ref=e765] [cursor=pointer]
+              - button [ref=e766] [cursor=pointer]
+              - button [ref=e767] [cursor=pointer]
+              - button [ref=e768] [cursor=pointer]
+              - link [ref=e769] [cursor=pointer]:
+                - /url: https://postgres-customerservicecrm.qk6yxt.easypanel.host/
+              - button [ref=e770] [cursor=pointer]
+              - button [ref=e771] [cursor=pointer]
+              - button [ref=e772] [cursor=pointer]
+              - button [ref=e773] [cursor=pointer]
+            - generic [ref=e689]:
+              - generic [ref=e690]:
+                - text: CPU
+                - generic [ref=e691]: 0.0%
+              - generic [ref=e692]: Memory 155.8 MB
+              - generic [ref=e693]:
+                - text: Network I/O
+                - generic [ref=e694]: 1.0 MB / 493.6 KB
+          - generic [ref=e695]:
+            - generic [ref=e696]:
+              - paragraph [ref=e697]: Logs
+              - generic [ref=e698]:
+                - button [ref=e774] [cursor=pointer]
+                - button [ref=e775] [cursor=pointer]
+                - button [ref=e776] [cursor=pointer]
+            - textbox [ref=e777]
+    - region "Notifications alt+T"
+  - generic:
+    - region "Notifications-top"
+    - region "Notifications-top-left"
+    - region "Notifications-top-right"
+    - region "Notifications-bottom-left"
+    - region "Notifications-bottom"
+    - region "Notifications-bottom-right"
+  - dialog [ref=e781]:
+    - textbox "Terminal input" [ref=e787]
+    - generic [ref=e790]:
+      - button "Add Divider" [active] [ref=e791] [cursor=pointer]
+      - button "Refresh" [ref=e793] [cursor=pointer]
+      - button "Close" [ref=e799] [cursor=pointer]

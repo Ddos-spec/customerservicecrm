@@ -1,306 +1,255 @@
-import { useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore } from '../store/useAuthStore';
+import { useEffect, useMemo, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Menu, X, LogOut,
-  LayoutDashboard, Users, MessageSquare,
-  Clock, ChevronDown, FileCode2, Sun, Moon, Megaphone, Bot, CreditCard, Link2, Sparkles
+  Activity, BarChart3, Bot, ChevronDown, CircleHelp, Clock3, Code2,
+  CreditCard, History, LayoutDashboard, Link2, LogOut, Megaphone,
+  Menu, MessageSquareText, Moon, Search, Settings, Shield, Sparkles, Sun,
+  UserCircle, Users, X
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
-import { UserCircle } from 'lucide-react';
+
+type NavItem = {
+  to: string;
+  icon: React.ElementType;
+  label: string;
+  badge?: string;
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const navigationByRole: Record<string, NavGroup[]> = {
+  super_admin: [
+    { label: 'Command center', items: [
+      { to: '/super-admin', icon: LayoutDashboard, label: 'Overview' },
+      { to: '/super-admin/chats', icon: MessageSquareText, label: 'Global Inbox', badge: 'Live' },
+      { to: '/super-admin/tenants', icon: Shield, label: 'Tenant' },
+    ] },
+    { label: 'System', items: [
+      { to: '/super-admin/users', icon: Users, label: 'Pengguna' },
+      { to: '/super-admin/sessions', icon: Activity, label: 'Sesi Gateway' },
+      { to: '/super-admin/api-docs', icon: Code2, label: 'API Integrasi' },
+      { to: '/super-admin/settings', icon: Settings, label: 'Pengaturan' },
+    ] },
+  ],
+  admin_agent: [
+    { label: 'Workspace', items: [
+      { to: '/admin', icon: LayoutDashboard, label: 'Overview' },
+      { to: '/admin/chat', icon: MessageSquareText, label: 'Inbox', badge: '12' },
+      { to: '/admin/history', icon: History, label: 'Riwayat' },
+      { to: '/admin/reports', icon: BarChart3, label: 'Laporan' },
+    ] },
+    { label: 'Automation', items: [
+      { to: '/admin/chatbot', icon: Bot, label: 'AI Agent' },
+      { to: '/admin/assistant', icon: Sparkles, label: 'AI Assistant' },
+      { to: '/admin/marketing', icon: Megaphone, label: 'Campaign' },
+      { to: '/admin/marketing/groups', icon: Users, label: 'Grup Kontak' },
+    ] },
+    { label: 'Management', items: [
+      { to: '/admin/agents', icon: UserCircle, label: 'Tim Staff' },
+      { to: '/admin/integrations', icon: Link2, label: 'Integrasi' },
+      { to: '/admin/billing', icon: CreditCard, label: 'Langganan' },
+    ] },
+  ],
+  agent: [
+    { label: 'Workspace', items: [
+      { to: '/agent', icon: LayoutDashboard, label: 'Overview' },
+      { to: '/agent/chat', icon: MessageSquareText, label: 'Inbox', badge: '12' },
+      { to: '/agent/history', icon: Clock3, label: 'Riwayat' },
+    ] },
+  ],
+};
+
+const pageNames: Record<string, string> = {
+  '/super-admin': 'System overview',
+  '/super-admin/chats': 'Global inbox',
+  '/super-admin/tenants': 'Tenant management',
+  '/super-admin/users': 'User management',
+  '/super-admin/sessions': 'Gateway sessions',
+  '/super-admin/api-docs': 'API integration',
+  '/super-admin/settings': 'System settings',
+  '/admin': 'Business overview',
+  '/admin/chat': 'Customer inbox',
+  '/admin/history': 'Chat history',
+  '/admin/reports': 'Performance report',
+  '/admin/chatbot': 'AI agent',
+  '/admin/assistant': 'AI assistant',
+  '/admin/marketing': 'Campaign center',
+  '/admin/marketing/groups': 'Contact groups',
+  '/admin/marketing/create': 'Create campaign',
+  '/admin/agents': 'Team management',
+  '/admin/integrations': 'Integrations',
+  '/admin/billing': 'Plan & billing',
+  '/agent': 'Personal overview',
+  '/agent/chat': 'Customer inbox',
+  '/agent/history': 'Chat history',
+};
+
+const getRoleLabel = (role?: string | null) => {
+  if (role === 'super_admin') return 'Super Admin';
+  if (role === 'admin_agent') return 'Owner';
+  if (role === 'agent') return 'Staff';
+  return role || 'Workspace';
+};
 
 const MainLayout = () => {
   const { user, logout, stopImpersonate } = useAuthStore();
+  const { isDarkMode, toggleDarkMode } = useThemeStore();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const { isDarkMode, toggleDarkMode } = useThemeStore();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
 
-  const isSuperAdmin = user?.role === 'super_admin';
-  const isChatWorkspace = location.pathname.endsWith('/chat');
-  const getRoleLabel = (role?: string | null) => {
-    switch (role) {
-      case 'super_admin':
-        return 'Super Admin';
-      case 'admin_agent':
-        return 'Owner';
-      case 'agent':
-        return 'Staff';
-      default:
-        return role || '';
-    }
+  const navGroups = useMemo(() => navigationByRole[user?.role || ''] || [], [user?.role]);
+  const isChatWorkspace = location.pathname.endsWith('/chat') || location.pathname.endsWith('/chats');
+  const roleLabel = getRoleLabel(user?.role);
+  const exactTitle = pageNames[location.pathname];
+  const fallbackTitle = location.pathname.startsWith('/admin/marketing/') ? 'Campaign detail' : 'Command center';
+  const pageTitle = exactTitle || fallbackTitle;
+
+  const allItems = useMemo(() => navGroups.flatMap((group) => group.items), [navGroups]);
+
+  useEffect(() => {
+    const handleKeydown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+      if (event.key === 'Escape') {
+        setCommandOpen(false);
+        setProfileOpen(false);
+        setMobileOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, []);
+
+  const isActive = (to: string) => {
+    const rootRoutes = ['/super-admin', '/admin', '/agent'];
+    if (rootRoutes.includes(to)) return location.pathname === to;
+    return location.pathname === to || location.pathname.startsWith(`${to}/`);
   };
-  const roleLabel = user?.tenant_name || getRoleLabel(user?.role);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const getNavItems = () => {
-    switch (user?.role) {
-      case 'super_admin':
-        return [
-          { to: '/super-admin', icon: LayoutDashboard, label: 'Dashboard' },
-          { to: '/super-admin/chats', icon: MessageSquare, label: 'Global Inbox' },
-          { to: '/super-admin/tenants', icon: Users, label: 'Kelola Tenant' },
-          { to: '/super-admin/api-docs', icon: FileCode2, label: 'API Integrasi' },
-        ];
-      case 'admin_agent':
-        return [
-          { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
-          { to: '/admin/chat', icon: MessageSquare, label: 'Workspace' },
-          { to: '/admin/history', icon: Clock, label: 'Riwayat' },
-          { to: '/admin/chatbot', icon: Bot, label: 'AI Agent' },
-          { to: '/admin/assistant', icon: Sparkles, label: 'AI Assistant' },
-          { to: '/admin/integrations', icon: Link2, label: 'Integrasi' },
-          { to: '/admin/agents', icon: Users, label: 'Tim Staff' },
-          { to: '/admin/marketing', icon: Megaphone, label: 'Marketing' },
-          { to: '/admin/billing', icon: CreditCard, label: 'Langganan' },
-        ];
-      case 'agent':
-        return [
-          { to: '/agent', icon: LayoutDashboard, label: 'Dashboard' },
-          { to: '/agent/chat', icon: MessageSquare, label: 'Workspace' },
-          { to: '/agent/history', icon: Clock, label: 'Riwayat' },
-        ];
-      default:
-        return [];
-    }
+  const openRoute = (to: string) => {
+    navigate(to);
+    setMobileOpen(false);
+    setCommandOpen(false);
   };
 
-  const NavItemMobile = ({ to, icon: Icon, label }: any) => {
-    const isActive = location.pathname === to;
-    return (
-      <button
-        onClick={() => {
-          navigate(to);
-          setIsMobileMenuOpen(false);
-          setIsProfileMenuOpen(false);
-        }}
-        className={clsx(
-          "w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all mb-1",
-          isActive 
-            ? (isSuperAdmin ? "bg-green-600 text-white shadow-lg shadow-green-500/20" : "bg-blue-600 text-white shadow-lg shadow-blue-500/20")
-            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
-        )}
-      >
-        <Icon size={20} />
-        <span className="font-bold text-sm">{label}</span>
-      </button>
-    );
-  };
+  const renderSidebarContent = () => (
+    <>
+      <div className="app-sidebar__brand">
+        <button className="app-brand" onClick={() => openRoute(user?.role === 'super_admin' ? '/super-admin' : user?.role === 'agent' ? '/agent' : '/admin')}>
+          <span className="brand-mark brand-mark--small"><span>W</span></span>
+          <span className="app-brand__copy"><strong>WA<span>Central</span></strong><small>Service OS</small></span>
+        </button>
+        <button className="app-sidebar__close" onClick={() => setMobileOpen(false)} aria-label="Tutup menu"><X size={20} /></button>
+      </div>
 
-  const NavItemDesktop = ({ to, icon: Icon, label }: any) => {
-    const isActive = location.pathname === to;
-    return (
-      <button
-        onClick={() => {
-          setIsProfileMenuOpen(false);
-          navigate(to);
-        }}
-        className={clsx(
-          "group relative flex min-w-max items-center gap-2 rounded-2xl px-3.5 py-3 text-sm font-semibold tracking-tight transition-all duration-200",
-          isActive
-            ? (isSuperAdmin
-                ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 ring-1 ring-green-100 dark:ring-green-800 shadow-[0_12px_30px_-24px_rgba(22,163,74,0.8)]"
-                : "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ring-1 ring-blue-100 dark:ring-blue-800 shadow-[0_12px_30px_-24px_rgba(37,99,235,0.8)]")
-            : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
-        )}
-      >
-        <Icon size={16} />
-        <span>{label}</span>
-        {isActive && (
-          <span className={clsx("absolute inset-x-4 -bottom-1 h-0.5 rounded-full", isSuperAdmin ? "bg-green-500" : "bg-blue-500")} />
-        )}
-      </button>
-    );
-  };
+      <div className="workspace-switcher">
+        <div className="workspace-switcher__avatar">{(user?.tenant_name || user?.name || 'W').slice(0, 1).toUpperCase()}</div>
+        <div><small>ACTIVE WORKSPACE</small><strong>{user?.tenant_name || 'WACentral System'}</strong></div>
+        <ChevronDown size={15} />
+      </div>
+
+      <nav className="app-navigation" aria-label="Navigasi dashboard">
+        {navGroups.map((group) => (
+          <div className="app-navigation__group" key={group.label}>
+            <p>{group.label}</p>
+            {group.items.map(({ to, icon: Icon, label, badge }) => (
+              <button key={to} onClick={() => openRoute(to)} className={clsx('app-nav-item', isActive(to) && 'app-nav-item--active')}>
+                <span className="app-nav-item__icon"><Icon size={18} /></span>
+                <span>{label}</span>
+                {badge && <b className={badge === 'Live' ? 'app-nav-badge app-nav-badge--live' : 'app-nav-badge'}>{badge}</b>}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      <div className="app-sidebar__footer">
+        <button className="support-card">
+          <span><CircleHelp size={18} /></span>
+          <div><strong>Butuh bantuan?</strong><small>Buka support center</small></div>
+          <ChevronRightIcon />
+        </button>
+        <div className="system-status"><span><i /> All systems operational</span><small>v1.0.0</small></div>
+      </div>
+    </>
+  );
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-900 flex flex-col transition-colors duration-300">
-      {/* Impersonation Banner */}
+    <div className="app-shell">
       {user?.isImpersonating && (
-        <div className="bg-amber-500 text-white px-4 py-2 flex justify-between items-center shadow-md relative z-50">
-          <div className="flex items-center gap-2 text-sm font-bold">
-            <span className="bg-white/20 p-1 rounded"><UserCircle size={16} /></span>
-            <span>Anda sedang login sebagai: {user.name} ({user.tenant_name})</span>
-          </div>
-          <button 
-            onClick={() => stopImpersonate()}
-            className="bg-white text-amber-600 px-3 py-1 rounded text-xs font-bold uppercase hover:bg-amber-50 transition-colors shadow-sm"
-          >
-            Kembali ke Super Admin
-          </button>
+        <div className="impersonation-banner">
+          <span><UserCircle size={16} /> Mode impersonasi: <strong>{user.name}</strong> · {user.tenant_name}</span>
+          <button onClick={() => stopImpersonate()}>Kembali ke Super Admin</button>
         </div>
       )}
 
-      {/* ================= DESKTOP NAVBAR ================= */}
-      <header className="hidden lg:flex sticky top-0 z-40 border-b border-gray-100/90 bg-white/84 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/84 transition-colors duration-300">
-        <div className="mx-auto flex h-20 w-full max-w-[1480px] items-center justify-between gap-4 px-5 xl:px-8">
-          <div className="flex min-w-0 flex-1 items-center gap-4 xl:gap-8">
-            {/* Logo */}
-            <div className="flex shrink-0 items-center space-x-3">
-              <img src={import.meta.env.BASE_URL + "logo.png"} alt="CRM SaaS" className="h-10 w-10 rounded-2xl object-contain ring-1 ring-gray-100 dark:ring-slate-800" />
-              <div className="min-w-0">
-                <span className="block leading-none text-xl font-black tracking-tight text-gray-900 dark:text-white">
-                  CRM<span className={isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}>SaaS</span>
-                </span>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                  Customer Service Command Center
-                </p>
-              </div>
-            </div>
+      <aside className="app-sidebar">{renderSidebarContent()}</aside>
 
-            {/* Desktop Navigation */}
-            <div className="min-w-0 flex-1 overflow-hidden">
-              <nav className="hide-scrollbar flex items-center gap-1 overflow-x-auto rounded-[28px] border border-gray-100 bg-white/85 p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-900/72">
-                {getNavItems().map((item) => (
-                  <NavItemDesktop key={item.to} {...item} />
-                ))}
-              </nav>
-            </div>
+      <div className={clsx('app-mobile-drawer', mobileOpen && 'app-mobile-drawer--open')}>
+        <aside>{renderSidebarContent()}</aside>
+        <button className="app-mobile-backdrop" onClick={() => setMobileOpen(false)} aria-label="Tutup menu" />
+      </div>
+
+      <div className="app-main">
+        <header className="app-topbar">
+          <div className="app-topbar__left">
+            <button className="app-mobile-trigger" onClick={() => setMobileOpen(true)} aria-label="Buka menu"><Menu size={21} /></button>
+            <div className="app-page-identity"><small>{roleLabel} / {user?.tenant_name || 'System'}</small><strong>{pageTitle}</strong></div>
           </div>
 
-          {/* User Profile (Desktop) */}
-          <div className="flex shrink-0 items-center gap-2.5 xl:gap-3">
-            <button
-              onClick={toggleDarkMode}
-              aria-label={isDarkMode ? "Matikan mode gelap" : "Nyalakan mode gelap"}
-              className="rounded-2xl border border-gray-100 p-2.5 text-gray-500 transition-colors hover:bg-gray-50 dark:border-slate-700 dark:text-gray-300 dark:hover:bg-slate-800"
-            >
-              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-            <div className="relative">
-              <button
-                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                className="flex items-center gap-3 rounded-[28px] border border-gray-100 bg-white/85 p-1.5 pr-3 shadow-sm transition-all hover:border-gray-200 hover:bg-gray-50 dark:border-slate-800 dark:bg-slate-900/72 dark:hover:border-slate-700 dark:hover:bg-slate-800"
-              >
-                <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black shadow-lg", isSuperAdmin ? "bg-green-600 shadow-green-100 dark:shadow-green-900/50" : "bg-blue-600 shadow-blue-100 dark:shadow-blue-900/50")}>
-                  {user?.name.charAt(0)}
-                </div>
-                <div className="hidden min-w-0 text-left xl:block">
-                  <p className="truncate text-sm font-black leading-none text-gray-900 dark:text-white">{user?.name}</p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <p className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">{roleLabel}</p>
-                    <span className={clsx("rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em]", isSuperAdmin ? "bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-300" : "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300")}>
-                      {getRoleLabel(user?.role)}
-                    </span>
-                  </div>
-                </div>
-                <ChevronDown size={14} className="text-gray-300 dark:text-gray-600" />
+          <div className="app-topbar__actions">
+            <button className="command-trigger" onClick={() => setCommandOpen(true)}><Search size={16} /><span>Cari menu atau aksi...</span><kbd>⌘ K</kbd></button>
+            <div className="topbar-live"><i /> <span>Live</span></div>
+            <button className="icon-button" onClick={toggleDarkMode} aria-label={isDarkMode ? 'Gunakan mode terang' : 'Gunakan mode gelap'}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
+            <div className="profile-menu">
+              <button className="profile-trigger" onClick={() => setProfileOpen(!profileOpen)}>
+                <span>{user?.name?.slice(0, 1).toUpperCase()}</span>
+                <div><strong>{user?.name}</strong><small>{roleLabel}</small></div>
+                <ChevronDown size={14} />
               </button>
-
-              {isProfileMenuOpen && (
-                <div className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-50 dark:border-slate-700 py-3 animate-in fade-in zoom-in-95 duration-200">
-                  <div className="px-5 py-3 border-b border-gray-50 dark:border-slate-700 mb-2">
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest">Akun Terhubung</p>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white truncate mt-1">{user?.email}</p>
-                  </div>
-                  <button onClick={handleLogout} className="w-full text-left px-5 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 font-bold flex items-center space-x-2 transition-colors">
-                    <LogOut size={18} />
-                    <span>Keluar Aplikasi</span>
-                  </button>
+              {profileOpen && (
+                <div className="profile-popover">
+                  <div><small>AKUN TERHUBUNG</small><strong>{user?.email}</strong></div>
+                  <button onClick={handleLogout}><LogOut size={17} /> Keluar aplikasi</button>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-
-      {/* ================= MOBILE HEADER ================= */}
-      <div className="fixed top-0 z-50 flex w-full items-center justify-between border-b border-gray-100 bg-white/92 px-4 py-3 shadow-lg backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/92 lg:hidden">
-        <div className="min-w-0">
-          <div className="flex items-center space-x-2 text-lg font-black tracking-tight text-gray-900 dark:text-white">
-            <img src={import.meta.env.BASE_URL + "logo.png"} alt="CRM SaaS" className="h-8 w-8 rounded-xl object-contain" />
-            <span>CRM SaaS</span>
-          </div>
-          <p className="mt-0.5 truncate pl-10 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-            {roleLabel || 'Workspace'}
-          </p>
-        </div>
-        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="rounded-2xl bg-gray-100 p-2.5 text-gray-900 dark:bg-white/10 dark:text-white">
-          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <main className={clsx('app-content', isChatWorkspace && 'app-content--chat')}>
+          <div className={isChatWorkspace ? 'app-content__chat-inner' : 'app-content__inner'}><Outlet /></div>
+        </main>
       </div>
 
-      {/* ================= MOBILE SIDEBAR ================= */}
-      <aside className={clsx(
-        "fixed inset-y-0 left-0 z-50 w-80 transform transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) lg:hidden flex flex-col shadow-2xl bg-white text-gray-900 dark:bg-gray-950 dark:text-white border-r border-gray-100 dark:border-slate-800",
-        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
-        <div className="p-8 border-b border-gray-100 dark:border-white/5 flex items-center space-x-4">
-          <div className={clsx("w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black shadow-2xl text-white", isSuperAdmin ? "bg-green-600 shadow-green-900/50" : "bg-blue-600 shadow-blue-900/50")}>
-            {user?.name.charAt(0)}
-          </div>
-          <div className="overflow-hidden">
-             <p className="font-black text-lg truncate text-gray-900 dark:text-white leading-tight">{user?.name}</p>
-             <p className={clsx("text-xs font-bold uppercase tracking-widest mt-1 truncate", isSuperAdmin ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400")}>{roleLabel}</p>
+      {commandOpen && (
+        <div className="command-overlay" onMouseDown={() => setCommandOpen(false)}>
+          <div className="command-palette" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="command-palette__search"><Search size={19} /><input autoFocus placeholder="Cari halaman atau aksi..." /><kbd>ESC</kbd></div>
+            <div className="command-palette__body"><small>NAVIGASI CEPAT</small>{allItems.map(({ to, icon: Icon, label }) => <button key={to} onClick={() => openRoute(to)}><span><Icon size={17} /></span>{label}<kbd>↵</kbd></button>)}</div>
+            <div className="command-palette__footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigasi</span><span><kbd>↵</kbd> buka</span></div>
           </div>
         </div>
-
-        <nav className="flex-1 px-6 py-8 overflow-y-auto">
-          <div className="mb-6 px-4 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em]">
-            Menu Navigasi
-          </div>
-          {getNavItems().map((item) => (
-            <NavItemMobile key={item.to} {...item} />
-          ))}
-        </nav>
-
-        <div className="p-6 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-gray-950/50">
-          <button
-            onClick={toggleDarkMode}
-            className="w-full mb-3 flex items-center space-x-3 px-5 py-4 rounded-2xl bg-gray-900 text-white dark:bg-white/10 hover:bg-gray-800 dark:hover:bg-white/20 transition-colors font-bold uppercase tracking-widest text-xs"
-          >
-            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
-          </button>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center space-x-3 px-5 py-4 text-red-500 hover:text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-2xl transition-all font-black uppercase tracking-widest text-xs"
-          >
-            <LogOut size={20} />
-            <span>Keluar Sesi</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Mobile Overlay */}
-      {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-slate-950/80 z-40 lg:hidden backdrop-blur-md animate-in fade-in duration-300"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
       )}
-
-
-      {/* ================= MAIN CONTENT AREA ================= */}
-      <main
-        className={clsx(
-          "flex-1 overflow-x-hidden pt-20 transition-colors duration-300 lg:pt-0",
-          isChatWorkspace
-            ? "bg-[#f0f2f5] dark:bg-[#111b21]"
-            : "bg-[linear-gradient(to_bottom,_rgba(248,250,252,0.96),_rgba(248,250,252,1))] dark:bg-[linear-gradient(to_bottom,_rgba(15,23,42,0.94),_rgba(2,6,23,1))]"
-        )}
-      >
-        <div
-          className={clsx(
-            "mx-auto w-full",
-            isChatWorkspace
-              ? "h-[calc(100dvh-5rem)] max-w-none p-0"
-              : "max-w-[1480px] px-4 py-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-8 lg:py-8 xl:px-10"
-          )}
-        >
-          <Outlet />
-        </div>
-      </main>
-
     </div>
   );
 };
+
+const ChevronRightIcon = () => <span className="support-card__arrow">→</span>;
 
 export default MainLayout;

@@ -1,0 +1,336 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "mycustomerservice Home" [ref=e4] [cursor=pointer]:
+        - /url: "#"
+        - generic [ref=e8]: mycustomerservice
+      - list [ref=e9]:
+        - listitem [ref=e10]:
+          - link "Fitur" [ref=e11] [cursor=pointer]:
+            - /url: "#features"
+        - listitem [ref=e12]:
+          - link "Cara Kerja" [ref=e13] [cursor=pointer]:
+            - /url: "#how-it-works"
+        - listitem [ref=e14]:
+          - link "Hasil Nyata" [ref=e15] [cursor=pointer]:
+            - /url: "#stats"
+        - listitem [ref=e16]:
+          - link "Harga" [ref=e17] [cursor=pointer]:
+            - /url: "#cta"
+      - generic [ref=e18]:
+        - link "Masuk" [ref=e19] [cursor=pointer]:
+          - /url: /login
+        - link "Mulai Gratis →" [ref=e20] [cursor=pointer]:
+          - /url: "#cta"
+  - region [ref=e21]:
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]: WhatsApp CRM Platform
+        - heading "Kelola Semua Percakapan WhatsApp Dalam Satu Dasbor" [level=1] [ref=e28]
+        - paragraph [ref=e29]:
+          - text: mycustomerservice menghadirkan
+          - strong [ref=e30]: multi-agent WhatsApp handling
+          - text: ", sistem tiket otomatis, dan analitik real-time — dalam satu platform enterprise yang siap skala untuk ratusan agen sekaligus."
+        - generic [ref=e31]:
+          - link "Mulai Gratis" [ref=e32] [cursor=pointer]:
+            - /url: "#cta"
+          - link "▶ Lihat Demo" [ref=e35] [cursor=pointer]:
+            - /url: "#how-it-works"
+        - generic [ref=e36]:
+          - generic [ref=e37]: Setup 5 menit
+          - generic [ref=e40]: No credit card
+          - generic [ref=e43]: Multi-tenant ready
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - generic [ref=e48]: mycustomerservice — Dashboard Utama
+          - generic [ref=e53]:
+            - generic [ref=e54]:
+              - generic [ref=e55]:
+                - generic [ref=e56]: Tiket Aktif
+                - generic [ref=e57]: "247"
+                - generic [ref=e58]: ↑ 12% hari ini
+              - generic [ref=e59]:
+                - generic [ref=e60]: Agen Online
+                - generic [ref=e61]: "18"
+                - generic [ref=e62]: dari 24 agen
+              - generic [ref=e63]:
+                - generic [ref=e64]: Avg. Respons
+                - generic [ref=e65]: 1m 42s
+                - generic [ref=e66]: ↓ 23% lebih cepat
+            - generic [ref=e67]: Tiket Terbaru
+            - generic [ref=e68]:
+              - generic [ref=e69]:
+                - generic [ref=e70]: RD
+                - generic [ref=e71]:
+                  - generic [ref=e72]: Rizky Darmawan
+                  - generic [ref=e73]: "Halo, saya mau tanya soal status pesanan #8821..."
+                - generic [ref=e74]:
+                  - generic [ref=e75]: 2m lalu
+                  - generic [ref=e76]: Open
+              - generic [ref=e77]:
+                - generic [ref=e78]: SA
+                - generic [ref=e79]:
+                  - generic [ref=e80]: Siti Aisyah
+                  - generic [ref=e81]: Produknya belum sampai, sudah 3 hari...
+                - generic [ref=e82]:
+                  - generic [ref=e83]: 8m lalu
+                  - generic [ref=e84]: Pending
+              - generic [ref=e85]:
+                - generic [ref=e86]: BP
+                - generic [ref=e87]:
+                  - generic [ref=e88]: Budi Prasetyo
+                  - generic [ref=e89]: Minta refund untuk orderan kemarin...
+                - generic [ref=e90]:
+                  - generic [ref=e91]: 15m lalu
+                  - generic [ref=e92]: New
+        - generic [ref=e97]:
+          - generic [ref=e98]: Tiket Selesai
+          - generic [ref=e99]: 89 tiket hari ini · ↑ 34%
+        - generic [ref=e104]:
+          - generic [ref=e105]: CSAT Score
+          - generic [ref=e106]: 4.9/5.0 ⭐ Excellent
+  - complementary "Dipercaya oleh perusahaan" [ref=e107]:
+    - generic [ref=e108]:
+      - paragraph [ref=e109]: Dipercaya oleh tim CS di berbagai industri Indonesia
+      - generic [ref=e110]:
+        - generic [ref=e111]:
+          - generic [ref=e112]: 🛍️
+          - text: E-Commerce
+        - generic [ref=e113]:
+          - generic [ref=e114]: 🏦
+          - text: Fintech
+        - generic [ref=e115]:
+          - generic [ref=e116]: 🏥
+          - text: Healthcare
+        - generic [ref=e117]:
+          - generic [ref=e118]: 🎓
+          - text: EdTech
+        - generic [ref=e119]:
+          - generic [ref=e120]: 🏗️
+          - text: Property
+        - generic [ref=e121]:
+          - generic [ref=e122]: 🚀
+          - text: SaaS
+  - region [ref=e123]:
+    - generic [ref=e124]:
+      - generic [ref=e125]:
+        - paragraph [ref=e126]: Kemampuan Platform
+        - heading "Semua yang dibutuhkan tim CS dalam satu platform" [level=2] [ref=e127]: Semua yang dibutuhkan tim CSdalam satu platform
+        - paragraph [ref=e128]: Dari routing cerdas hingga analitik mendalam — mycustomerservice dirancang untuk tim customer service yang serius soal efisiensi dan kepuasan pelanggan.
+      - generic [ref=e129]:
+        - generic [ref=e130]:
+          - generic [ref=e131]: 👥
+          - heading "Multi-Agent WhatsApp" [level=3] [ref=e132]
+          - paragraph [ref=e133]: Satu nomor WhatsApp, ratusan agen — semua terhubung. Sistem routing otomatis mendistribusikan percakapan berdasarkan keahlian, beban kerja, dan prioritas agen.
+          - generic [ref=e134]: Go Gateway + WebSocket
+        - generic [ref=e135]:
+          - generic [ref=e136]: 🎫
+          - heading "Smart Ticket Management" [level=3] [ref=e137]
+          - paragraph [ref=e138]: Setiap percakapan otomatis jadi tiket terstruktur. Label, prioritas, eskalasi, dan SLA timer bawaan. Tidak ada satu pun permintaan pelanggan yang terlewat.
+          - generic [ref=e139]: Auto-routing · SLA Tracker
+        - generic [ref=e140]:
+          - generic [ref=e141]: 🏢
+          - heading "Multi-Tenant Architecture" [level=3] [ref=e142]
+          - paragraph [ref=e143]: Kelola banyak bisnis atau klien dalam satu instance. Isolasi data penuh, konfigurasi per-tenant, dan kontrol akses berbasis peran (RBAC) yang granular.
+          - generic [ref=e144]: Enterprise-ready · RBAC
+        - generic [ref=e145]:
+          - generic [ref=e146]: 📊
+          - heading "Analitik & Laporan Real-time" [level=3] [ref=e147]
+          - paragraph [ref=e148]: "Dashboard metrics langsung: volume tiket, response time, CSAT score, performa per-agen, dan tren harian/mingguan. Ekspor ke CSV/PDF kapan saja."
+          - generic [ref=e149]: Real-time · Redis Streams
+        - generic [ref=e150]:
+          - generic [ref=e151]: ⚡
+          - heading "Otomasi & Bot Cerdas" [level=3] [ref=e152]
+          - paragraph [ref=e153]: Buat alur percakapan otomatis, FAQ bot, auto-reply di luar jam kerja, dan trigger berbasis kata kunci — tanpa coding. Kurangi beban agen hingga 40%.
+          - generic [ref=e154]: No-code Flows · Webhook
+        - generic [ref=e155]:
+          - generic [ref=e156]: 🔗
+          - heading "Integrasi Ekosistem" [level=3] [ref=e157]
+          - paragraph [ref=e158]: Sambungkan dengan CRM, e-commerce, helpdesk, atau ERP yang sudah ada. API REST lengkap, Webhook fleksibel, dan SDK siap pakai untuk developer.
+          - generic [ref=e159]: REST API · Webhook · SDK
+  - region [ref=e160]:
+    - generic [ref=e161]:
+      - generic [ref=e162]:
+        - paragraph [ref=e163]: Cara Kerja
+        - heading "Dari setup hingga live hanya dalam 3 langkah" [level=2] [ref=e164]: Dari setup hingga livehanya dalam 3 langkah
+        - paragraph [ref=e165]: Tidak perlu infrastruktur rumit. mycustomerservice siap digunakan dalam hitungan menit, bukan hari.
+      - generic [ref=e166]:
+        - generic [ref=e167]:
+          - generic [ref=e168]: "1"
+          - heading "Hubungkan WhatsApp" [level=3] [ref=e170]
+          - paragraph [ref=e171]: Scan QR code sekali, nomor WhatsApp bisnis Anda langsung terhubung via Go Gateway yang stabil dan cepat.
+          - generic "Detail langkah pertama" [ref=e172]:
+            - generic [ref=e173]: WhatsApp Business API ready
+            - generic [ref=e174]: Multi-device support
+            - generic [ref=e175]: Reconnect otomatis 24/7
+        - generic [ref=e176]:
+          - generic [ref=e177]: "2"
+          - heading "Konfigurasi Tim & Alur" [level=3] [ref=e179]
+          - paragraph [ref=e180]: Tambahkan agen, buat departemen, set jam kerja, dan desain alur routing percakapan sesuai kebutuhan bisnis Anda.
+          - generic "Detail langkah kedua" [ref=e181]:
+            - generic [ref=e182]: Tambah agen tanpa batas
+            - generic [ref=e183]: Template quick reply bawaan
+            - generic [ref=e184]: SLA & eskalasi otomatis
+        - generic [ref=e185]:
+          - generic [ref=e186]: "3"
+          - heading "Go Live & Monitor" [level=3] [ref=e188]
+          - paragraph [ref=e189]: Tim Anda langsung melayani pelanggan. Pantau semua aktivitas secara real-time dari satu dashboard terpusat.
+          - generic "Detail langkah ketiga" [ref=e190]:
+            - generic [ref=e191]: Dashboard real-time
+            - generic [ref=e192]: Notifikasi & alert agen
+            - generic [ref=e193]: Laporan otomatis harian
+  - region [ref=e194]:
+    - generic [ref=e195]:
+      - generic [ref=e196]:
+        - paragraph [ref=e197]: Hasil Nyata
+        - heading "Angka yang bicara untuk dirinya sendiri" [level=2] [ref=e198]: Angka yang bicarauntuk dirinya sendiri
+        - paragraph [ref=e199]: Platform yang sudah terbukti meningkatkan efisiensi tim CS dan kepuasan pelanggan secara signifikan.
+      - generic [ref=e200]:
+        - generic [ref=e201]:
+          - generic [ref=e202]:
+            - emphasis [ref=e203]: "94"
+            - text: "%"
+          - generic [ref=e204]: Tingkat kepuasan pelanggan (CSAT) rata-rata pengguna
+        - generic [ref=e205]:
+          - generic [ref=e206]:
+            - text: "3"
+            - emphasis [ref=e207]: ×
+          - generic [ref=e208]: Lebih banyak tiket terselesaikan per agen per hari
+        - generic [ref=e209]:
+          - generic [ref=e210]:
+            - emphasis [ref=e211]: ↓
+            - text: 65%
+          - generic [ref=e212]: Penurunan rata-rata waktu respons pertama pelanggan
+        - generic [ref=e213]:
+          - generic [ref=e214]:
+            - text: "10"
+            - emphasis [ref=e215]: K+
+          - generic [ref=e216]: Percakapan diproses setiap hari di semua tenant aktif
+      - generic [ref=e217]:
+        - paragraph [ref=e218]: Kata Mereka
+        - heading "Tim CS yang sudah merasakan manfaatnya" [level=3] [ref=e219]
+      - generic [ref=e220]:
+        - generic [ref=e221]:
+          - generic "5 bintang" [ref=e222]: ★★★★★
+          - paragraph [ref=e223]: "\"mycustomerservice mengubah cara kerja tim CS kami sepenuhnya. Dulu chaos dengan WhatsApp pribadi, sekarang semua terkelola rapi. Response time kami turun dari 15 menit jadi 2 menit.\""
+          - generic [ref=e224]:
+            - generic [ref=e225]: AN
+            - generic [ref=e226]:
+              - generic [ref=e227]: Anisa Nurhayati
+              - generic [ref=e228]: Head of CS · Toko Online Fashion, Bandung
+        - generic [ref=e229]:
+          - generic "5 bintang" [ref=e230]: ★★★★★
+          - paragraph [ref=e231]: "\"Fitur multi-tenant-nya luar biasa. Kami bisa kelola semua klien dari satu platform tanpa khawatir data tercampur. Tim developer kami juga suka dengan REST API-nya yang bersih.\""
+          - generic [ref=e232]:
+            - generic [ref=e233]: FR
+            - generic [ref=e234]:
+              - generic [ref=e235]: Fahrul Ramadhan
+              - generic [ref=e236]: CTO · Startup SaaS B2B, Jakarta
+        - generic [ref=e237]:
+          - generic "5 bintang" [ref=e238]: ★★★★★
+          - paragraph [ref=e239]: "\"Setup cuma 20 menit dan langsung bisa dipakai 30 agen sekaligus. Fitur SLA tracker dan escalation otomatis benar-benar menyelamatkan tim kami saat peak season.\""
+          - generic [ref=e240]:
+            - generic [ref=e241]: DW
+            - generic [ref=e242]:
+              - generic [ref=e243]: Dewi Wulandari
+              - generic [ref=e244]: Operations Manager · Fintech Lending, Surabaya
+  - region [ref=e245]:
+    - generic [ref=e247]:
+      - generic [ref=e248]:
+        - generic [ref=e249]: 🚀
+        - text: Mulai sekarang, gratis 14 hari
+      - heading "Siap mengubah WhatsApp jadi mesin customer service kelas dunia?" [level=2] [ref=e250]: Siap mengubah WhatsAppjadi mesin customer servicekelas dunia?
+      - paragraph [ref=e251]: Bergabunglah dengan ratusan tim CS di Indonesia yang sudah beralih ke mycustomerservice. Trial 14 hari penuh, tanpa kartu kredit, tanpa komitmen.
+      - generic [ref=e252]:
+        - link "Mulai Gratis Sekarang" [ref=e253] [cursor=pointer]:
+          - /url: "#"
+        - button "📞 Jadwalkan Demo" [ref=e256] [cursor=pointer]
+      - generic [ref=e257]:
+        - generic [ref=e258]: ✓ Trial 14 hari gratis
+        - generic [ref=e259]: ✓ Tanpa kartu kredit
+        - generic [ref=e260]: ✓ Setup 5 menit
+        - generic [ref=e261]: ✓ Support 24/7
+  - contentinfo [ref=e262]:
+    - generic [ref=e263]:
+      - generic [ref=e264]:
+        - generic [ref=e265]:
+          - link "mycustomerservice Home" [ref=e266] [cursor=pointer]:
+            - /url: "#"
+            - generic [ref=e270]: mycustomerservice
+          - paragraph [ref=e271]: Platform WhatsApp CRM enterprise untuk tim customer service Indonesia yang ingin tumbuh lebih cepat, lebih efisien, dan lebih terukur.
+          - generic "Social media links" [ref=e272]:
+            - link "Twitter/X" [ref=e273] [cursor=pointer]:
+              - /url: "#"
+              - text: 𝕏
+            - link "LinkedIn" [ref=e274] [cursor=pointer]:
+              - /url: "#"
+              - text: in
+            - link "Instagram" [ref=e275] [cursor=pointer]:
+              - /url: "#"
+              - text: 📸
+            - link "WhatsApp" [ref=e276] [cursor=pointer]:
+              - /url: "#"
+              - text: 💬
+        - generic [ref=e277]:
+          - heading "Produk" [level=4] [ref=e278]
+          - list [ref=e279]:
+            - listitem [ref=e280]:
+              - link "Fitur Lengkap" [ref=e281] [cursor=pointer]:
+                - /url: "#features"
+            - listitem [ref=e282]:
+              - link "Cara Kerja" [ref=e283] [cursor=pointer]:
+                - /url: "#how-it-works"
+            - listitem [ref=e284]:
+              - link "Harga & Paket" [ref=e285] [cursor=pointer]:
+                - /url: "#cta"
+            - listitem [ref=e286]:
+              - link "Changelog" [ref=e287] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e288]:
+              - link "Roadmap" [ref=e289] [cursor=pointer]:
+                - /url: "#"
+        - generic [ref=e290]:
+          - heading "Developer" [level=4] [ref=e291]
+          - list [ref=e292]:
+            - listitem [ref=e293]:
+              - link "Dokumentasi API" [ref=e294] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e295]:
+              - link "REST API Reference" [ref=e296] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e297]:
+              - link "Webhook Guide" [ref=e298] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e299]:
+              - link "SDK & Library" [ref=e300] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e301]:
+              - link "GitHub" [ref=e302] [cursor=pointer]:
+                - /url: "#"
+        - generic [ref=e303]:
+          - heading "Perusahaan" [level=4] [ref=e304]
+          - list [ref=e305]:
+            - listitem [ref=e306]:
+              - link "Tentang Kami" [ref=e307] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e308]:
+              - link "Blog" [ref=e309] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e310]:
+              - link "Karir" [ref=e311] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e312]:
+              - link "Status System" [ref=e313] [cursor=pointer]:
+                - /url: "#"
+            - listitem [ref=e314]:
+              - link "Hubungi Kami" [ref=e315] [cursor=pointer]:
+                - /url: "#"
+      - generic [ref=e316]:
+        - paragraph [ref=e317]: © 2025 mycustomerservice. Dibuat dengan ❤️ di Indonesia. mycustomerservice adalah produk independen dan tidak berafiliasi dengan WhatsApp Inc. atau Meta Platforms, Inc.
+        - navigation "Legal links" [ref=e318]:
+          - link "Kebijakan Privasi" [ref=e319] [cursor=pointer]:
+            - /url: "#"
+          - link "Syarat & Ketentuan" [ref=e320] [cursor=pointer]:
+            - /url: "#"
+          - link "Cookie Policy" [ref=e321] [cursor=pointer]:
+            - /url: "#"

@@ -1,0 +1,328 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - link [ref=e804] [cursor=pointer]:
+              - /url: /
+              - img "Home" [ref=e805]
+            - generic [ref=e44]:
+              - generic [ref=e45]: Easypanel
+              - generic [ref=e46]:
+                - generic [ref=e47]: v2.32.2
+                - button [ref=e48] [cursor=pointer]
+                - combobox [ref=e54]:
+                  - option "BR"
+                  - option "DA"
+                  - option "DE"
+                  - option "EN" [selected]
+                  - option "ES"
+                  - option "FA"
+                  - option "FR"
+                  - option "HI"
+                  - option "ID"
+                  - option "IT"
+                  - option "JA"
+                  - option "KA"
+                  - option "NL"
+                  - option "PL"
+                  - option "PT"
+                  - option "RO"
+                  - option "RU"
+                  - option "TH"
+                  - option "TR"
+                  - option "VI"
+                  - option "CN"
+          - generic [ref=e55]:
+            - link "Dashboard" [ref=e859] [cursor=pointer]:
+              - /url: /
+            - link "Actions" [ref=e864] [cursor=pointer]:
+              - /url: /actions
+            - link "Monitor" [ref=e868] [cursor=pointer]:
+              - /url: /monitor
+            - link "Domains" [ref=e872] [cursor=pointer]:
+              - /url: /domains
+            - link "Settings" [ref=e877] [cursor=pointer]:
+              - /url: /settings
+          - generic [ref=e80]:
+            - link "Documentation" [ref=e882] [cursor=pointer]:
+              - /url: https://easypanel.io/docs
+            - link "Discord Discord" [ref=e891] [cursor=pointer]:
+              - /url: https://discord.gg/9bcDSXcZQ7
+              - img "Discord" [ref=e892]
+              - generic [ref=e894]: Discord
+            - link "Feedback" [ref=e900] [cursor=pointer]:
+              - /url: https://my.easypanel.io/feedback
+            - link "Changelog" [ref=e909] [cursor=pointer]:
+              - /url: https://my.easypanel.io/changelog
+          - link "Buy License" [ref=e919] [cursor=pointer]:
+            - /url: /buy-license
+          - button "Quick Search ⌘ K" [ref=e925] [cursor=pointer]:
+            - generic [ref=e929]: Quick Search
+            - generic [ref=e930]: ⌘ K
+          - generic [ref=e131]:
+            - heading "Command Palette" [level=2] [ref=e818]
+            - paragraph [ref=e133]: Search for a command to run...
+          - button "163.61.44.41" [ref=e932] [cursor=pointer]
+          - generic [ref=e942]:
+            - generic [ref=e945]: Dark Mode
+            - generic [ref=e946]:
+              - switch "Dark Mode" [ref=e947]
+              - checkbox [ref=e948]
+          - button "Logout" [ref=e949] [cursor=pointer]
+        - generic [ref=e487]:
+          - generic [ref=e488]:
+            - button "postgres" [ref=e822] [cursor=pointer]
+            - generic [ref=e498]:
+              - generic [ref=e499]: Services
+              - link [ref=e500] [cursor=pointer]:
+                - /url: /projects/postgres/create
+            - generic [ref=e505]:
+              - link "customerservicecrm" [ref=e823] [cursor=pointer]:
+                - /url: /projects/postgres/app/customerservicecrm
+              - link "posting-kilat-backend" [ref=e824] [cursor=pointer]:
+                - /url: /projects/postgres/app/posting-kilat-backend
+              - link "redis" [ref=e825] [cursor=pointer]:
+                - /url: /projects/postgres/redis/redis
+              - link "scrapdatan8n" [ref=e826] [cursor=pointer]:
+                - /url: /projects/postgres/postgres/scrapdatan8n
+              - link "wa-gateway" [ref=e827] [cursor=pointer]:
+                - /url: /projects/postgres/app/wa-gateway
+          - generic [ref=e536]:
+            - link [ref=e828] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm
+            - link [ref=e829] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/source
+            - link [ref=e830] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/deployments
+            - link [ref=e831] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/environment
+            - link [ref=e832] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/domains
+            - link [ref=e833] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/redirects
+            - link [ref=e834] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/scripts
+            - link [ref=e835] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/security
+            - link [ref=e836] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/resources
+            - link [ref=e837] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/maintenance
+            - link [ref=e838] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/storage
+            - link [ref=e839] [cursor=pointer]:
+              - /url: /projects/postgres/app/customerservicecrm/advanced
+      - generic [ref=e954]:
+        - paragraph [ref=e956]: Actions
+        - generic [ref=e959]:
+          - alert [ref=e960]:
+            - generic [ref=e965]:
+              - generic [ref=e966]: User heri.scaleup@gmail.com logged in from 125.165.153.136
+              - generic [ref=e967]:
+                - generic [ref=e968]:
+                  - text: 0 seconds
+                  - generic [ref=e969]: /
+                  - text: 2 minutes ago
+                - button "User" [ref=e971] [cursor=pointer]
+          - alert [ref=e975]:
+            - generic [ref=e980]:
+              - generic [ref=e981]: User heri.scaleup@gmail.com logged in from 125.165.153.136
+              - generic [ref=e982]:
+                - generic [ref=e983]:
+                  - text: 0 seconds
+                  - generic [ref=e984]: /
+                  - text: 22 minutes ago
+                - button "User" [ref=e986] [cursor=pointer]
+          - alert [ref=e990]:
+            - generic [ref=e995]:
+              - generic [ref=e996]:
+                - generic [ref=e997]: filter_bot/crmcutting
+                - text: "Deploy service: fix(ai-ops): route trusted internal chats first"
+              - generic [ref=e999]:
+                - generic [ref=e1000]:
+                  - text: 59 seconds
+                  - generic [ref=e1001]: /
+                  - text: 5 hours ago
+                - generic [ref=e1002]:
+                  - button "User" [ref=e1003] [cursor=pointer]
+                  - button "Open service" [ref=e1007] [cursor=pointer]
+                  - button "View" [ref=e1011] [cursor=pointer]
+          - alert [ref=e1012]:
+            - generic [ref=e1017]:
+              - generic [ref=e1018]:
+                - generic [ref=e1019]: filter_bot/crmcutting
+                - text: "Deploy service: fix(ai-cs): keep vision replies natural"
+              - generic [ref=e1021]:
+                - generic [ref=e1022]:
+                  - text: 50 seconds
+                  - generic [ref=e1023]: /
+                  - text: 5 hours ago
+                - generic [ref=e1024]:
+                  - button "User" [ref=e1025] [cursor=pointer]
+                  - button "Open service" [ref=e1029] [cursor=pointer]
+                  - button "View" [ref=e1033] [cursor=pointer]
+          - alert [ref=e1034]:
+            - generic [ref=e1039]:
+              - generic [ref=e1040]:
+                - generic [ref=e1041]: filter_bot/crmcutting
+                - text: "Deploy service: feat(ai-ops): harden escalation delivery and control center"
+              - generic [ref=e1043]:
+                - generic [ref=e1044]:
+                  - text: 1 minute
+                  - generic [ref=e1045]: /
+                  - text: 9 hours ago
+                - generic [ref=e1046]:
+                  - button "User" [ref=e1047] [cursor=pointer]
+                  - button "Open service" [ref=e1051] [cursor=pointer]
+                  - button "View" [ref=e1055] [cursor=pointer]
+          - alert [ref=e1056]:
+            - generic [ref=e1061]:
+              - generic [ref=e1062]:
+                - generic [ref=e1063]: filter_bot/meocare
+                - text: "Deploy service: Fix favicon: replace blank Next.js placeholder with real MeowCare icon Co-Authored-By: Claude Sonnet 5…"
+              - generic [ref=e1065]:
+                - generic [ref=e1066]:
+                  - text: 2 minutes
+                  - generic [ref=e1067]: /
+                  - text: 1 day ago
+                - generic [ref=e1068]:
+                  - button "User" [ref=e1069] [cursor=pointer]
+                  - button "Open service" [ref=e1073] [cursor=pointer]
+                  - button "View" [ref=e1077] [cursor=pointer]
+          - alert [ref=e1078]:
+            - generic [ref=e1083]:
+              - generic [ref=e1084]:
+                - generic [ref=e1085]: filter_bot/meocare
+                - text: "Deploy service: Fix favicon: replace blank Next.js placeholder with real MeowCare icon Co-Authored-By: Claude Sonnet 5…"
+              - generic [ref=e1087]:
+                - generic [ref=e1088]:
+                  - text: 3 minutes
+                  - generic [ref=e1089]: /
+                  - text: 1 day ago
+                - generic [ref=e1090]:
+                  - button "User" [ref=e1091] [cursor=pointer]
+                  - button "Open service" [ref=e1095] [cursor=pointer]
+                  - button "View" [ref=e1099] [cursor=pointer]
+          - alert [ref=e1100]:
+            - generic [ref=e1105]:
+              - generic [ref=e1106]:
+                - generic [ref=e1107]: filter_bot/meocare
+                - text: "Deploy service: Fix favicon: replace blank Next.js placeholder with real MeowCare icon Co-Authored-By: Claude Sonnet 5…"
+              - generic [ref=e1109]:
+                - generic [ref=e1110]:
+                  - text: 15 seconds
+                  - generic [ref=e1111]: /
+                  - text: 1 day ago
+                - generic [ref=e1112]:
+                  - button "User" [ref=e1113] [cursor=pointer]
+                  - button "Open service" [ref=e1117] [cursor=pointer]
+                  - button "View" [ref=e1121] [cursor=pointer]
+          - alert [ref=e1122]:
+            - generic [ref=e1127]:
+              - generic [ref=e1128]:
+                - generic [ref=e1129]: filter_bot/meocare
+                - text: "Deploy service: Fix favicon: replace blank Next.js placeholder with real MeowCare icon Co-Authored-By: Claude Sonnet 5…"
+              - generic [ref=e1131]:
+                - generic [ref=e1132]:
+                  - text: 20 seconds
+                  - generic [ref=e1133]: /
+                  - text: 1 day ago
+                - generic [ref=e1134]:
+                  - button "User" [ref=e1135] [cursor=pointer]
+                  - button "Open service" [ref=e1139] [cursor=pointer]
+                  - button "View" [ref=e1143] [cursor=pointer]
+          - alert [ref=e1144]:
+            - generic [ref=e1149]:
+              - generic [ref=e1150]:
+                - generic [ref=e1151]: filter_bot/meocare
+                - text: "Deploy service: fix: place dynamically generated custom branded favicon.ico in public and src app, restore layout metada…"
+              - generic [ref=e1153]:
+                - generic [ref=e1154]:
+                  - text: 17 seconds
+                  - generic [ref=e1155]: /
+                  - text: 1 day ago
+                - generic [ref=e1156]:
+                  - button "User" [ref=e1157] [cursor=pointer]
+                  - button "Open service" [ref=e1161] [cursor=pointer]
+                  - button "View" [ref=e1165] [cursor=pointer]
+          - alert [ref=e1166]:
+            - generic [ref=e1171]:
+              - generic [ref=e1172]:
+                - generic [ref=e1173]: postgres/posting-kilat-backend
+                - text: "Deploy service: fix: translate all landing page content and buttons to pure Indonesian"
+              - generic [ref=e1175]:
+                - generic [ref=e1176]:
+                  - text: 1 minute
+                  - generic [ref=e1177]: /
+                  - text: 1 day ago
+                - generic [ref=e1178]:
+                  - button "User" [ref=e1179] [cursor=pointer]
+                  - button "Open service" [ref=e1183] [cursor=pointer]
+                  - button "View" [ref=e1187] [cursor=pointer]
+          - alert [ref=e1188]:
+            - generic [ref=e1193]:
+              - generic [ref=e1194]:
+                - generic [ref=e1195]: postgres/customerservicecrm
+                - text: "Deploy service: fix: rename WACentral to mycustomerservice, transition login page color palette to emerald green to matc…"
+              - generic [ref=e1197]:
+                - generic [ref=e1198]:
+                  - text: 5 seconds
+                  - generic [ref=e1199]: /
+                  - text: 1 day ago
+                - generic [ref=e1200]:
+                  - button "User" [ref=e1201] [cursor=pointer]
+                  - button "Open service" [ref=e1205] [cursor=pointer]
+                  - button "View" [ref=e1209] [cursor=pointer]
+          - alert [ref=e1210]:
+            - generic [ref=e1215]:
+              - generic [ref=e1216]:
+                - generic [ref=e1217]: postgres/wa-gateway
+                - text: "Deploy service: fix: rename WACentral to mycustomerservice, transition login page color palette to emerald green to matc…"
+              - generic [ref=e1219]:
+                - generic [ref=e1220]:
+                  - text: 5 seconds
+                  - generic [ref=e1221]: /
+                  - text: 1 day ago
+                - generic [ref=e1222]:
+                  - button "User" [ref=e1223] [cursor=pointer]
+                  - button "Open service" [ref=e1227] [cursor=pointer]
+                  - button "View" [ref=e1231] [cursor=pointer]
+          - alert [ref=e1232]:
+            - generic [ref=e1237]:
+              - generic [ref=e1238]:
+                - generic [ref=e1239]: filter_bot/meocare
+                - text: "Deploy service: fix: resolve favicon loading issue by utilizing Next.js file-based metadata icon.svg and apple-icon.svg"
+              - generic [ref=e1241]:
+                - generic [ref=e1242]:
+                  - text: 23 seconds
+                  - generic [ref=e1243]: /
+                  - text: 1 day ago
+                - generic [ref=e1244]:
+                  - button "User" [ref=e1245] [cursor=pointer]
+                  - button "Open service" [ref=e1249] [cursor=pointer]
+                  - button "View" [ref=e1253] [cursor=pointer]
+          - alert [ref=e1254]:
+            - generic [ref=e1259]:
+              - generic [ref=e1260]:
+                - generic [ref=e1261]: postgres/posting-kilat-backend
+                - text: "Deploy service: design: replace generic K logo with premium neon lightning bolt brand logo, update navbar and SPA entrie…"
+              - generic [ref=e1263]:
+                - generic [ref=e1264]:
+                  - text: 54 seconds
+                  - generic [ref=e1265]: /
+                  - text: 1 day ago
+                - generic [ref=e1266]:
+                  - button "User" [ref=e1267] [cursor=pointer]
+                  - button "Open service" [ref=e1271] [cursor=pointer]
+                  - button "View" [ref=e1275] [cursor=pointer]
+          - button "Load More" [ref=e1276] [cursor=pointer]
+    - region "Notifications alt+T"
+  - generic:
+    - region "Notifications-top"
+    - region "Notifications-top-left"
+    - region "Notifications-top-right"
+    - region "Notifications-bottom-left"
+    - region "Notifications-bottom"
+    - region "Notifications-bottom-right"

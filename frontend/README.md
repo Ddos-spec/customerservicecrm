@@ -1,4 +1,33 @@
-# React + TypeScript + Vite
+# WACentral Frontend
+
+Frontend untuk customer service operating system WACentral. Aplikasi mencakup landing page, login, serta workspace Super Admin, Owner, dan Staff.
+
+## Development
+
+```bash
+npm ci
+npm run dev
+```
+
+Vite berjalan di `http://localhost:5173` dan meneruskan request `/api` serta `/admin` ke backend lokal pada port `3000`.
+
+## Quality check
+
+```bash
+npm run lint
+npm run build
+```
+
+## Struktur UI
+
+- `src/pages/LandingPage.tsx` — landing page.
+- `src/pages/Login.tsx` — secure access dan demo role.
+- `src/layouts/MainLayout.tsx` — shell, role navigation, command palette, theme control.
+- `src/index.css` — design tokens, global component system, responsive layout, dan motion.
+
+Audit route dan detail redesign tersedia di `../REDESIGN_AUDIT.md`.
+
+<!-- Legacy Vite reference retained below for maintainers. -->
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
