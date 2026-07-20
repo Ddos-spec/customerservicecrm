@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -36,6 +37,12 @@ import (
 
 var WhatsAppDatastore *sqlstore.Container
 var WhatsAppClient = make(map[string]*whatsmeow.Client)
+
+// WhatsApp allows one pending login challenge per device. The CRM can request
+// QR and phone-code connections from different UI surfaces, so serialize
+// connection setup per session instead of letting concurrent requests tear
+// down each other's websocket.
+var whatsAppLoginLocks sync.Map
 
 var (
 	WhatsAppClientProxyURL string
@@ -193,79 +200,130 @@ func WhatsAppGenerateQR(qrChan <-chan whatsmeow.QRChannelItem) (string, int, err
 	return "", 0, fmt.Errorf("WhatsApp disconnected before QR code was generated")
 }
 
-func WhatsAppLogin(jid string) (string, int, error) {
-	if WhatsAppClient[jid] != nil {
-		// Make Sure WebSocket Connection is Disconnected
-		WhatsAppClient[jid].Disconnect()
+func withWhatsAppLoginLock(jid string, action func() (string, int, error)) (string, int, error) {
+	value, _ := whatsAppLoginLocks.LoadOrStore(jid, &sync.Mutex{})
+	lock := value.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
 
-		if WhatsAppClient[jid].Store.ID == nil {
-			// Device ID is not Exist
-			// Generate QR Code
-			qrChanGenerate, _ := WhatsAppClient[jid].GetQRChannel(context.Background())
+	return action()
+}
 
-			// Connect WebSocket while Initialize QR Code Data to be Sent
-			err := WhatsAppClient[jid].Connect()
-			if err != nil {
-				return "", 0, err
-			}
+func disconnectPendingLogin(client *whatsmeow.Client) error {
+	if client == nil || !client.IsConnected() {
+		return nil
+	}
 
-			// Get Generated QR Code and Timeout Information
-			qrImage, qrTimeout, err := WhatsAppGenerateQR(qrChanGenerate)
-			if err != nil {
-				return "", 0, err
-			}
+	client.Disconnect()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
 
-			// Return QR Code in Base64 Format and Timeout Information
-			return "data:image/png;base64," + qrImage, qrTimeout, nil
-		} else {
-			// Device ID is Exist
-			// Reconnect WebSocket
-			err := WhatsAppReconnect(jid)
-			if err != nil {
-				return "", 0, err
-			}
-
-			return "WhatsApp Client is Reconnected", 0, nil
+	for client.IsConnected() {
+		select {
+		case <-deadline.C:
+			return errors.New("timed out waiting for the previous WhatsApp login connection to close")
+		case <-ticker.C:
 		}
 	}
 
-	// Return Error WhatsApp Client is not Valid
-	return "", 0, errors.New("WhatsApp Client is not Valid")
+	return nil
+}
+
+func waitForInitialQRCode(ctx context.Context, qrChan <-chan whatsmeow.QRChannelItem) error {
+	select {
+	case event, ok := <-qrChan:
+		if !ok {
+			return errors.New("WhatsApp closed the login channel before issuing a QR code")
+		}
+		if event.Event != "code" {
+			return fmt.Errorf("WhatsApp did not issue a QR code for phone pairing: %s", event.Event)
+		}
+		return nil
+	case <-ctx.Done():
+		return errors.New("timed out waiting for WhatsApp to initialize phone pairing")
+	}
+}
+
+func WhatsAppLogin(jid string) (string, int, error) {
+	return withWhatsAppLoginLock(jid, func() (string, int, error) {
+		client := WhatsAppClient[jid]
+		if client == nil {
+			return "", 0, errors.New("WhatsApp Client is not Valid")
+		}
+
+		if client.Store.ID != nil {
+			if err := WhatsAppReconnect(jid); err != nil {
+				return "", 0, err
+			}
+			return "WhatsApp Client is Reconnected", 0, nil
+		}
+
+		if err := disconnectPendingLogin(client); err != nil {
+			return "", 0, err
+		}
+
+		// GetQRChannel must be registered before Connect. Do not ignore its
+		// error: doing so used to leave the HTTP request waiting with no QR.
+		qrChanGenerate, err := client.GetQRChannel(context.Background())
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to prepare QR login: %w", err)
+		}
+		if err = client.Connect(); err != nil {
+			return "", 0, err
+		}
+
+		qrImage, qrTimeout, err := WhatsAppGenerateQR(qrChanGenerate)
+		if err != nil {
+			return "", 0, err
+		}
+
+		return "data:image/png;base64," + qrImage, qrTimeout, nil
+	})
 }
 
 func WhatsAppLoginPair(jid string) (string, int, error) {
-	if WhatsAppClient[jid] != nil {
-		// Make Sure WebSocket Connection is Disconnected
-		WhatsAppClient[jid].Disconnect()
+	return withWhatsAppLoginLock(jid, func() (string, int, error) {
+		client := WhatsAppClient[jid]
+		if client == nil {
+			return "", 0, errors.New("WhatsApp Client is not Valid")
+		}
 
-		if WhatsAppClient[jid].Store.ID == nil {
-			// Connect WebSocket while also Requesting Pairing Code
-			err := WhatsAppClient[jid].Connect()
-			if err != nil {
+		if client.Store.ID != nil {
+			if err := WhatsAppReconnect(jid); err != nil {
 				return "", 0, err
 			}
-
-			// Request Pairing Code
-			code, err := WhatsAppClient[jid].PairPhone(context.Background(), jid, true, whatsmeow.PairClientChrome, "Chrome ("+WhatsAppGetUserOS()+")")
-			if err != nil {
-				return "", 0, err
-			}
-
-			return code, 160, nil
-		} else {
-			// Device ID is Exist
-			// Reconnect WebSocket
-			err := WhatsAppReconnect(jid)
-			if err != nil {
-				return "", 0, err
-			}
-
 			return "WhatsApp Client is Reconnected", 0, nil
 		}
-	}
 
-	// Return Error WhatsApp Client is not Valid
-	return "", 0, errors.New("WhatsApp Client is not Valid")
+		if err := disconnectPendingLogin(client); err != nil {
+			return "", 0, err
+		}
+
+		// PairPhone is only valid after WhatsApp has emitted the initial QR
+		// handshake. Calling it immediately after Connect was the root cause
+		// of phone-code failures; wait for that event, then request the code.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		qrChan, err := client.GetQRChannel(ctx)
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to prepare phone pairing: %w", err)
+		}
+		if err = client.Connect(); err != nil {
+			return "", 0, err
+		}
+		if err = waitForInitialQRCode(ctx, qrChan); err != nil {
+			return "", 0, err
+		}
+
+		code, err := client.PairPhone(ctx, jid, true, whatsmeow.PairClientChrome, "Chrome ("+WhatsAppGetUserOS()+")")
+		if err != nil {
+			return "", 0, err
+		}
+
+		return code, 160, nil
+	})
 }
 
 func WhatsAppReconnect(jid string) error {

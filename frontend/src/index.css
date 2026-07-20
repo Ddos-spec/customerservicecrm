@@ -70,15 +70,13 @@ input, textarea, select { user-select: text !important; -webkit-user-select: tex
   width: 42px;
   height: 42px;
   flex: 0 0 auto;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 14px;
-  color: #fff;
-  background: var(--violet);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.24), 0 10px 30px rgba(102,87,255,.3);
-  transform: rotate(-3deg);
+  display: inline-block;
+  border-radius: 12px;
+  background: #fff url('/logo.ico') center / contain no-repeat;
+  box-shadow: 0 8px 18px rgba(11, 130, 105, .18);
+  overflow: hidden;
 }
-.brand-mark > span { font-weight: 900; font-size: 20px; letter-spacing: -.08em; transform: rotate(3deg); }
+.brand-mark > span { display: none; }
 .brand-mark--small { width: 36px; height: 36px; border-radius: 12px; }
 .brand-mark--small > span { font-size: 17px; }
 .brand-mark--tiny { width: 24px; height: 24px; border-radius: 8px; box-shadow: none; }

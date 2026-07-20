@@ -106,6 +106,43 @@ describe('tenant WhatsApp session access', () => {
         expect(deleteSession).not.toHaveBeenCalled();
     });
 
+    it('initializes a new session once, then requests only the selected QR challenge', async () => {
+        const sessions = new Map();
+        const createSession = jest.fn(async (sessionId, options) => {
+            expect(options).toEqual({ startLogin: false });
+            sessions.set(sessionId, { status: 'CONNECTING', qr: null });
+        });
+        waGateway.login.mockResolvedValue({ status: true, data: { qrcode: 'fresh-qr', timeout: 30 } });
+        const { app } = createApp({ user: { role: 'admin_agent', session_id: '628111' }, sessions, createSession });
+
+        const response = await request(app).get('/sessions/628111/qr');
+
+        expect(response.status).toBe(200);
+        expect(createSession).toHaveBeenCalledTimes(1);
+        expect(waGateway.login).toHaveBeenCalledTimes(1);
+        expect(waGateway.loginWithPairingCode).not.toHaveBeenCalled();
+    });
+
+    it('initializes a new session without creating a QR before requesting a phone code', async () => {
+        const sessions = new Map();
+        const createSession = jest.fn(async (sessionId, options) => {
+            expect(options).toEqual({ startLogin: false });
+            sessions.set(sessionId, { status: 'CONNECTING', qr: 'stale-qr' });
+        });
+        waGateway.loginWithPairingCode.mockResolvedValue({ status: true, data: { paircode: 'ABCD-1234', timeout: 160 } });
+        const { app } = createApp({ user: { role: 'admin_agent', session_id: '628111' }, sessions, createSession });
+
+        const response = await request(app).get('/sessions/628111/pair');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({ status: 'success', pairCode: 'ABCD-1234', timeout: 160 });
+        expect(createSession).toHaveBeenCalledTimes(1);
+        expect(waGateway.login).not.toHaveBeenCalled();
+        expect(waGateway.loginWithPairingCode).toHaveBeenCalledWith('628111');
+        expect(sessions.get('628111')).toMatchObject({ status: 'CONNECTING', qr: null });
+        expect(new Date(sessions.get('628111').qrExpiresAt).getTime()).toBeGreaterThan(Date.now());
+    });
+
     it('rejects a tenant attempt to operate another tenant session', async () => {
         const sessions = new Map([['628222', { status: 'CONNECTING' }]]);
         const { app, createSession } = createApp({ user: { role: 'admin_agent', session_id: '628111' }, sessions });

@@ -1528,10 +1528,21 @@ function broadcastSessionUpdate() {
 
 /**
  * Create a new WhatsApp session
- * Authenticates with Go gateway and initiates login
+ * Authenticates with Go gateway and prepares the local session state.
+ *
+ * A caller that is about to request a specific connection method can defer the
+ * initial QR generation. This matters for phone-code pairing: generating a QR
+ * first and immediately switching the same client to phone pairing races the
+ * WhatsApp login websocket and makes both challenges invalid.
  */
-async function createSession(sessionId) {
+async function createSession(sessionId, options = {}) {
     try {
+        // Keep compatibility with the former (sessionId, creatorEmail) call
+        // shape. Only an object can opt out of the default QR login.
+        const shouldStartLogin = !options
+            || typeof options !== 'object'
+            || options.startLogin !== false;
+
         // Pre-flight Collision Check
         const collisionCheck = waGateway.checkCollision(sessionId);
         if (collisionCheck.collision) {
@@ -1568,18 +1579,21 @@ async function createSession(sessionId) {
         };
         sessions.set(sessionId, sessionState);
 
-        // Request QR code from gateway
-        const loginResponse = await waGateway.login(sessionId);
-
         const session = sessions.get(sessionId);
-        if (loginResponse.status && loginResponse.data?.qrcode) {
-            session.qr = loginResponse.data.qrcode;
-            session.status = 'CONNECTING';
-            sessions.set(sessionId, session);
-        } else if (loginResponse.message?.includes('Reconnected')) {
-            session.status = 'CONNECTED';
-            session.qr = null;
-            sessions.set(sessionId, session);
+        if (shouldStartLogin) {
+            // Request QR code from gateway only for explicit session creation.
+            // The QR/pair endpoints defer this and make exactly one gateway
+            // login request for the connection method that the user selected.
+            const loginResponse = await waGateway.login(sessionId);
+            if (loginResponse.status && loginResponse.data?.qrcode) {
+                session.qr = loginResponse.data.qrcode;
+                session.status = 'CONNECTING';
+                sessions.set(sessionId, session);
+            } else if (loginResponse.message?.includes('Reconnected')) {
+                session.status = 'CONNECTED';
+                session.qr = null;
+                sessions.set(sessionId, session);
+            }
         }
 
         await persistSessionStatus(sessionId, {
@@ -2381,4 +2395,3 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 module.exports = { app, server, redisClient, redisSessionClient };
-

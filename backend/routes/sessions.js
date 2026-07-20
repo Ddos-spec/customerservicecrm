@@ -49,7 +49,11 @@ function buildSessionsRouter(deps) {
         // phone-pairing code. Recreating used to invalidate a working tenant
         // device and made unrelated tenants reconnect after an update.
         if (!sessions.has(sessionId)) {
-            await createSession(sessionId);
+            // Do not generate a QR as a side effect here. The endpoint below
+            // must make one and only one request for the method selected by
+            // the user (QR or phone code), otherwise the second request
+            // invalidates the first WhatsApp login challenge.
+            await createSession(sessionId, { startLogin: false });
         }
         return sessions.get(sessionId);
     }
@@ -278,10 +282,17 @@ function buildSessionsRouter(deps) {
             if (!pairCode) {
                 throw new Error(result?.message || 'Gateway tidak mengembalikan kode telepon');
             }
+            const pairTimeout = Number(result?.data?.timeout || result?.timeout || 160);
+            activeSession.status = 'CONNECTING';
+            activeSession.qr = null;
+            activeSession.qrExpiresAt = pairTimeout > 0
+                ? new Date(Date.now() + (pairTimeout * 1000)).toISOString()
+                : null;
+            sessions.set(sessionId, activeSession);
             res.status(200).json({
                 status: 'success',
                 pairCode,
-                timeout: result?.data?.timeout || result?.timeout || 160,
+                timeout: pairTimeout || null,
             });
         } catch (error) {
             log('Pair code error', sessionId, { event: 'pair-code-error', error: error.message });
@@ -293,4 +304,3 @@ function buildSessionsRouter(deps) {
 }
 
 module.exports = { buildSessionsRouter };
-
