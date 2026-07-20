@@ -98,12 +98,16 @@ async function forwardRajaBotMessage(payload) {
     if (!RAJA_BOT_WEBHOOK_URL || !isRajaBotPayload(payload)) return;
     if (shouldSkipDuplicateRajaForward(payload)) return;
     const axios = require('axios');
+    // Same fail-closed secret as /api/ai-operations/customer-service/incoming —
+    // /api/bot/raja-metal/incoming rejects unauthenticated requests too now.
+    const centralSecret = process.env.CENTRAL_AI_CUSTOMER_SERVICE_SECRET || '';
     try {
         await axios.post(RAJA_BOT_WEBHOOK_URL, payload, {
             timeout: 8000,
             headers: {
                 'Content-Type': 'application/json',
                 'X-Webhook-Source': 'customerservice-crm-raja-direct',
+                ...(centralSecret ? { 'X-Webhook-Secret': centralSecret } : {}),
             },
         });
     } catch (error) {
@@ -870,17 +874,33 @@ async function handlePushName(sessionId, data) {
 async function forwardToTenantWebhooks(webhooks, payload) {
     const axios = require('axios');
 
-    await Promise.allSettled(
+    // crm-n8n-dashboard's /api/ai-operations/customer-service/incoming requires
+    // a shared secret since it started fail-closed rejecting unauthenticated
+    // webhooks — without this header every forwarded message gets a silent 401
+    // and the AI never sees it.
+    const centralSecret = process.env.CENTRAL_AI_CUSTOMER_SERVICE_SECRET || '';
+    const isCentralAiCsWebhook = (url) => /filter-bot-crmcutting\.qk6yxt\.easypanel\.host/i.test(url || '');
+
+    const results = await Promise.allSettled(
         webhooks.map(wh =>
             axios.post(wh.url, payload, {
                 timeout: 5000,
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Webhook-Source': 'customerservice-crm',
+                    ...(centralSecret && isCentralAiCsWebhook(wh.url) ? { 'X-Webhook-Secret': centralSecret } : {}),
                 },
             })
         )
     );
+
+    results.forEach((result, i) => {
+        if (result.status === 'rejected') {
+            const url = webhooks[i]?.url || 'unknown';
+            const status = result.reason?.response?.status;
+            console.error(`[Webhook] Forward to tenant webhook failed (${url}, status=${status || 'n/a'}):`, result.reason?.message);
+        }
+    });
 }
 
 
