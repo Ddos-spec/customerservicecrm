@@ -9,6 +9,7 @@ import {
 import { clsx } from 'clsx';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
+import BrandLogo from '../components/BrandLogo';
 
 type NavItem = {
   to: string;
@@ -39,7 +40,7 @@ const navigationByRole: Record<string, NavGroup[]> = {
   admin_agent: [
     { label: 'Workspace', items: [
       { to: '/admin', icon: LayoutDashboard, label: 'Overview' },
-      { to: '/admin/chat', icon: MessageSquareText, label: 'Inbox', badge: '12' },
+      { to: '/admin/chat', icon: MessageSquareText, label: 'Inbox' },
       { to: '/admin/history', icon: History, label: 'Riwayat' },
       { to: '/admin/reports', icon: BarChart3, label: 'Laporan' },
     ] },
@@ -58,7 +59,7 @@ const navigationByRole: Record<string, NavGroup[]> = {
   agent: [
     { label: 'Workspace', items: [
       { to: '/agent', icon: LayoutDashboard, label: 'Overview' },
-      { to: '/agent/chat', icon: MessageSquareText, label: 'Inbox', badge: '12' },
+      { to: '/agent/chat', icon: MessageSquareText, label: 'Inbox' },
       { to: '/agent/history', icon: Clock3, label: 'Riwayat' },
     ] },
   ],
@@ -151,8 +152,7 @@ const MainLayout = () => {
     <>
       <div className="app-sidebar__brand">
         <button className="app-brand" onClick={() => openRoute(user?.role === 'super_admin' ? '/super-admin' : user?.role === 'agent' ? '/agent' : '/admin')}>
-          <span className="brand-mark brand-mark--small"><span>W</span></span>
-          <span className="app-brand__copy"><strong>WA<span>Central</span></strong><small>Service OS</small></span>
+          <BrandLogo showTagline size="small" />
         </button>
         <button className="app-sidebar__close" onClick={() => setMobileOpen(false)} aria-label="Tutup menu"><X size={20} /></button>
       </div>
