@@ -8,6 +8,7 @@ const {
     buildSignedEphemeralMediaUrl,
     verifySignedEphemeralMediaRequest,
 } = require('../utils/ephemeral-media');
+const googleDrive = require('../utils/google-drive');
 
 const router = express.Router();
 const mediaDir = path.join(__dirname, '..', 'media');
@@ -144,6 +145,37 @@ function buildMediaRouter(deps) {
             return res.status(statusCode).json({
                 status: 'error',
                 message,
+            });
+        }
+    });
+
+    // Permanent, signed access to inbound customer media persisted in Google
+    // Drive (the /media/ephemeral/:token route above only works for the
+    // lifetime of the gateway session/token that produced it).
+    router.get('/media/drive/:fileId', async (req, res) => {
+        const verification = googleDrive.verifySignedDriveMediaRequest({
+            fileId: req.params.fileId,
+            exp: req.query.exp,
+            sig: req.query.sig,
+        });
+
+        if (!verification.ok) {
+            return res.status(verification.statusCode).json({
+                status: 'error',
+                message: verification.message,
+            });
+        }
+
+        try {
+            const asset = await googleDrive.downloadMediaFromDrive(verification.fileId);
+            res.setHeader('Content-Type', asset.mimeType);
+            res.setHeader('Cache-Control', 'private, max-age=300');
+            setInlineFilename(res, asset.filename);
+            return res.status(200).send(asset.buffer);
+        } catch (error) {
+            return res.status(404).json({
+                status: 'error',
+                message: error?.message || 'Media tidak ditemukan',
             });
         }
     });

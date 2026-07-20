@@ -14,7 +14,8 @@ const aiResponder = require('./services/ai/responder');
 const { createReplyBatcher } = require('./services/ai/reply-batcher');
 const { normalizeJid, getJidUser } = require('./utils/jid');
 const { sendAlertWebhook } = require('./utils/alert-webhook');
-const { buildSignedEphemeralMediaUrl } = require('./utils/ephemeral-media');
+const { buildSignedEphemeralMediaUrl, getPublicBaseUrl } = require('./utils/ephemeral-media');
+const googleDrive = require('./utils/google-drive');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 const AI_REPLY_DEBOUNCE_MS = Math.min(
     Math.max(parseInt(process.env.AI_REPLY_DEBOUNCE_MS || '60000', 10) || 60000, 1500),
@@ -207,6 +208,27 @@ function buildForwardableMedia(req, sessionId, message) {
             mediaAvailable: Boolean(publicMediaUrl),
         },
     };
+}
+
+/**
+ * The ephemeral gateway media URL only lives for the duration of that
+ * session/token — fine for the live WebSocket broadcast, but useless once the
+ * chat is reloaded from the database later. Pull the actual bytes now and
+ * persist them to Google Drive so the media stays viewable permanently.
+ */
+async function resolvePersistableMediaUrl(req, sessionId, message) {
+    const mediaToken = typeof message.ephemeralMediaToken === 'string' ? message.ephemeralMediaToken.trim() : '';
+    if (!mediaToken || !googleDrive.isConfigured()) return null;
+
+    try {
+        const fetched = await waGateway.fetchEphemeralMedia(sessionId, mediaToken);
+        const filename = fetched.filename || `wa-${message.type || 'media'}-${message.id || Date.now()}`;
+        const fileId = await googleDrive.uploadMediaToDrive(fetched.data, fetched.contentType, filename);
+        return googleDrive.buildSignedDriveMediaUrl(getPublicBaseUrl(req), fileId);
+    } catch (error) {
+        console.error(`[Webhook] Gagal upload media inbound ke Drive (message ${message.id || 'no-id'}):`, error.message);
+        return null;
+    }
 }
 
 /**
@@ -520,7 +542,7 @@ async function handleMessage(req, sessionId, data) {
         // Simplify media types
         if (message.type === 'image' || message.type === 'video' || message.type === 'document' || message.type === 'audio') {
              messageText = message.caption || `[${message.type.toUpperCase()}]`;
-             // mediaUrl = message.url; // Optional: if provided by gateway
+             mediaUrl = await resolvePersistableMediaUrl(req, sessionId, message);
         } else if (message.type === 'sticker') {
             messageText = '[STICKER]';
         } else if (!messageText.trim()) {

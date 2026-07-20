@@ -95,4 +95,5 @@ function verifySignedEphemeralMediaRequest({ sessionId, token, exp, sig }) {
 module.exports = {
     buildSignedEphemeralMediaUrl,
     verifySignedEphemeralMediaRequest,
+    getPublicBaseUrl,
 };
