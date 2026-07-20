@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect, useCallback, useRef, type ReactNode } fr
 import {
   Send, Search,
   Info, Check, CheckCheck, Clock, User, X, Loader2, Users, Image as ImageIcon, Video, Mic, FileText,
-  Wifi, WifiOff, AlertTriangle, Bot, Building2, RefreshCw
+  Wifi, WifiOff, AlertTriangle, Bot, Building2, RefreshCw, Paperclip
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
@@ -40,6 +40,12 @@ interface Message {
   status: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
   delivery_status?: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | 'received';
   created_at: string;
+}
+
+interface MediaPreview {
+  url: string;
+  type: string;
+  title: string;
 }
 
 interface WorkspaceTenant {
@@ -152,6 +158,13 @@ const getMessageTypeMeta = (messageType?: string) => {
     default:
       return null;
   }
+};
+
+const getUploadMessageType = (file: File): 'image' | 'video' | 'audio' | 'document' => {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type.startsWith('video/')) return 'video';
+  if (file.type.startsWith('audio/')) return 'audio';
+  return 'document';
 };
 
 const normalizeOutboundStatus = (value?: string): Message['status'] => {
@@ -314,6 +327,8 @@ const AgentWorkspace = () => {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
 
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -323,6 +338,7 @@ const AgentWorkspace = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
   const chatOffsetRef = useRef(0);
   const activeTenantIdRef = useRef(activeTenantId);
   const selectedChatIdRef = useRef<string | null>(null);
@@ -342,13 +358,14 @@ const AgentWorkspace = () => {
         searchInputRef.current?.focus();
       }
       if (event.key === 'Escape') {
-        if (isInfoOpen) setIsInfoOpen(false);
+        if (mediaPreview) setMediaPreview(null);
+        else if (isInfoOpen) setIsInfoOpen(false);
         else if (document.activeElement === composerRef.current) composerRef.current?.blur();
       }
     };
     window.addEventListener('keydown', handleShortcut);
     return () => window.removeEventListener('keydown', handleShortcut);
-  }, [isInfoOpen]);
+  }, [isInfoOpen, mediaPreview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -814,6 +831,93 @@ const AgentWorkspace = () => {
     }
   };
 
+  const handleMediaSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !selectedChat) return;
+
+    const recipient = selectedChat.is_group ? selectedChat.jid : selectedChat.phone_number;
+    if (!recipient) {
+      toast.error(selectedChat.is_group ? 'Group JID tidak valid' : 'Nomor telepon tidak valid');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 25MB');
+      return;
+    }
+
+    const messageType = getUploadMessageType(file);
+    const caption = messageText.trim();
+    setIsUploadingMedia(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const uploadResponse = await api.post('/media', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const mediaUrl = uploadResponse.data?.url;
+      if (uploadResponse.data?.status !== 'success' || !mediaUrl) {
+        throw new Error(uploadResponse.data?.message || 'Media gagal disimpan ke Google Drive');
+      }
+
+      const commonPayload = {
+        tenant_id: activeTenantId,
+        phone_number: recipient,
+        filename: file.name,
+        caption,
+      };
+      const sendPayload = messageType === 'image'
+        ? { ...commonPayload, image_url: mediaUrl }
+        : messageType === 'video'
+          ? { ...commonPayload, video_url: mediaUrl }
+          : messageType === 'audio'
+            ? { ...commonPayload, audio_url: mediaUrl }
+            : { ...commonPayload, document_url: mediaUrl };
+
+      const sendResponse = await api.post(`/gateway/send-${messageType === 'image' ? 'image' : messageType}`, sendPayload);
+      if (!sendResponse.data?.success) {
+        throw new Error(sendResponse.data?.error || 'Media gagal dikirim ke WhatsApp');
+      }
+
+      const createdAt = new Date().toISOString();
+      const newMessage: Message = {
+        id: sendResponse.data.message_id || `${Date.now()}-${file.name}`,
+        chat_id: selectedChat.id,
+        sender_type: 'agent',
+        sender_name: user?.name,
+        message_type: messageType,
+        body: caption || `[${messageType.toUpperCase()}]`,
+        media_url: sendResponse.data.media_url || mediaUrl,
+        is_from_me: true,
+        status: 'sent',
+        delivery_status: 'sent',
+        created_at: createdAt,
+      };
+      setMessages((previous) => [...previous, newMessage]);
+      setChats((previous) => {
+        const index = previous.findIndex((chat) => chat.id === selectedChat.id);
+        if (index === -1) return previous;
+        const updated = {
+          ...previous[index],
+          last_message_preview: caption || `[${messageType.toUpperCase()}]`,
+          last_message_type: messageType,
+          last_message_time: createdAt,
+        };
+        const next = [...previous];
+        next.splice(index, 1);
+        return [updated, ...next];
+      });
+      setMessageText('');
+      toast.success(`${file.name} dikirim dan tersimpan di Google Drive`);
+    } catch (error: any) {
+      console.error('Failed to upload/send media:', error);
+      toast.error(error.response?.data?.message || error.response?.data?.error || error.message || 'Gagal mengirim media');
+    } finally {
+      setIsUploadingMedia(false);
+    }
+  };
+
   const filteredChats = chats.filter((chat) => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
     const matchesSearch = !normalizedQuery
@@ -850,7 +954,8 @@ const AgentWorkspace = () => {
         : 'Menghubungkan realtime';
 
   return (
-    <div className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col overflow-hidden border border-[#d1d7db] bg-white text-[#111b21] transition-colors duration-300 dark:border-[#2a3942] dark:bg-[#111b21] dark:text-[#e9edef] lg:flex-row">
+    <>
+      <div className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col overflow-hidden border border-[#d1d7db] bg-white text-[#111b21] transition-colors duration-300 dark:border-[#2a3942] dark:bg-[#111b21] dark:text-[#e9edef] lg:flex-row">
 
       {/* LEFT SIDEBAR: CHAT LIST */}
       <div className="flex max-h-[42svh] w-full min-h-0 shrink-0 flex-col border-b border-[#d1d7db] bg-white dark:border-[#2a3942] dark:bg-[#111b21] lg:h-full lg:w-[28.5rem] lg:max-h-none lg:border-b-0 lg:border-r">
@@ -1122,17 +1227,26 @@ const AgentWorkspace = () => {
                                         <p className="mb-1 text-[11px] font-bold text-[#06cf9c]">{msg.sender_name}</p>
                                     )}
 
-                                    {msg.message_type === 'image' ? (
+                                    {msg.message_type === 'image' || msg.message_type === 'sticker' ? (
                                       <div className="space-y-2">
                                         {msg.media_url ? (
-                                          <a href={msg.media_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border border-white/10 bg-black/15">
+                                          <button
+                                            type="button"
+                                            onClick={() => setMediaPreview({
+                                              url: msg.media_url!,
+                                              type: 'image',
+                                              title: msg.message_type === 'sticker' ? 'Stiker WhatsApp' : 'Gambar WhatsApp',
+                                            })}
+                                            className="block w-full overflow-hidden rounded-md border border-white/10 bg-black/15 text-left"
+                                            title="Lihat gambar"
+                                          >
                                             <img
                                               src={msg.media_url}
-                                              alt={msg.body && !isMediaPlaceholder(msg.body) ? msg.body : 'Gambar pelanggan'}
+                                              alt={msg.body && !isMediaPlaceholder(msg.body) ? msg.body : 'Gambar WhatsApp'}
                                               className="max-h-72 w-full object-cover"
                                               loading="lazy"
                                             />
-                                          </a>
+                                          </button>
                                         ) : (
                                           <div className={`flex items-center gap-2 rounded-md px-3 py-2 ${msg.is_from_me ? 'bg-black/5 text-[#54656f] dark:bg-white/10 dark:text-[#d9fdd3]' : 'bg-black/5 text-[#54656f] dark:bg-black/15 dark:text-[#aebac1]'}`}>
                                             <ImageIcon size={16} />
@@ -1143,12 +1257,53 @@ const AgentWorkspace = () => {
                                           <div className="whitespace-pre-wrap break-words">{renderInteractiveText(msg.body, msg.is_from_me)}</div>
                                         )}
                                       </div>
+                                    ) : msg.message_type === 'video' ? (
+                                      <div className="space-y-2">
+                                        {msg.media_url ? (
+                                          <div className="overflow-hidden rounded-md border border-white/10 bg-black">
+                                            <video controls preload="metadata" className="max-h-72 w-full" src={msg.media_url}>
+                                              Browser tidak mendukung pemutaran video ini.
+                                            </video>
+                                            <button
+                                              type="button"
+                                              onClick={() => setMediaPreview({ url: msg.media_url!, type: 'video', title: 'Video WhatsApp' })}
+                                              className="w-full bg-black/70 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-black/85"
+                                            >
+                                              Buka video layar penuh
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className={`flex items-center gap-2 rounded-md px-3 py-2 ${msg.is_from_me ? 'bg-black/5 text-[#54656f] dark:bg-white/10 dark:text-[#d9fdd3]' : 'bg-black/5 text-[#54656f] dark:bg-black/15 dark:text-[#aebac1]'}`}>
+                                            <Video size={16} />
+                                            <span>Video diterima</span>
+                                          </div>
+                                        )}
+                                        {!isMediaPlaceholder(msg.body) && (
+                                          <div className="whitespace-pre-wrap break-words">{renderInteractiveText(msg.body, msg.is_from_me)}</div>
+                                        )}
+                                      </div>
+                                    ) : msg.message_type === 'audio' ? (
+                                      <div className="space-y-2">
+                                        {msg.media_url ? (
+                                          <audio controls preload="metadata" className="max-w-full" src={msg.media_url}>
+                                            Browser tidak mendukung pemutaran audio ini.
+                                          </audio>
+                                        ) : (
+                                          <div className={`flex items-center gap-2 rounded-md px-3 py-2 ${msg.is_from_me ? 'bg-black/5 text-[#54656f] dark:bg-white/10 dark:text-[#d9fdd3]' : 'bg-black/5 text-[#54656f] dark:bg-black/15 dark:text-[#aebac1]'}`}>
+                                            <Mic size={16} />
+                                            <span>Audio diterima</span>
+                                          </div>
+                                        )}
+                                        {!isMediaPlaceholder(msg.body) && (
+                                          <div className="whitespace-pre-wrap break-words">{renderInteractiveText(msg.body, msg.is_from_me)}</div>
+                                        )}
+                                      </div>
                                     ) : getMessageTypeMeta(msg.message_type) ? (
                                       <div className="space-y-2">
-                                        <a
-                                          href={msg.media_url || undefined}
-                                          target="_blank"
-                                          rel="noreferrer"
+                                        <button
+                                          type="button"
+                                          onClick={() => msg.media_url && setMediaPreview({ url: msg.media_url, type: 'document', title: 'Dokumen WhatsApp' })}
+                                          disabled={!msg.media_url}
                                           className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-[12px] font-semibold ${msg.is_from_me ? 'bg-black/5 text-[#54656f] dark:bg-white/10 dark:text-[#d9fdd3]' : 'bg-black/5 text-[#54656f] dark:bg-black/15 dark:text-[#aebac1]'} ${msg.media_url ? 'hover:underline' : 'pointer-events-none'}`}
                                         >
                                           {(() => {
@@ -1161,7 +1316,7 @@ const AgentWorkspace = () => {
                                               </>
                                             );
                                           })()}
-                                        </a>
+                                        </button>
                                         {!isMediaPlaceholder(msg.body) && (
                                           <div className="whitespace-pre-wrap break-words">{renderInteractiveText(msg.body, msg.is_from_me)}</div>
                                         )}
@@ -1194,6 +1349,23 @@ const AgentWorkspace = () => {
                 {/* Input Area */}
                 <div className="z-10 shrink-0 border-t border-[#d1d7db] bg-[#f0f2f5] px-3 py-2.5 dark:border-[#2a3942] dark:bg-[#202c33] sm:px-4">
                     <div className="flex w-full items-end gap-2">
+                        <input
+                          ref={mediaInputRef}
+                          type="file"
+                          className="hidden"
+                          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+                          onChange={(event) => void handleMediaSelected(event)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => mediaInputRef.current?.click()}
+                          disabled={isUploadingMedia || !selectedChat}
+                          className="flex-shrink-0 p-3 text-[#54656f] transition-all hover:bg-[#e9edef] hover:text-[#111b21] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 dark:text-[#aebac1] dark:hover:bg-[#2a3942] dark:hover:text-[#e9edef]"
+                          title="Kirim file, foto, video, atau audio"
+                          aria-label="Kirim media"
+                        >
+                          {isUploadingMedia ? <Loader2 className="animate-spin" size={20} /> : <Paperclip size={20} />}
+                        </button>
                         <div className="flex min-w-0 flex-1 items-center rounded-lg bg-white px-4 py-2 dark:bg-[#2a3942]">
                              <textarea
                                 ref={composerRef}
@@ -1214,7 +1386,7 @@ const AgentWorkspace = () => {
 
                         <button
                             onClick={handleSendMessage}
-                            disabled={isSending || !messageText.trim()}
+                            disabled={isSending || isUploadingMedia || !messageText.trim()}
                             className="flex-shrink-0 p-3 text-[#54656f] transition-all hover:bg-[#e9edef] hover:text-[#111b21] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 dark:text-[#aebac1] dark:hover:bg-[#2a3942] dark:hover:text-[#e9edef]"
                         >
                             {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
@@ -1309,7 +1481,56 @@ const AgentWorkspace = () => {
             </div>
         )}
       </div>
-    </div>
+      </div>
+
+      {mediaPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={mediaPreview.title}
+          onMouseDown={() => setMediaPreview(null)}
+        >
+          <div
+            className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#111b21]"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[#e9edef] px-4 py-3 dark:border-[#2a3942]">
+              <p className="truncate pr-3 text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">{mediaPreview.title}</p>
+              <button
+                type="button"
+                onClick={() => setMediaPreview(null)}
+                className="rounded-md p-2 text-[#54656f] hover:bg-[#f0f2f5] dark:text-[#aebac1] dark:hover:bg-[#202c33]"
+                aria-label="Tutup pratinjau media"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 bg-[#0b141a] p-3">
+              {mediaPreview.type === 'image' ? (
+                <img src={mediaPreview.url} alt={mediaPreview.title} className="mx-auto max-h-[72dvh] max-w-full object-contain" />
+              ) : mediaPreview.type === 'video' ? (
+                <video controls autoPlay className="mx-auto max-h-[72dvh] w-full" src={mediaPreview.url}>
+                  Browser tidak mendukung pemutaran video ini.
+                </video>
+              ) : (
+                <iframe title={mediaPreview.title} src={mediaPreview.url} className="h-[72dvh] w-full rounded border-0 bg-white" />
+              )}
+            </div>
+            <div className="flex justify-end border-t border-[#e9edef] px-4 py-3 dark:border-[#2a3942]">
+              <a
+                href={mediaPreview.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md bg-[#0a5c46] px-3 py-2 text-xs font-bold text-[#d9fdd3] hover:bg-[#064f3c]"
+              >
+                Buka di tab baru
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

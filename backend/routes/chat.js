@@ -1,4 +1,5 @@
 const express = require('express');
+const { refreshPersistedMediaUrls } = require('../utils/persisted-media');
 
 function buildChatRouter(deps) {
     const router = express.Router();
@@ -126,7 +127,7 @@ function buildChatRouter(deps) {
             const beforeId = req.query.before || null; // Cursor for pagination
 
             const messages = await db.getMessagesByChat(chatId, limit, beforeId);
-            res.json({ status: 'success', data: messages });
+            res.json({ status: 'success', data: refreshPersistedMediaUrls(req, messages) });
         } catch (error) {
             res.status(500).json({ status: 'error', message: error.message });
         }

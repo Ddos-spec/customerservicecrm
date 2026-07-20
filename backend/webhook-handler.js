@@ -14,8 +14,8 @@ const aiResponder = require('./services/ai/responder');
 const { createReplyBatcher } = require('./services/ai/reply-batcher');
 const { normalizeJid, getJidUser } = require('./utils/jid');
 const { sendAlertWebhook } = require('./utils/alert-webhook');
-const { buildSignedEphemeralMediaUrl, getPublicBaseUrl } = require('./utils/ephemeral-media');
-const googleDrive = require('./utils/google-drive');
+const { buildSignedEphemeralMediaUrl } = require('./utils/ephemeral-media');
+const { persistMediaBuffer, persistMediaSource } = require('./utils/persisted-media');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
 const AI_REPLY_DEBOUNCE_MS = Math.min(
     Math.max(parseInt(process.env.AI_REPLY_DEBOUNCE_MS || '60000', 10) || 60000, 1500),
@@ -222,13 +222,27 @@ function buildForwardableMedia(req, sessionId, message) {
  */
 async function resolvePersistableMediaUrl(req, sessionId, message) {
     const mediaToken = typeof message.ephemeralMediaToken === 'string' ? message.ephemeralMediaToken.trim() : '';
-    if (!mediaToken || !googleDrive.isConfigured()) return null;
+    const filename = message.filename || `wa-${message.type || 'media'}-${message.id || Date.now()}`;
 
     try {
-        const fetched = await waGateway.fetchEphemeralMedia(sessionId, mediaToken);
-        const filename = fetched.filename || `wa-${message.type || 'media'}-${message.id || Date.now()}`;
-        const fileId = await googleDrive.uploadMediaToDrive(fetched.data, fetched.contentType, filename);
-        return googleDrive.buildSignedDriveMediaUrl(getPublicBaseUrl(req), fileId);
+        if (mediaToken) {
+            const fetched = await waGateway.fetchEphemeralMedia(sessionId, mediaToken);
+            const persisted = await persistMediaBuffer(
+                req,
+                fetched.data,
+                fetched.contentType,
+                fetched.filename || filename,
+            );
+            return persisted.url;
+        }
+
+        if (message.mediaUrl) {
+            const persisted = await persistMediaSource(req, message.mediaUrl, filename, message.mediaMimeType);
+            return persisted.url;
+        }
+
+        console.warn(`[Webhook] Media ${message.id || 'no-id'} tidak memiliki token atau URL sumber untuk disimpan.`);
+        return null;
     } catch (error) {
         console.error(`[Webhook] Gagal upload media inbound ke Drive (message ${message.id || 'no-id'}):`, error.message);
         return null;
@@ -544,11 +558,9 @@ async function handleMessage(req, sessionId, data) {
         let mediaUrl = null;
 
         // Simplify media types
-        if (message.type === 'image' || message.type === 'video' || message.type === 'document' || message.type === 'audio') {
+        if (message.type === 'image' || message.type === 'video' || message.type === 'document' || message.type === 'audio' || message.type === 'sticker') {
              messageText = message.caption || `[${message.type.toUpperCase()}]`;
              mediaUrl = await resolvePersistableMediaUrl(req, sessionId, message);
-        } else if (message.type === 'sticker') {
-            messageText = '[STICKER]';
         } else if (!messageText.trim()) {
             messageText = message.type === 'unknown'
                 ? '[Pesan tidak didukung atau belum bisa ditampilkan]'
@@ -585,7 +597,15 @@ async function handleMessage(req, sessionId, data) {
 
         console.log(`[Webhook] Saved ${senderType} message ID ${savedMessage.id} for Chat ${chat.id} (${targetJid}) body="${messageText.slice(0, 120)}"`);
 
-        const { publicMediaUrl, forwardedMessage } = buildForwardableMedia(req, sessionId, message);
+        const { publicMediaUrl, forwardedMessage: rawForwardedMessage } = buildForwardableMedia(req, sessionId, message);
+        const forwardedMessage = mediaUrl
+            ? {
+                ...rawForwardedMessage,
+                mediaUrl,
+                persistedMediaUrl: mediaUrl,
+                mediaAvailable: true,
+            }
+            : rawForwardedMessage;
 
         // 4. Broadcast to WebSocket (UI Update)
         broadcast({
@@ -636,7 +656,7 @@ async function handleMessage(req, sessionId, data) {
                 dbMessageId: savedMessage.id,
                 messageType: message.type,
                 messageText: messageText,
-                mediaUrl: publicMediaUrl,
+                mediaUrl: mediaUrl || publicMediaUrl,
                 ephemeralMediaUrl: publicMediaUrl,
                 ephemeralMediaToken: message.ephemeralMediaToken || null,
                 ephemeralMediaExpiresAt: message.ephemeralMediaExpiresAt || null,

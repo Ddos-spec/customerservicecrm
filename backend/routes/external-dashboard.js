@@ -1,50 +1,24 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const { randomUUID } = require('crypto');
 const { formatPhoneNumber } = require('../phone-utils');
+const {
+    persistMediaBuffer,
+    persistMediaSource,
+    refreshPersistedMediaUrl,
+} = require('../utils/persisted-media');
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const RECENT_LIMIT = 10;
 const MAX_MEDIA_SIZE_BYTES = 25 * 1024 * 1024;
-const MEDIA_TTL_MS = 24 * 60 * 60 * 1000;
 const CENTRAL_AI_CUSTOMER_SERVICE_WEBHOOK = process.env.CENTRAL_AI_CUSTOMER_SERVICE_WEBHOOK
     || 'https://filter-bot-crmcutting.qk6yxt.easypanel.host/api/ai-operations/customer-service/incoming';
 
-const mediaDir = path.join(__dirname, '..', 'media');
-if (!fs.existsSync(mediaDir)) {
-    fs.mkdirSync(mediaDir, { recursive: true });
-}
-
 const upload = multer({
-    storage: multer.diskStorage({
-        destination: (_req, _file, cb) => cb(null, mediaDir),
-        filename: (_req, file, cb) => {
-            const ext = path.extname(file.originalname || '');
-            cb(null, `${randomUUID()}${ext}`);
-        }
-    }),
+    storage: multer.memoryStorage(),
     limits: { fileSize: MAX_MEDIA_SIZE_BYTES }
 });
-
-const mediaStore = new Map();
-setInterval(() => {
-    const now = Date.now();
-    for (const [id, meta] of mediaStore.entries()) {
-        if (meta.expiresAt <= now) {
-            mediaStore.delete(id);
-            if (meta.path && fs.existsSync(meta.path)) {
-                try {
-                    fs.unlinkSync(meta.path);
-                } catch (_error) {
-                    // noop cleanup best effort
-                }
-            }
-        }
-    }
-}, 5 * 60 * 1000).unref();
 
 let supportTablesReady = null;
 
@@ -191,7 +165,7 @@ function mapChatToCustomer(chat) {
     };
 }
 
-function mapMessage(message) {
+function mapMessage(message, req) {
     return {
         id: message.id,
         chat_id: message.chat_id,
@@ -200,7 +174,7 @@ function mapMessage(message) {
         sender_name: message.sender_name,
         message_type: message.message_type || 'text',
         body: message.body || '',
-        media_url: message.media_url || null,
+        media_url: refreshPersistedMediaUrl(req, message.media_url) || null,
         wa_message_id: message.wa_message_id || null,
         is_from_me: Boolean(message.is_from_me),
         status: message.status || null,
@@ -399,6 +373,7 @@ function mapBusinessRow(row) {
 }
 
 async function sendExternalMessage({
+    req,
     tenant,
     payload,
     db,
@@ -419,7 +394,7 @@ async function sendExternalMessage({
     const mentions = Array.isArray(rawMentions)
         ? rawMentions.map((value) => String(value || '').trim()).filter(Boolean)
         : String(rawMentions || '').split(',').map((value) => value.trim()).filter(Boolean);
-    const mediaUrl = (payload?.url || payload?.image_url || payload?.media_url || '').toString().trim();
+    const sourceMediaUrl = (payload?.url || payload?.image_url || payload?.media_url || '').toString().trim();
     const filename = (payload?.filename || payload?.file_name || 'document').toString().trim() || 'document';
     const viewOnce = parseBooleanFlag(payload?.view_once, false);
 
@@ -429,9 +404,17 @@ async function sendExternalMessage({
     if (mtype === 'text' && !text.trim()) {
         throw new Error('text is required for mtype=text');
     }
-    if (mtype !== 'text' && !mediaUrl) {
+    if (mtype !== 'text' && !sourceMediaUrl) {
         throw new Error('url is required for media message');
     }
+    if (!['text', 'image', 'video', 'audio', 'document'].includes(mtype)) {
+        throw new Error(`Unsupported mtype: ${mtype}`);
+    }
+
+    const persistedMedia = mtype === 'text'
+        ? null
+        : await persistMediaSource(req, sourceMediaUrl, filename);
+    const mediaUrl = persistedMedia?.url || null;
 
     const chat = await db.getOrCreateChat(
         tenant.id,
@@ -489,15 +472,6 @@ async function sendExternalMessage({
     }
 
     return { chat, message, result };
-}
-
-function buildPublicMediaUrl(req, mediaId) {
-    const forwardedProto = req.headers['x-forwarded-proto'];
-    const proto = Array.isArray(forwardedProto)
-        ? (forwardedProto[0] || req.protocol || 'https')
-        : (typeof forwardedProto === 'string' && forwardedProto.trim() ? forwardedProto.split(',')[0].trim() : (req.protocol || 'https'));
-    const host = req.get('host');
-    return `${proto}://${host}${req.baseUrl}/media/${mediaId}`;
 }
 
 function normalizePhoneDigits(value) {
@@ -1069,11 +1043,12 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
             return res.json({
                 status: 'success',
                 data: messages.map((message) => ({
+                    ...mapMessage(message, req),
                     id: message.id,
                     customer_id: contactId,
                     chat_id: message.chat_id,
                     message_type: message.message_type || 'text',
-                    content: message.body || message.media_url || '',
+                    content: message.body || refreshPersistedMediaUrl(req, message.media_url) || '',
                     source_type: message.message_type || 'text',
                     sender_type: message.sender_type,
                     sender_name: message.sender_name,
@@ -1486,6 +1461,7 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
     router.post('/send-message', async (req, res) => {
         try {
             const output = await sendExternalMessage({
+                req,
                 tenant: req.externalTenant,
                 payload: req.body,
                 db,
@@ -1504,7 +1480,7 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
             });
         } catch (error) {
             console.error('[External Dashboard API] Send message error:', error.message);
-            return res.status(500).json({ error: error.message || 'Failed to send message' });
+            return res.status(error.statusCode || 500).json({ error: error.message || 'Failed to send message' });
         }
     });
 
@@ -1514,58 +1490,27 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
                 return res.status(400).json({ error: 'No file uploaded' });
             }
 
-            const mediaId = req.file.filename;
-            const now = Date.now();
-            const expiresAt = now + MEDIA_TTL_MS;
-            mediaStore.set(mediaId, {
-                id: mediaId,
-                path: req.file.path,
-                filename: req.file.originalname || req.file.filename,
-                mimeType: req.file.mimetype,
-                size: req.file.size,
-                createdAt: now,
-                expiresAt,
-            });
-
-            const publicUrl = buildPublicMediaUrl(req, mediaId);
+            const persisted = await persistMediaBuffer(
+                req,
+                req.file.buffer,
+                req.file.mimetype,
+                req.file.originalname,
+            );
             return res.status(201).json({
                 status: 'success',
                 data: {
-                    id: mediaId,
-                    filename: req.file.originalname || req.file.filename,
+                    id: persisted.fileId,
+                    filename: req.file.originalname || persisted.fileId,
                     mimeType: req.file.mimetype,
                     size: req.file.size,
-                    expiresAt: new Date(expiresAt).toISOString(),
-                    url: publicUrl,
+                    storage: 'google_drive',
+                    url: persisted.url,
                 }
             });
         } catch (error) {
             console.error('[External Dashboard API] Media upload error:', error.message);
-            return res.status(500).json({ error: 'Failed to upload media' });
+            return res.status(error.statusCode || 500).json({ error: error.message || 'Failed to upload media' });
         }
-    });
-
-    router.get('/media/:id', async (req, res) => {
-        const mediaId = (req.params.id || '').toString().trim();
-        const meta = mediaStore.get(mediaId);
-
-        if (!meta || !meta.path || !fs.existsSync(meta.path)) {
-            return res.status(404).json({ error: 'Media not found' });
-        }
-        if (meta.expiresAt <= Date.now()) {
-            mediaStore.delete(mediaId);
-            try {
-                fs.unlinkSync(meta.path);
-            } catch (_error) {
-                // noop cleanup
-            }
-            return res.status(410).json({ error: 'Media expired' });
-        }
-
-        if (meta.mimeType) {
-            res.setHeader('Content-Type', meta.mimeType);
-        }
-        return res.sendFile(path.resolve(meta.path));
     });
 
     // Legacy endpoint set (keep compatibility with prior clients)
@@ -1611,7 +1556,7 @@ function buildExternalDashboardRouter({ db, scheduleMessageSend, waGateway }) {
             const messages = await db.getMessagesByChat(req.params.chatId, limit, beforeId);
             return res.json({
                 status: 'success',
-                data: messages.map(mapMessage),
+                data: messages.map((message) => mapMessage(message, req)),
                 meta: { limit, before: beforeId },
             });
         } catch (error) {

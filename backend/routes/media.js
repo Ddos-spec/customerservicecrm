@@ -1,31 +1,18 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const { randomUUID } = require('crypto');
 
 const {
     buildSignedEphemeralMediaUrl,
     verifySignedEphemeralMediaRequest,
 } = require('../utils/ephemeral-media');
 const googleDrive = require('../utils/google-drive');
+const { persistMediaBuffer } = require('../utils/persisted-media');
 
 const router = express.Router();
-const mediaDir = path.join(__dirname, '..', 'media');
-if (!fs.existsSync(mediaDir)) {
-    fs.mkdirSync(mediaDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-    destination: (_req, _file, cb) => {
-        cb(null, mediaDir);
-    },
-    filename: (_req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        cb(null, `${randomUUID()}${ext}`);
-    }
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 },
 });
-const upload = multer({ storage });
 
 function setInlineFilename(res, filename) {
     if (typeof filename !== 'string' || !filename.trim()) return;
@@ -35,7 +22,16 @@ function setInlineFilename(res, filename) {
 function buildMediaRouter(deps) {
     const { log, validateToken, waGateway } = deps;
 
-    router.post('/media', validateToken, upload.single('file'), (req, res) => {
+    const authorizeMediaUpload = (req, res, next) => {
+        const user = req.session?.user;
+        if (user) {
+            if (['admin_agent', 'agent', 'super_admin'].includes(user.role)) return next();
+            return res.status(403).json({ status: 'error', message: 'Access denied' });
+        }
+        return validateToken(req, res, next);
+    };
+
+    router.post('/media', authorizeMediaUpload, upload.single('file'), async (req, res) => {
         log('API request', 'SYSTEM', { event: 'api-request', method: req.method, endpoint: req.originalUrl, body: req.body });
         if (!req.file) {
             log('API error', 'SYSTEM', { event: 'api-error', error: 'No file uploaded.', endpoint: req.originalUrl });
@@ -53,23 +49,44 @@ function buildMediaRouter(deps) {
             'image/webp'
         ];
         if (!allowedTypes.includes(req.file.mimetype)) {
-            fs.unlinkSync(req.file.path);
             log('API error', 'SYSTEM', { event: 'api-error', error: 'Invalid file type.', endpoint: req.originalUrl });
             return res.status(400).json({ status: 'error', message: 'Invalid file type. Allowed: Images (JPEG, PNG, GIF, WebP), Audio (MP3, MP4, OGG, WAV, WebM, AAC, Opus), Video (MP4, 3GPP, QuickTime, WebM), Documents (PDF, DOC, DOCX, XLS, XLSX).' });
         }
         if (req.file.size > 25 * 1024 * 1024) {
-            fs.unlinkSync(req.file.path);
             log('API error', 'SYSTEM', { event: 'api-error', error: 'File too large.', endpoint: req.originalUrl });
             return res.status(400).json({ status: 'error', message: 'File too large. Max 25MB.' });
         }
-        const mediaId = req.file.filename;
-        log('File uploaded', mediaId, { event: 'file-uploaded', mediaId });
-        res.status(201).json({
-            status: 'success',
-            message: 'File uploaded successfully.',
-            mediaId,
-            url: `/media/${mediaId}`
-        });
+
+        try {
+            const persisted = await persistMediaBuffer(
+                req,
+                req.file.buffer,
+                req.file.mimetype,
+                req.file.originalname,
+            );
+            log('File uploaded', persisted.fileId, {
+                event: 'file-uploaded',
+                mediaId: persisted.fileId,
+                storage: 'google_drive',
+            });
+            return res.status(201).json({
+                status: 'success',
+                message: 'File uploaded successfully.',
+                mediaId: persisted.fileId,
+                storage: 'google_drive',
+                url: persisted.url,
+            });
+        } catch (error) {
+            log('API error', 'SYSTEM', {
+                event: 'api-error',
+                error: error.message,
+                endpoint: req.originalUrl,
+            });
+            return res.status(error.statusCode || 500).json({
+                status: 'error',
+                message: error.message || 'Gagal menyimpan media ke Google Drive.',
+            });
+        }
     });
 
     router.post('/download-media', validateToken, async (req, res) => {

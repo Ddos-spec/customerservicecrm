@@ -9,6 +9,7 @@
 const express = require('express');
 const db = require('./db');
 const { formatPhoneNumber } = require('./phone-utils');
+const { persistMediaSource } = require('./utils/persisted-media');
 
 function normalizeRecipient(phoneNumber) {
     const raw = phoneNumber ? phoneNumber.toString().trim() : '';
@@ -656,19 +657,21 @@ function initializeGatewayApi(deps) {
                 return res.status(503).json({ success: false, error: 'Gateway service not initialized' });
             }
 
+            const persistedMedia = await persistMediaSource(req, imageSource, 'image');
+            const mediaUrl = persistedMedia.url;
             const message = await db.logMessage({
                 chatId: chat.id,
                 senderType: 'agent',
                 messageType: 'image',
                 body: caption || '[Image]',
-                mediaUrl: imageSource,
+                mediaUrl,
                 waMessageId: null,
                 status: 'queued',
                 isFromMe: true
             });
 
             const result = await scheduleMessageSend(sessionId, async () => {
-                const response = await waGateway.sendImage(sessionId, destination, imageSource, caption, viewOnce);
+                const response = await waGateway.sendImage(sessionId, destination, mediaUrl, caption, viewOnce);
                 if (!(response?.status === true || response?.status === 'success')) {
                     throw new Error(response?.message || 'Gateway failed to send image');
                 }
@@ -682,7 +685,7 @@ function initializeGatewayApi(deps) {
                     destination,
                     chatJid: recipient.chatJid || recipient.jid || null,
                     body: caption || '[Image]',
-                    mediaUrl: imageSource,
+                    mediaUrl,
                     viewOnce
                 }
             });
@@ -692,13 +695,13 @@ function initializeGatewayApi(deps) {
                 message_id: message.id,
                 tenant_id: tenant.id,
                 chat_id: chat.id,
-                media_url: imageSource,
+                media_url: mediaUrl,
                 gateway_response: result.data
             });
 
         } catch (error) {
             console.error('gateway send-image error:', error);
-            res.status(500).json({ success: false, error: error.message });
+            res.status(error.statusCode || 500).json({ success: false, error: error.message });
         }
     });
 
@@ -708,13 +711,13 @@ function initializeGatewayApi(deps) {
             const mediaSource = sourceFields
                 .map((field) => req.body?.[field])
                 .find((value) => typeof value !== 'undefined' && value !== null);
-            const mediaUrl = (mediaSource || '').toString().trim();
+            const sourceMediaUrl = (mediaSource || '').toString().trim();
             const caption = (req.body?.caption || req.body?.message_text || '').toString();
             const filename = (req.body?.filename || req.body?.file_name || label.toLowerCase()).toString().trim();
             const viewOnceInput = typeof req.body?.view_once !== 'undefined' ? req.body.view_once : req.body?.viewonce;
             const viewOnce = parseBooleanFlag(viewOnceInput, false);
 
-            if (!phone_number || !mediaUrl) {
+            if (!phone_number || !sourceMediaUrl) {
                 return res.status(400).json({
                     success: false,
                     error: `Missing fields: phone_number, ${missingField}`
@@ -755,6 +758,8 @@ function initializeGatewayApi(deps) {
                 return res.status(503).json({ success: false, error: 'Gateway service not initialized' });
             }
 
+            const persistedMedia = await persistMediaSource(req, sourceMediaUrl, filename);
+            const mediaUrl = persistedMedia.url;
             const body = caption || `[${label}]`;
             const message = await db.logMessage({
                 chatId: chat.id,
@@ -799,7 +804,7 @@ function initializeGatewayApi(deps) {
 
         } catch (error) {
             console.error(`gateway send-${messageType} error:`, error);
-            res.status(500).json({ success: false, error: error.message });
+            res.status(error.statusCode || 500).json({ success: false, error: error.message });
         }
     };
 
