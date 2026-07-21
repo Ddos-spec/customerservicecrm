@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import type { UserRole } from '../store/useAuthStore';
+import BrandLogo from './BrandLogo';
 
 interface ProtectedRouteProps {
   allowedRoles: UserRole[];
@@ -14,7 +15,7 @@ const ProtectedRoute = ({ allowedRoles }: ProtectedRouteProps) => {
       <div className="app-loader">
         <div className="app-loader__orb" aria-hidden="true" />
         <div className="app-loader__content">
-          <div className="brand-mark brand-mark--small"><span>W</span></div>
+          <BrandLogo markOnly size="small" />
           <p>Memvalidasi sesi</p>
           <span className="app-loader__line" />
         </div>

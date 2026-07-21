@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useThemeStore } from './store/useThemeStore';
 import { useAuthStore } from './store/useAuthStore';
+import BrandLogo from './components/BrandLogo';
 
 const Login = lazy(() => import('./pages/Login'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -34,7 +35,7 @@ const RouteLoader = () => (
   <div className="app-loader">
     <div className="app-loader__orb" aria-hidden="true" />
     <div className="app-loader__content">
-      <div className="brand-mark brand-mark--small"><span>W</span></div>
+      <BrandLogo markOnly size="small" />
       <p>Menyiapkan command center</p>
       <span className="app-loader__line" />
     </div>

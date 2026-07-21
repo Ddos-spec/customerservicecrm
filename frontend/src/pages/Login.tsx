@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Bot, Check, ChevronDown, ChevronUp, Eye, EyeOff, Loader2, Lock, Mail, MessageCircle, ShieldCheck, Sparkles, User as UserIcon, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
+import BrandLogo from '../components/BrandLogo';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -47,7 +48,7 @@ const Login = () => {
       <div className="auth-visual">
         <div className="auth-grid" />
         <div className="auth-orb auth-orb--one" /><div className="auth-orb auth-orb--two" />
-        <Link to="/" className="auth-brand"><span className="brand-mark"><span>W</span></span><span>WA<strong>Central</strong></span></Link>
+        <Link to="/" className="auth-brand"><BrandLogo inverted /></Link>
         <div className="auth-visual__copy">
           <span className="auth-eyebrow"><Sparkles size={13} /> AI SERVICE OPERATING SYSTEM</span>
           <h1>Setiap chat.<br /><em>Satu langkah lebih maju.</em></h1>
@@ -65,7 +66,7 @@ const Login = () => {
       <div className="auth-panel">
         <div className="auth-panel__inner">
           <Link to="/" className="auth-back"><ArrowLeft size={15} /> Kembali ke beranda</Link>
-          <div className="auth-mobile-brand"><span className="brand-mark brand-mark--small"><span>W</span></span><span>WA<strong>Central</strong></span></div>
+          <div className="auth-mobile-brand"><BrandLogo size="small" /></div>
           <div className="auth-heading"><span>SECURE ACCESS</span><h2>Selamat datang kembali.</h2><p>Masuk untuk melanjutkan operasional hari ini.</p></div>
           <form className="auth-form" onSubmit={handleSubmit}>
             <label><span>Email kerja</span><div><Mail size={17} /><input type="email" autoComplete="email" placeholder="nama@perusahaan.com" value={email} onChange={(event) => setEmail(event.target.value)} /></div></label>

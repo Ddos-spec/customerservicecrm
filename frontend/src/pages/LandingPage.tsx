@@ -4,6 +4,7 @@ import {
   ArrowRight, Bot, Check, ChevronRight, Clock3, Headphones,
   Menu, MessageCircle, Play, ShieldCheck, Sparkles, Users, X, Zap
 } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
 
 const capabilities = [
   'Unified WhatsApp Inbox',
@@ -61,8 +62,7 @@ const LandingPage = () => {
       <header className={`landing-nav ${scrolled ? 'landing-nav--scrolled' : ''}`}>
         <div className="landing-container landing-nav__inner">
           <Link to="/" className="landing-brand" aria-label="WACentral homepage">
-            <span className="brand-mark"><span>W</span></span>
-            <span className="landing-brand__text">WA<span>Central</span></span>
+            <BrandLogo />
           </Link>
 
           <nav className="landing-nav__links" aria-label="Navigasi utama">
@@ -135,7 +135,7 @@ const LandingPage = () => {
               <div className="hero-product__halo" />
               <div className="hero-product__window">
                 <div className="hero-product__topbar">
-                  <div className="hero-product__brand"><span className="brand-mark brand-mark--tiny"><span>W</span></span> WACentral</div>
+                  <div className="hero-product__brand"><BrandLogo markOnly size="tiny" /> WACentral</div>
                   <div className="hero-product__search">Cari percakapan...</div>
                   <div className="hero-product__profile">HA</div>
                 </div>

@@ -1,0 +1,39 @@
+type BrandLogoProps = {
+  className?: string;
+  inverted?: boolean;
+  markOnly?: boolean;
+  showTagline?: boolean;
+  size?: 'default' | 'small' | 'tiny';
+};
+
+const BrandLogo = ({
+  className = '',
+  inverted = false,
+  markOnly = false,
+  showTagline = false,
+  size = 'default',
+}: BrandLogoProps) => (
+  <span className={`brand-logo brand-logo--${size}${inverted ? ' brand-logo--inverted' : ''} ${className}`.trim()}>
+    <span className="brand-logo__mark" aria-hidden="true">
+      <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="3" y="3" width="42" height="42" rx="14" fill="url(#wacentral-gradient)" />
+        <path d="M12 15.25 17.15 32h3.55l3.3-9.75L27.3 32h3.55L36 15.25h-4.35L28.9 25.6l-3.2-10.35h-3.4L19.05 25.6l-2.7-10.35H12Z" fill="white" />
+        <path d="M34.5 35.25h3.25" stroke="#D9FF66" strokeWidth="2.5" strokeLinecap="round" />
+        <defs>
+          <linearGradient id="wacentral-gradient" x1="6" y1="5" x2="43" y2="45" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#8B7CFF" />
+            <stop offset="1" stopColor="#5546D9" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </span>
+    {!markOnly && (
+      <span className="brand-logo__copy">
+        <span className="brand-logo__wordmark">WA<strong>Central</strong></span>
+        {showTagline && <small>Service OS</small>}
+      </span>
+    )}
+  </span>
+);
+
+export default BrandLogo;

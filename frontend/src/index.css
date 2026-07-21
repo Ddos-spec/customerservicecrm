@@ -240,3 +240,19 @@ input, textarea, select { user-select: text !important; -webkit-user-select: tex
   .landing-hero__actions{align-items:stretch}.landing-button{width:100%}.landing-proof{align-items:flex-start}.hero-product{margin-inline:-10px}.hero-product__window{min-height:490px;border-radius:20px;transform:none}.hero-product__topbar{grid-template-columns:1fr auto}.hero-product__search{display:none}.hero-product__body{grid-template-columns:62px 125px 1fr;min-height:428px}.mini-nav{justify-content:center}.mini-nav span,.mini-nav b{display:none}.hero-product__sidebar{padding-inline:7px}.hero-product__listhead>span{display:none}.message-row{grid-template-columns:27px 1fr;padding:10px 7px}.message-row>time{display:none}.message-avatar{width:27px;height:27px}.chat-head{padding-inline:9px}.chat-canvas{padding-inline:8px}.chat-bubble{max-width:95%;font-size:6.5px}.floating-metric{display:none}.landing-section{padding:72px 0}.section-heading h2{font-size:39px}.bento-card{min-height:350px;padding:27px;border-radius:23px}.bento-card--large{min-height:540px}.inbox-visual{margin-left:15px}.inbox-visual>div{min-width:315px}.campaign-visual{margin-top:30px}.workflow-orbit{transform:scale(.94)}.workflow-node{padding:8px 10px;font-size:8px}.landing-cta{padding:95px 0}.landing-footer__top{grid-template-columns:1fr 1fr;gap:35px}.landing-footer__bottom{align-items:flex-start;flex-direction:column;gap:10px}.app-page-identity strong{max-width:115px;overflow:hidden;text-overflow:ellipsis}.icon-button{display:none}.app-topbar__actions{gap:5px}.profile-trigger>span{width:32px;height:32px}.impersonation-banner{position:relative;flex-direction:column;align-items:flex-start;gap:5px}.impersonation-banner+.app-sidebar+.app-mobile-drawer+.app-main .app-topbar{top:0}
 }
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+
+/* Canonical product mark — used by landing, auth, app shell, and loaders. */
+.brand-logo{display:inline-flex;align-items:center;gap:10px;line-height:1;color:inherit;white-space:nowrap}
+.brand-logo__mark{display:grid;flex:0 0 auto;width:32px;height:32px;filter:drop-shadow(0 8px 14px rgba(85,70,217,.18))}
+.brand-logo__mark svg{display:block;width:100%;height:100%}
+.brand-logo__copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.brand-logo__wordmark{color:inherit;font-size:18px;font-weight:900;letter-spacing:-.06em}
+.brand-logo__wordmark strong{color:var(--violet);font:inherit}
+.brand-logo__copy small{color:var(--muted);font-size:7px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}
+.brand-logo--small{gap:8px}.brand-logo--small .brand-logo__mark{width:26px;height:26px}.brand-logo--small .brand-logo__wordmark{font-size:15px}
+.brand-logo--tiny{gap:5px}.brand-logo--tiny .brand-logo__mark{width:16px;height:16px}
+.brand-logo--inverted .brand-logo__wordmark{color:#fff}.brand-logo--inverted .brand-logo__wordmark strong{color:#a69cff}.brand-logo--inverted .brand-logo__copy small{color:#9d9da8}
+.app-brand .brand-logo__copy{align-items:flex-start}.app-brand .brand-logo__wordmark{font-size:17px}.app-brand .brand-logo__wordmark strong{color:#a69cff}.app-brand .brand-logo__copy small{color:#848491}
+.hero-product__brand .brand-logo__mark{width:17px;height:17px}
+.auth-brand .brand-logo__mark{width:30px;height:30px}.auth-mobile-brand .brand-logo__wordmark{color:#111116}.auth-mobile-brand .brand-logo__wordmark strong{color:var(--violet)}
