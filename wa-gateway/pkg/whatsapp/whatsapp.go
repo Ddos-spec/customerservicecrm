@@ -102,6 +102,12 @@ var (
 func init() {
 	var err error
 
+	// This is a static, package-wide XML pretty-printing preference — it
+	// doesn't vary per session, so it belongs here (set once, before any
+	// concurrent access is even possible) rather than being reassigned by
+	// every WhatsAppInitClient call, which raced across goroutines.
+	wabin.IndentXML = true
+
 	dbType, err := env.GetEnvString("WHATSAPP_DATASTORE_TYPE")
 	if err != nil {
 		log.Print(nil).Fatal("Error Parse Environment Variable for WhatsApp Client Datastore Type")
@@ -134,7 +140,6 @@ func init() {
 
 func WhatsAppInitClient(device *store.Device, jid string) {
 	var err error
-	wabin.IndentXML = true
 
 	// The existence check and the eventual creation must happen as one
 	// atomic step, so this is the one place that holds the write lock for

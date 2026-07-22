@@ -447,22 +447,24 @@ async function loadTokens() {
             const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
             if (gatewayPassword) {
                 console.log('[System] Authenticating sessions with gateway...');
-                const results = await Promise.allSettled(Array.from(sessionTokens.keys()).map(async (sessionId) => {
+                // .map(async ...) here fired every session's auth request at once —
+                // the exact same unawaited-concurrency anti-pattern fixed earlier
+                // today in the /sessions refresh loop, but at startup, hitting the
+                // gateway with a burst of simultaneous requests right as it's also
+                // restoring all its own devices. Go one session at a time instead.
+                let successCount = 0;
+                for (const sessionId of sessionTokens.keys()) {
                     try {
                         const auth = await waGateway.authenticate(sessionId, gatewayPassword);
                         if (auth.status && auth.data?.token) {
                             waGateway.setSessionToken(sessionId, auth.data.token);
                             console.log(`[System] JWT obtained for session: ${sessionId}`);
-                            return { sessionId, success: true };
+                            successCount++;
                         }
-                        return { sessionId, success: false, reason: 'No token in response' };
                     } catch (err) {
                         console.warn(`[System] Auth failed for ${sessionId}: ${err.message}`);
-                        return { sessionId, success: false, reason: err.message };
                     }
-                }));
-
-                const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+                }
                 console.log(`[System] Gateway auth complete: ${successCount}/${sessionTokens.size} sessions authenticated`);
             }
         } catch (err) {
@@ -1976,12 +1978,18 @@ app.get('/api/v1/gateway/sessions/status', async (req, res) => {
 
     try {
         const tenants = await db.getAllTenants();
-        const results = await Promise.allSettled(
-            tenants
-                .filter(tenant => tenant?.session_id)
-                .map(async (tenant) => {
-                    const status = await waGateway.getSessionStatus(tenant.session_id);
-                    return {
+        // Sequential on purpose: hitting the gateway with a status request for
+        // every tenant at once (the previous .map(async ...) here did exactly
+        // that) is the same concurrency pattern behind today's gateway
+        // session-identity bug — one tenant at a time avoids it.
+        const results = [];
+        for (const tenant of tenants) {
+            if (!tenant?.session_id) continue;
+            try {
+                const status = await waGateway.getSessionStatus(tenant.session_id);
+                results.push({
+                    status: 'fulfilled',
+                    value: {
                         tenant_id: tenant.id,
                         tenant_name: tenant.company_name,
                         session_id: tenant.session_id,
@@ -1991,9 +1999,12 @@ app.get('/api/v1/gateway/sessions/status', async (req, res) => {
                             identity: buildGatewayIdentityDiagnostic(tenant.session_id, status),
                             private_message_gap: buildPrivateMessageGapDiagnostic(status)
                         }
-                    };
-                })
-        );
+                    }
+                });
+            } catch (error) {
+                results.push({ status: 'rejected', reason: error });
+            }
+        }
 
         res.json({
             status: 'ok',
