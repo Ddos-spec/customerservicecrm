@@ -29,6 +29,7 @@ const (
 
 var (
 	webhookURL    string
+	webhookSecret string
 	httpClient    *http.Client
 	processorOnce sync.Once
 	stopChan      chan struct{}
@@ -81,6 +82,15 @@ func Init() {
 	if err != nil {
 		webhookURL = "http://localhost:3000/api/v1/webhook/incoming"
 		log.Print(nil).Warnf("WEBHOOK_URL not set, using default: %s", webhookURL)
+	}
+
+	// Reuses the JWT secret already shared with the CRM backend (both sides
+	// already have it configured) instead of introducing a new env var. The
+	// CRM's /webhook/incoming endpoint has no other way to tell a real
+	// gateway delivery apart from anyone who can guess a session_id.
+	webhookSecret, _ = env.GetEnvString("AUTH_JWT_SECRET")
+	if webhookSecret == "" {
+		log.Print(nil).Warn("AUTH_JWT_SECRET not set — outgoing webhooks will be sent without X-Webhook-Secret")
 	}
 
 	httpClient = &http.Client{
@@ -281,6 +291,9 @@ func deliver(payload WebhookPayload) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Webhook-Source", "wa-gateway")
 	req.Header.Set("X-Session-ID", payload.SessionID)
+	if webhookSecret != "" {
+		req.Header.Set("X-Webhook-Secret", webhookSecret)
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {

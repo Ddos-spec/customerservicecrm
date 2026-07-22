@@ -6,6 +6,7 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const db = require('./db');
 const waGateway = require('./wa-gateway-client');
@@ -17,6 +18,22 @@ const { sendAlertWebhook } = require('./utils/alert-webhook');
 const { buildSignedEphemeralMediaUrl } = require('./utils/ephemeral-media');
 const { persistMediaBuffer, persistMediaSource } = require('./utils/persisted-media');
 const gatewayPassword = process.env.WA_GATEWAY_PASSWORD;
+
+// /incoming has no other way to tell a genuine gateway delivery apart from
+// anyone who can guess a session_id (a phone number) — it was accepting
+// unauthenticated POSTs and treating them as real inbound WhatsApp messages.
+// Reuses AUTH_JWT_SECRET, which the gateway already has configured, instead
+// of introducing a new shared value both sides need to agree on.
+const webhookSharedSecret = process.env.AUTH_JWT_SECRET || '';
+
+function isValidWebhookSecret(providedSecret) {
+    if (!webhookSharedSecret || typeof providedSecret !== 'string' || !providedSecret) return false;
+    const expected = Buffer.from(webhookSharedSecret);
+    const actual = Buffer.from(providedSecret);
+    if (expected.length !== actual.length) return false;
+    return crypto.timingSafeEqual(expected, actual);
+}
+
 const AI_REPLY_DEBOUNCE_MS = Math.min(
     Math.max(parseInt(process.env.AI_REPLY_DEBOUNCE_MS || '60000', 10) || 60000, 1500),
     120000
@@ -432,6 +449,10 @@ const aiReplyBatcher = createReplyBatcher({
  */
 router.post('/incoming', async (req, res) => {
     try {
+        if (!isValidWebhookSecret(req.headers['x-webhook-secret'])) {
+            return res.status(401).json({ status: 'error', message: 'Invalid or missing webhook secret' });
+        }
+
         const { event, sessionId, timestamp, data } = req.body;
 
         if (!event || !sessionId) {
