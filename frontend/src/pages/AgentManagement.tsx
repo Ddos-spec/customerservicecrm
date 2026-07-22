@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { UserPlus, Mail, Shield, Trash2, Edit2, X, Loader2, Copy, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { confirmDialog } from '../components/ConfirmDialog';
 import Pagination from '../components/Pagination';
 import api from '../lib/api';
 
@@ -73,7 +74,8 @@ const AgentManagement = () => {
   };
 
   const handleResendInvite = async (invite: UserInvite) => {
-    if (!confirm(`Kirim ulang undangan ke ${invite.email}?`)) return;
+    const ok = await confirmDialog({ title: 'Kirim ulang undangan?', description: `Undangan baru akan dikirim ke ${invite.email}.`, confirmLabel: 'Kirim' });
+    if (!ok) return;
     try {
       const res = await api.post(`/admin/invites/${invite.id}/resend`);
       if (res.data.success) {
@@ -145,7 +147,8 @@ const AgentManagement = () => {
   };
 
   const handleDeleteAgent = async (agent: AgentUser) => {
-    if (!confirm('Hapus staff ini?')) return;
+    const ok = await confirmDialog({ title: 'Hapus staff ini?', description: `${agent.name} akan kehilangan akses ke CRM.`, confirmLabel: 'Hapus', danger: true });
+    if (!ok) return;
     try {
       await api.delete(`/admin/users/${agent.id}`);
       setAgents(agents.filter((a) => a.id !== agent.id));
@@ -350,8 +353,8 @@ const AgentManagement = () => {
 
       {/* MODAL: Add New Agent */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 relative">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl p-10 relative" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
                <h2 className="text-2xl font-black text-gray-900 dark:text-white">Undang Staff</h2>
                <button onClick={() => setIsModalOpen(false)}><X className="text-gray-400 dark:text-gray-500" /></button>
@@ -424,8 +427,8 @@ const AgentManagement = () => {
       )}
 
       {editingAgent && (
-        <div className="fixed inset-0 z-[101] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
-          <div className="relative w-full max-w-md rounded-[2.5rem] bg-white p-10 shadow-2xl dark:bg-slate-900">
+        <div className="fixed inset-0 z-[101] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md" onClick={() => setEditingAgent(null)}>
+          <div className="relative w-full max-w-md rounded-[2.5rem] bg-white p-10 shadow-2xl dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Manajemen Tim</p>

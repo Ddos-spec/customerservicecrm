@@ -4,6 +4,7 @@ import {
   Smartphone, Users, Bot, Globe, Shield
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { confirmDialog } from '../components/ConfirmDialog';
 import Pagination from '../components/Pagination';
 import api from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
@@ -203,6 +204,21 @@ const TenantManagement = () => {
     fetchTenants();
   }, []);
 
+  // Close the tenant action dropdown on any click outside it. Without this,
+  // the menu stays open when the user clicks elsewhere on the page, and its
+  // absolutely-positioned box can end up drifting over unrelated UI (e.g.
+  // the header) once the page scrolls.
+  useEffect(() => {
+    if (activeDropdown === null) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest('[data-tenant-dropdown-root]')) return;
+      setActiveDropdown(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeDropdown]);
+
   const filteredTenants = tenants.filter(t =>
     t.company_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -237,7 +253,13 @@ const TenantManagement = () => {
 
   const handleDeleteTenant = async (tenant: Tenant) => {
     setActiveDropdown(null);
-    if (!confirm(`Yakin ingin menghapus tenant "${tenant.company_name}"? Semua data user dan chat akan hilang permanen.`)) {
+    const ok = await confirmDialog({
+      title: `Hapus tenant "${tenant.company_name}"?`,
+      description: 'Semua data user dan chat tenant ini akan hilang permanen.',
+      confirmLabel: 'Hapus permanen',
+      danger: true,
+    });
+    if (!ok) {
         return;
     }
 
@@ -321,7 +343,13 @@ const TenantManagement = () => {
 
   const handleRegenerateTenantApiKey = async () => {
     if (!sessionTenant) return;
-    if (!confirm(`Regenerate API key untuk ${sessionTenant.company_name}?`)) return;
+    const ok = await confirmDialog({
+      title: 'Regenerate API key?',
+      description: `Key lama untuk ${sessionTenant.company_name} akan berhenti berfungsi.`,
+      confirmLabel: 'Regenerate',
+      danger: true,
+    });
+    if (!ok) return;
 
     setIsTenantApiKeyRegenerating(true);
     try {
@@ -387,7 +415,8 @@ const TenantManagement = () => {
 
   const handleDeleteTenantWebhook = async (webhookId: string) => {
     if (!sessionTenant) return;
-    if (!confirm('Hapus webhook tenant ini?')) return;
+    const ok = await confirmDialog({ title: 'Hapus webhook tenant ini?', description: 'Webhook ini tidak akan menerima event lagi setelah dihapus.', confirmLabel: 'Hapus', danger: true });
+    if (!ok) return;
     setTenantWebhookDeletingId(webhookId);
     try {
       const res = await api.delete(`/admin/tenants/${sessionTenant.id}/webhooks/${webhookId}`);
@@ -422,7 +451,8 @@ const TenantManagement = () => {
   };
 
   const handleFixContacts = async () => {
-    if (!confirm('Jalankan fix-contacts global?')) return;
+    const ok = await confirmDialog({ title: 'Jalankan fix-contacts global?', description: 'Proses ini akan memperbaiki data kontak untuk seluruh tenant sekaligus.', confirmLabel: 'Jalankan', danger: true });
+    if (!ok) return;
     setIsFixingContacts(true);
     try {
       const res = await api.post('/admin/fix-contacts');
@@ -619,7 +649,8 @@ const TenantManagement = () => {
 
   const handleImpersonate = async (tenant: Tenant) => {
     setActiveDropdown(null);
-    if (!confirm(`Masuk sebagai Admin "${tenant.company_name}"?`)) return;
+    const ok = await confirmDialog({ title: `Masuk sebagai Admin "${tenant.company_name}"?`, description: 'Kamu akan login sebagai owner tenant ini sampai kembali ke akun Super Admin.', confirmLabel: 'Masuk' });
+    if (!ok) return;
 
     try {
         const res = await api.post(`/admin/impersonate/${tenant.id}`);
@@ -853,7 +884,7 @@ const TenantManagement = () => {
                           {getStatusLabel(tenant.status)}
                         </span>
                       </td>
-                      <td className="px-8 py-6 text-right relative">
+                      <td className="px-8 py-6 text-right relative" data-tenant-dropdown-root>
                         <button onClick={() => toggleDropdown(tenant.id)} className="text-gray-300 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 p-2.5 rounded-xl transition-all">
                           <MoreVertical size={20} />
                         </button>
@@ -897,7 +928,7 @@ const TenantManagement = () => {
             {/* MOBILE CARDS */}
             <div className="md:hidden flex-1">
                {currentData.length > 0 ? currentData.map((tenant) => (
-                  <div key={tenant.id} className="p-6 border-b border-gray-50 dark:border-slate-700 last:border-0">
+                  <div key={tenant.id} className="p-6 border-b border-gray-50 dark:border-slate-700 last:border-0" data-tenant-dropdown-root>
                      <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center space-x-4">
                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center"><Building2 size={24} /></div>
@@ -974,8 +1005,8 @@ const TenantManagement = () => {
 
       {/* MODAL: Add Tenant */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
              <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-black text-gray-900 dark:text-white">Tambah Tenant</h2>
                 <button onClick={() => setIsModalOpen(false)}><X className="text-gray-400 dark:text-gray-500" /></button>
@@ -1098,8 +1129,8 @@ const TenantManagement = () => {
 
       {/* MODAL: Tenant Session */}
       {isSessionModalOpen && sessionTenant && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={closeSessionModal}>
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-2xl font-black text-gray-900 dark:text-white">Session WA Tenant</h2>
@@ -1523,8 +1554,8 @@ const TenantManagement = () => {
 
       {/* MODAL: Manage Owner */}
       {isAdminModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsAdminModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-2xl font-black text-gray-900 dark:text-white">Kelola Owner</h2>

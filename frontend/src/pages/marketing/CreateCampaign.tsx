@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Calendar, CheckCircle2, Clock, Info, Layers3, MessageSquare, SendHorizontal, Smartphone, Sparkles, Users } from 'lucide-react';
 import api from '../../lib/api';
 import { toast } from 'sonner';
+import { confirmDialog } from '../../components/ConfirmDialog';
 
 interface ContactGroup {
   id: string;
@@ -142,7 +143,12 @@ const CreateCampaign = () => {
     const actionLabel = scheduledAt
       ? `dijadwalkan pada ${new Date(scheduledIso).toLocaleString('id-ID')}`
       : 'dimasukkan ke queue sekarang';
-    if (!confirm(`Campaign akan ${actionLabel} untuk ${totalTargets.toLocaleString('id-ID')} kontak. Lanjut?`)) return;
+    const ok = await confirmDialog({
+      title: 'Kirim campaign ini?',
+      description: `Campaign akan ${actionLabel} untuk ${totalTargets.toLocaleString('id-ID')} kontak.`,
+      confirmLabel: 'Lanjut',
+    });
+    if (!ok) return;
 
     setIsSubmitting(true);
     try {

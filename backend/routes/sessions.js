@@ -30,6 +30,33 @@ function buildSessionsRouter(deps) {
         }
         next();
     };
+    // The gateway wraps very different failure modes in generic axios errors.
+    // Surfacing the raw message ("Request failed with status code 401") tells
+    // an admin nothing actionable, so classify the known patterns we've
+    // actually seen in production before falling back to a generic message.
+    const classifyGatewayError = (error) => {
+        const rawMessage = error?.message || '';
+        if (rawMessage.includes('Gateway session identity mismatch') || rawMessage.includes('Gateway token identity mismatch')) {
+            return {
+                httpStatus: 409,
+                code: 'GATEWAY_IDENTITY_CONFLICT',
+                message: 'Gateway WhatsApp sedang bentrok dengan sesi lain (token yang dikembalikan mengarah ke nomor berbeda dari yang diminta). Ini masalah di sisi gateway, bukan sesi ini — jangan diulang-ulang, laporkan ke tim teknis untuk cek gateway.'
+            };
+        }
+        if (rawMessage.includes('status code 401') || rawMessage.includes('Gateway authentication failed')) {
+            return {
+                httpStatus: 502,
+                code: 'GATEWAY_AUTH_REJECTED',
+                message: 'Gateway WhatsApp menolak autentikasi untuk sesi ini. Biasanya sementara — coba lagi dalam 1-2 menit. Jika terus terjadi, gateway kemungkinan bermasalah.'
+            };
+        }
+        return {
+            httpStatus: 500,
+            code: 'UNKNOWN',
+            message: rawMessage || 'Gateway WhatsApp gagal merespons permintaan ini.'
+        };
+    };
+
     const toSessionPayload = (sessionId) => {
         const session = sessions.get(sessionId);
         return {
@@ -191,9 +218,21 @@ function buildSessionsRouter(deps) {
                 summary: `${currentUser?.name || 'Admin'} memutuskan sesi WhatsApp ${sessionId}`,
             }).catch((activityError) => log('Activity log skipped', 'SYSTEM', { error: activityError.message }));
             log('Session disconnected', sessionId, { event: 'session-disconnected', sessionId, cleanup });
-            res.status(200).json({
-                status: 'success',
-                message: `Session ${sessionId} disconnected.`,
+
+            // The local session record is always cleared above, but that is not
+            // proof the WhatsApp device itself logged out. Report the gateway's
+            // actual result so the admin isn't told "disconnected" while the
+            // device is still linked and sending/receiving on WhatsApp's side.
+            if (cleanup.gatewayLoggedOut) {
+                return res.status(200).json({
+                    status: 'success',
+                    message: `Session ${sessionId} disconnected.`,
+                    cleanup
+                });
+            }
+            return res.status(200).json({
+                status: 'warning',
+                message: `Data sesi ${sessionId} dibersihkan di CRM, tetapi gateway WhatsApp gagal mengonfirmasi logout (${cleanup.gatewayLogoutError || 'tidak diketahui'}). Device kemungkinan masih aktif/terhubung di WhatsApp — verifikasi manual sebelum scan ulang.`,
                 cleanup
             });
         } catch (error) {
@@ -253,9 +292,11 @@ function buildSessionsRouter(deps) {
             });
         } catch (error) {
             log(`Error regenerating QR for ${sessionId}: ${error.message}`, sessionId, { error });
-            res.status(500).json({
+            const classified = classifyGatewayError(error);
+            res.status(classified.httpStatus).json({
                 status: 'error',
-                message: 'Failed to regenerate QR code. Please try again.'
+                code: classified.code,
+                message: classified.message
             });
         }
     });
@@ -296,7 +337,12 @@ function buildSessionsRouter(deps) {
             });
         } catch (error) {
             log('Pair code error', sessionId, { event: 'pair-code-error', error: error.message });
-            res.status(500).json({ status: 'error', message: error.message });
+            const classified = classifyGatewayError(error);
+            res.status(classified.httpStatus).json({
+                status: 'error',
+                code: classified.code,
+                message: classified.message
+            });
         }
     });
 

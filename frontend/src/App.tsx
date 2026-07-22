@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useThemeStore } from './store/useThemeStore';
 import { useAuthStore } from './store/useAuthStore';
+import { ConfirmDialogHost } from './components/ConfirmDialog';
 
 const Login = lazy(() => import('./pages/Login'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -98,6 +99,7 @@ function App() {
     <div className={isDarkMode ? 'dark' : ''}>
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Toaster position="top-right" expand={true} richColors />
+        <ConfirmDialogHost />
         <Suspense fallback={<RouteLoader />}>
           <Routes>
             <Route path="/" element={<LandingPage />} />

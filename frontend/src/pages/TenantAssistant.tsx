@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Bot, Copy, KeyRound, Loader2, Send, Sparkles, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { confirmDialog } from '../components/ConfirmDialog';
 import api from '../lib/api';
 
 type AssistantMessage = {
@@ -96,8 +97,10 @@ export default function TenantAssistant() {
     }
   };
 
-  const clearConversation = () => {
-    if (!status || !confirm('Mulai percakapan baru? Riwayat di perangkat ini akan dihapus.')) return;
+  const clearConversation = async () => {
+    if (!status) return;
+    const ok = await confirmDialog({ title: 'Mulai percakapan baru?', description: 'Riwayat di perangkat ini akan dihapus.', confirmLabel: 'Mulai baru', danger: true });
+    if (!ok) return;
     localStorage.removeItem(`tenant-assistant:${status.tenant.id}`);
     setMessages([welcome(status.tenant.company_name)]);
     setInput('');

@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import api from '../lib/api';
 import { createAuthenticatedWebSocket } from '../lib/realtime';
 import { toast } from 'sonner';
+import { confirmDialog } from '../components/ConfirmDialog';
 
 interface Stats {
   chats?: {
@@ -182,18 +183,30 @@ const AdminDashboard = () => {
       toast.error('Session WA belum diatur oleh Super Admin');
       return;
     }
-    if (!confirm('Disconnect WhatsApp sekarang? Setelah disconnect, perangkat perlu QR/pair ulang untuk aktif.')) return;
+    const ok = await confirmDialog({
+      title: 'Disconnect WhatsApp sekarang?',
+      description: 'Setelah disconnect, perangkat perlu QR/pair ulang untuk aktif.',
+      confirmLabel: 'Disconnect',
+      danger: true,
+    });
+    if (!ok) return;
 
     setIsDisconnecting(true);
     const toastId = toast.loading('Memutus koneksi WhatsApp...');
     try {
-      await api.post(`/sessions/${sessionId}/disconnect`);
+      const response = await api.post(`/sessions/${sessionId}/disconnect`);
       setWaStatus('disconnected');
       setConnectedNumber('');
       setQrUrl('');
       setPairCode('');
       setIsQrModalOpen(false);
-      toast.success('WhatsApp berhasil disconnect', { id: toastId });
+      if (response.data?.status === 'warning') {
+        // Local state cleared, but the gateway never confirmed the device
+        // logged out — don't tell the tenant it's safely disconnected.
+        toast(response.data.message || 'Disconnect tidak terkonfirmasi oleh gateway.', { id: toastId, icon: '⚠️', duration: 8000 });
+      } else {
+        toast.success(response.data?.message || 'WhatsApp berhasil disconnect', { id: toastId });
+      }
       await fetchSessionStatus();
     } catch (error: any) {
       console.error('Failed to disconnect WhatsApp:', error);
@@ -548,8 +561,8 @@ const AdminDashboard = () => {
 
       {/* CONNECT MODAL */}
       {isQrModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setIsQrModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 flex justify-between items-center border-b border-gray-100 dark:border-slate-700">
               <h3 className="font-bold text-gray-900 dark:text-white">Koneksi WhatsApp</h3>
               <button

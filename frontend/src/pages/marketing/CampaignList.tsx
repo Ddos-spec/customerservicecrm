@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart3, CalendarClock, Eye, Megaphone, PauseCircle, PlayCircle, Plus, RefreshCcw, RotateCcw, Search, Trash2, Users } from 'lucide-react';
 import api from '../../lib/api';
 import { toast } from 'sonner';
+import { confirmDialog } from '../../components/ConfirmDialog';
 
 interface Campaign {
   id: string;
@@ -83,7 +84,8 @@ const CampaignList = () => {
   }, [campaigns]);
 
   const handleCancel = async (id: string) => {
-    if (!confirm('Pause campaign ini? Pesan yang belum terkirim akan berhenti sementara.')) return;
+    const ok = await confirmDialog({ title: 'Pause campaign ini?', description: 'Pesan yang belum terkirim akan berhenti sementara.', confirmLabel: 'Pause' });
+    if (!ok) return;
     try {
       const res = await api.post(`/marketing/campaigns/${id}/cancel`);
       if (res.data?.status === 'success') {
@@ -96,7 +98,8 @@ const CampaignList = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Hapus campaign ini? Riwayat pengiriman campaign akan hilang.')) return;
+    const ok = await confirmDialog({ title: 'Hapus campaign ini?', description: 'Riwayat pengiriman campaign akan hilang permanen.', confirmLabel: 'Hapus', danger: true });
+    if (!ok) return;
     try {
       const res = await api.delete(`/marketing/campaigns/${id}`);
       if (res.data?.status === 'success') {
@@ -121,7 +124,8 @@ const CampaignList = () => {
   };
 
   const handleRetryFailed = async (id: string) => {
-    if (!confirm('Retry semua pesan gagal campaign ini?')) return;
+    const ok = await confirmDialog({ title: 'Retry semua pesan gagal?', description: 'Pesan berstatus gagal di campaign ini akan dikirim ulang.', confirmLabel: 'Retry' });
+    if (!ok) return;
     try {
       const res = await api.post(`/marketing/campaigns/${id}/retry-failed`);
       if (res.data?.status === 'success') {

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Clock, Loader2, RotateCcw, Send, XCircle } from 'lucide-react';
 import api from '../../lib/api';
 import { toast } from 'sonner';
+import { confirmDialog } from '../../components/ConfirmDialog';
 
 interface CampaignDetailData {
   id: string;
@@ -96,7 +97,8 @@ const CampaignDetail = () => {
 
   const retryFailed = async () => {
     if (!id) return;
-    if (!confirm('Retry semua pesan yang gagal?')) return;
+    const ok = await confirmDialog({ title: 'Retry semua pesan yang gagal?', description: 'Pesan yang berstatus gagal akan dikirim ulang.', confirmLabel: 'Retry' });
+    if (!ok) return;
     setIsActing(true);
     try {
       const res = await api.post(`/marketing/campaigns/${id}/retry-failed`);

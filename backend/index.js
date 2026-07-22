@@ -1136,21 +1136,72 @@ function extractDevicePhone(value) {
     return normalizePhoneIdentity(raw.split('@')[0].split(':')[0]);
 }
 
+// The gateway client's own collision guard (assertGatewaySessionMatches /
+// setSessionToken) throws these exact messages when the token it got back
+// for a session actually belongs to a different jid. Left uncaught, that
+// exception aborts refreshSession() before any updateSessionStatus() call,
+// so the session's last-known status freezes forever ("zombie": the CRM
+// keeps showing whatever it showed before the gateway started misbehaving,
+// regardless of what's actually true now).
+function isGatewayIdentityConflict(error) {
+    const message = error?.message || '';
+    return message.includes('Gateway session identity mismatch') || message.includes('Gateway token identity mismatch');
+}
+
+// The Go gateway's own JSON casing isn't consistent across endpoints/versions
+// (deviceJid vs device_jid vs a bare jid, connected as a real boolean vs the
+// string "connected"), and the payload may or may not be wrapped in a `data`
+// envelope. A lookup that only checks `gatewayData.deviceJid` silently comes
+// up empty whenever the gateway used a different variant — the session shows
+// CONNECTED with no phone number ever filled in, forever. Check every
+// variant we've actually seen instead of trusting one exact shape.
+function pickFirstString(source, paths) {
+    for (const pathKey of paths) {
+        const value = pathKey.split('.').reduce((current, key) => (
+            current && Object.prototype.hasOwnProperty.call(current, key) ? current[key] : undefined
+        ), source);
+        if (typeof value === 'string' && value.trim()) return value.trim();
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    }
+    return null;
+}
+
+function pickFirstBoolean(source, paths) {
+    for (const pathKey of paths) {
+        const value = pathKey.split('.').reduce((current, key) => (
+            current && Object.prototype.hasOwnProperty.call(current, key) ? current[key] : undefined
+        ), source);
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'string') {
+            const normalized = value.trim().toLowerCase();
+            if (['true', 'connected', 'logged_in', 'loggedin', 'valid', 'ok', 'success'].includes(normalized)) return true;
+            if (['false', 'disconnected', 'invalid', 'failed'].includes(normalized)) return false;
+        }
+    }
+    return null;
+}
+
 function buildGatewayIdentityDiagnostic(requestedSessionId, statusResponse) {
-    const gatewayData = extractGatewayStatusData(statusResponse);
     const requestedPhone = normalizePhoneIdentity(requestedSessionId);
-    const devicePhone = extractDevicePhone(gatewayData.deviceJid);
-    const gatewaySessionPhone = normalizePhoneIdentity(gatewayData.sessionId);
+    const deviceJidRaw = pickFirstString(statusResponse, [
+        'deviceJid', 'device_jid', 'jid', 'data.deviceJid', 'data.device_jid', 'data.jid'
+    ]);
+    const devicePhone = extractDevicePhone(deviceJidRaw);
+    const sessionIdRaw = pickFirstString(statusResponse, ['sessionId', 'session_id', 'data.sessionId', 'data.session_id']);
+    const gatewaySessionPhone = normalizePhoneIdentity(sessionIdRaw);
     const detectedPhone = devicePhone || gatewaySessionPhone;
-    const connected = gatewayData.connected === true || gatewayData.loggedIn === true;
+    const connected = pickFirstBoolean(statusResponse, [
+        'connected', 'loggedIn', 'logged_in', 'clientValid', 'client_valid',
+        'data.connected', 'data.loggedIn', 'data.logged_in', 'data.clientValid', 'data.client_valid'
+    ]) ?? false;
     const mismatch = Boolean(connected && requestedPhone && detectedPhone && requestedPhone !== detectedPhone);
 
     return {
         mismatch,
         requestedPhone,
         detectedPhone: detectedPhone || null,
-        deviceJid: gatewayData.deviceJid || null,
-        gatewaySessionId: gatewayData.sessionId || null,
+        deviceJid: deviceJidRaw || null,
+        gatewaySessionId: sessionIdRaw || null,
         connected,
         reason: mismatch
             ? `Session ${requestedPhone} memakai device ${detectedPhone}; perlu logout dan scan ulang nomor yang benar.`
@@ -1447,6 +1498,10 @@ async function refreshSession(sessionId) {
             }
         } catch (statusErr) {
             console.warn(`[Refresh] Session status pre-check failed for ${sessionId}: ${statusErr.message}`);
+            if (isGatewayIdentityConflict(statusErr)) {
+                flagGatewayIdentityConflict(sessionId, statusErr);
+                return;
+            }
         }
 
         // STRATEGY 1: Lightweight "Ping" via getGroups
@@ -1457,11 +1512,15 @@ async function refreshSession(sessionId) {
             
             if (groupResp && (groupResp.status === true || groupResp.status === 'success')) {
                 console.log(`[Refresh] Strategy 1 Success! Marking ${sessionId} as CONNECTED`);
-                updateSessionStatus(sessionId, 'CONNECTED');
+                await markConnectedFromGateway(sessionId);
                 return;
             }
         } catch (pingErr) {
             console.log(`[Refresh] Strategy 1 Failed for ${sessionId}: ${pingErr.message}`);
+            if (isGatewayIdentityConflict(pingErr)) {
+                flagGatewayIdentityConflict(sessionId, pingErr);
+                return;
+            }
         }
 
         // STRATEGY 2: Login (Heavy Check / QR Gen)
@@ -1476,7 +1535,7 @@ async function refreshSession(sessionId) {
             updateSessionStatus(sessionId, 'DISCONNECTED', response.data.qrcode);
         } else if (msg.includes('reconnected') || msg.includes('already connected') || msg.includes('already logged in')) {
             console.log(`[Refresh] Session ${sessionId} is ALREADY CONNECTED.`);
-            updateSessionStatus(sessionId, 'CONNECTED');
+            await markConnectedFromGateway(sessionId);
         } else {
              console.log(`[Refresh] Session ${sessionId} Unknown State. Marking as UNKNOWN until verified.`);
              updateSessionStatus(sessionId, 'UNKNOWN');
@@ -1484,7 +1543,45 @@ async function refreshSession(sessionId) {
         
     } catch (error) {
         console.error(`[Refresh] CRITICAL ERROR for ${sessionId}: ${error.message}`);
+        if (isGatewayIdentityConflict(error)) {
+            flagGatewayIdentityConflict(sessionId, error);
+        }
     }
+}
+
+// Strategy 1/2 in refreshSession only prove the session is connected — they
+// don't return a device identity the way /session/status does. Make a
+// best-effort follow-up call so the phone number gets filled in as soon as
+// the gateway can report it, instead of leaving "Connected · cek device"
+// showing indefinitely just because a fallback strategy is what caught it.
+async function markConnectedFromGateway(sessionId) {
+    try {
+        const statusResp = await waGateway.getSessionStatus(sessionId);
+        const identity = buildGatewayIdentityDiagnostic(sessionId, statusResp);
+        const reportedDeviceNumber = extractDevicePhone(identity.deviceJid);
+        updateSessionStatus(sessionId, 'CONNECTED', null, {
+            connectedNumber: reportedDeviceNumber || null,
+            deviceJid: identity.deviceJid,
+            expectedNumber: null,
+            detectedNumber: reportedDeviceNumber || null,
+            statusReason: reportedDeviceNumber
+                ? null
+                : 'Gateway melaporkan connected, tetapi identitas device belum tersedia. Refresh lagi untuk verifikasi nomor perangkat.',
+        });
+    } catch (_error) {
+        updateSessionStatus(sessionId, 'CONNECTED');
+    }
+}
+
+// Surface a gateway token collision as an explicit, visible status instead of
+// silently leaving the session's last-known status on screen. A frozen status
+// is worse than an honest "can't verify right now": it can show CONNECTED
+// long after the device went away, or DISCONNECTED long after it came back.
+function flagGatewayIdentityConflict(sessionId, error) {
+    updateSessionStatus(sessionId, 'IDENTITY_MISMATCH', null, {
+        identityMismatch: true,
+        statusReason: `Gateway mengembalikan token milik sesi lain saat memverifikasi ${sessionId} (${error.message}). Status sebenarnya tidak bisa diverifikasi sampai konflik token ini diselesaikan di gateway — jangan percaya status lama yang masih tampil.`,
+    });
 }
 
 function updateSessionStatus(sessionId, status, qr = null, extras = {}) {
@@ -1631,10 +1728,17 @@ async function deleteSession(sessionId, options = {}) {
         }
         const unlinkReferences = options.unlinkReferences !== false;
 
-        // Try to logout via Go gateway
+        // Try to logout via Go gateway. This must not be swallowed silently:
+        // callers (e.g. the manual disconnect endpoint) need to know whether
+        // the WhatsApp device was actually told to log out, or whether only
+        // our local bookkeeping was cleared while the device stays linked.
+        let gatewayLoggedOut = false;
+        let gatewayLogoutError = null;
         try {
             await waGateway.logout(normalizedSessionId);
+            gatewayLoggedOut = true;
         } catch (error) {
+            gatewayLogoutError = error.message;
             logger.warn(`Gateway logout error for ${normalizedSessionId}: ${error.message}`);
         }
 
@@ -1667,6 +1771,8 @@ async function deleteSession(sessionId, options = {}) {
         broadcastSessionUpdate();
         return {
             sessionId: normalizedSessionId,
+            gatewayLoggedOut,
+            gatewayLogoutError,
             unlinkedReferences: unlinkReferences,
             unlinkedTenants: references.tenants,
             unlinkedUsers: references.users.length,

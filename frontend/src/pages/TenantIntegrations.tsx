@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Copy, Eye, EyeOff, Link2, Loader2, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { confirmDialog } from '../components/ConfirmDialog';
 import api from '../lib/api';
 
 type Webhook = { id: string; url: string };
@@ -96,7 +97,8 @@ export default function TenantIntegrations() {
   };
 
   const deleteWebhook = async (id: string) => {
-    if (!confirm('Hapus webhook ini?')) return;
+    const ok = await confirmDialog({ title: 'Hapus webhook ini?', description: 'Webhook ini tidak akan menerima event lagi setelah dihapus.', confirmLabel: 'Hapus', danger: true });
+    if (!ok) return;
     setDeletingId(id);
     try {
       await api.delete(`/admin/tenant/integrations/webhooks/${id}`);
@@ -110,7 +112,13 @@ export default function TenantIntegrations() {
   };
 
   const regenerateKey = async () => {
-    if (!confirm('Regenerate API key? Integrasi yang memakai key lama akan berhenti sampai key-nya diperbarui.')) return;
+    const ok = await confirmDialog({
+      title: 'Regenerate API key?',
+      description: 'Integrasi yang memakai key lama akan berhenti sampai key-nya diperbarui.',
+      confirmLabel: 'Regenerate',
+      danger: true,
+    });
+    if (!ok) return;
     setRegenerating(true);
     try {
       const res = await api.post('/admin/tenant/integrations/regenerate-key');

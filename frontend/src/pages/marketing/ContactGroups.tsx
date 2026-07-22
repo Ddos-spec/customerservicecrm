@@ -329,8 +329,8 @@ const ContactGroups = () => {
       </div>
 
       {isModalOpen && selectedGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950" onClick={(e) => e.stopPropagation()}>
             <div className="shrink-0 border-b border-slate-100 p-5 dark:border-slate-800">
               <div className="flex items-start justify-between gap-4">
                 <div>

@@ -4,6 +4,8 @@ import {
   Smartphone, Search, RefreshCw, Wifi, WifiOff,
   QrCode, Building2, Trash2, Plus, Activity, ChevronDown, ShieldAlert, Power, X
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { confirmDialog } from '../components/ConfirmDialog';
 import api from '../lib/api';
 import { createAuthenticatedWebSocket } from '../lib/realtime';
 
@@ -132,6 +134,7 @@ const SuperAdminSessions = () => {
   const [connectionQr, setConnectionQr] = useState('');
   const [pairCode, setPairCode] = useState('');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [connectionErrorCode, setConnectionErrorCode] = useState<string | null>(null);
   const [isGeneratingConnection, setIsGeneratingConnection] = useState(false);
   const ws = useRef<WebSocket | null>(null);
 
@@ -197,27 +200,50 @@ const SuperAdminSessions = () => {
     const tenantWarning = session.tenantName
       ? ` Ini juga akan melepas mapping tenant ${session.tenantName}.`
       : '';
-    if (!confirm(`Hapus session ${session.sessionId}? Device WhatsApp akan logout.${tenantWarning}`)) return;
+    const ok = await confirmDialog({
+      title: `Hapus session ${session.sessionId}?`,
+      description: `Device WhatsApp akan logout.${tenantWarning}`,
+      confirmLabel: 'Hapus',
+      danger: true,
+    });
+    if (!ok) return;
 
     try {
       await api.delete(`/sessions/${session.sessionId}`);
       setSessions(sessions.filter(s => s.sessionId !== session.sessionId));
-    } catch (error) {
+      toast.success(`Session ${session.sessionId} dihapus.`);
+    } catch (error: any) {
       console.error('Failed to delete session:', error);
-      alert('Gagal menghapus session');
+      toast.error(error?.response?.data?.message || 'Gagal menghapus session');
     }
   };
 
   const handleDisconnectSession = async (sessionId: string) => {
-    if (!confirm(`Disconnect session ${sessionId}? Tenant tetap tersimpan, tapi device WA akan logout dan perlu scan/pair ulang untuk aktif lagi.`)) return;
+    const ok = await confirmDialog({
+      title: `Disconnect session ${sessionId}?`,
+      description: 'Tenant tetap tersimpan, tapi device WA akan logout dan perlu scan/pair ulang untuk aktif lagi.',
+      confirmLabel: 'Disconnect',
+      danger: true,
+    });
+    if (!ok) return;
 
     setDisconnectingSessionId(sessionId);
     try {
-      await api.post(`/sessions/${sessionId}/disconnect`);
+      const response = await api.post(`/sessions/${sessionId}/disconnect`);
       await fetchSessions();
-    } catch (error) {
+      if (response.data?.status === 'warning') {
+        // Local record was cleared, but the gateway never confirmed the
+        // device actually logged out — don't let this read as a clean success.
+        toast(response.data.message || `Disconnect ${sessionId} tidak terkonfirmasi oleh gateway.`, {
+          icon: '⚠️',
+          duration: 8000,
+        });
+      } else {
+        toast.success(response.data?.message || `Session ${sessionId} disconnected.`);
+      }
+    } catch (error: any) {
       console.error('Failed to disconnect session:', error);
-      alert('Gagal disconnect session');
+      toast.error(error?.response?.data?.message || 'Gagal disconnect session');
     } finally {
       setDisconnectingSessionId(null);
     }
@@ -228,6 +254,7 @@ const SuperAdminSessions = () => {
     setConnectionQr('');
     setPairCode('');
     setConnectionError(null);
+    setConnectionErrorCode(null);
   };
 
   const requestConnection = async (sessionId: string, mode: 'qr' | 'pair') => {
@@ -236,6 +263,7 @@ const SuperAdminSessions = () => {
     setConnectionQr('');
     setPairCode('');
     setConnectionError(null);
+    setConnectionErrorCode(null);
     setIsGeneratingConnection(true);
 
     try {
@@ -254,6 +282,7 @@ const SuperAdminSessions = () => {
     } catch (error: any) {
       console.error(`Failed to generate ${mode} connection for ${sessionId}:`, error);
       setConnectionError(error?.response?.data?.message || error?.message || 'Gateway gagal membuat koneksi.');
+      setConnectionErrorCode(error?.response?.data?.code || null);
     } finally {
       setIsGeneratingConnection(false);
     }
@@ -594,8 +623,8 @@ const SuperAdminSessions = () => {
       </div>
 
       {connectionSessionId && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-label="Hubungkan WhatsApp" className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={closeConnectionModal}>
+          <div role="dialog" aria-modal="true" aria-label="Hubungkan WhatsApp" className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5 dark:border-slate-800">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">Koneksi perangkat</p>
@@ -616,8 +645,15 @@ const SuperAdminSessions = () => {
                 <div className="py-12 text-sm font-semibold text-gray-500 dark:text-gray-400"><RefreshCw className="mx-auto mb-3 animate-spin text-emerald-600" size={30} />Membuat koneksi baru...</div>
               ) : connectionError ? (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left dark:border-rose-900/60 dark:bg-rose-950/30">
-                  <p className="text-sm font-bold text-rose-800 dark:text-rose-200">Koneksi belum dibuat</p>
+                  <p className="text-sm font-bold text-rose-800 dark:text-rose-200">
+                    {connectionErrorCode === 'GATEWAY_IDENTITY_CONFLICT' ? 'Gateway bentrok, bukan masalah session ini' : 'Koneksi belum dibuat'}
+                  </p>
                   <p className="mt-2 text-xs leading-5 text-rose-700 dark:text-rose-300">{connectionError}</p>
+                  {connectionErrorCode === 'GATEWAY_IDENTITY_CONFLICT' ? (
+                    <p className="mt-3 rounded-xl bg-rose-100 px-3 py-2 text-[11px] font-semibold text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">
+                      Jangan spam "Coba lagi" — cek dulu session lain yang mungkin sedang macet di gateway sebelum mengulang.
+                    </p>
+                  ) : null}
                   <button type="button" onClick={() => void requestConnection(connectionSessionId, connectionMode)} className="mt-4 rounded-xl bg-rose-700 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-rose-800 focus:outline-none focus:ring-4 focus:ring-rose-500/25">Coba lagi</button>
                 </div>
               ) : connectionMode === 'qr' && connectionQr ? (
