@@ -452,10 +452,15 @@ async function authenticate(username, password) {
         try {
             payload = await requestAuth(resolveGatewayUrl(username));
         } catch (error) {
-            // Tenant lama kadang menyimpan URL gateway yang sudah tidak punya endpoint /auth.
-            // Jangan biarkan satu mapping 404 mematikan nomor WA; jatuhkan ke gateway default.
-            if (configuredUrl && configuredUrl !== DEFAULT_GATEWAY_URL && error?.response?.status === 404) {
-                console.warn(`[Gateway] Stale custom gateway URL for ${normalizeJid(username)} returned 404; falling back to default gateway.`);
+            // Tenant lama kadang menyimpan URL gateway yang sudah tidak punya endpoint /auth,
+            // atau (seperti kasus nyata yang ditemukan) menyimpan URL webhook AI/customer-service
+            // yang salah tersimpan di kolom gateway_url. URL asing seperti itu bisa menolak Basic
+            // Auth kita dengan 401/403, bukan cuma 404 -- jangan biarkan satu mapping rusak
+            // mematikan nomor WA; jatuhkan ke gateway default untuk semua kegagalan HTTP dari
+            // URL custom, bukan cuma 404.
+            const staleCustomGatewayStatus = [401, 403, 404].includes(error?.response?.status);
+            if (configuredUrl && configuredUrl !== DEFAULT_GATEWAY_URL && staleCustomGatewayStatus) {
+                console.warn(`[Gateway] Stale custom gateway URL for ${normalizeJid(username)} returned ${error?.response?.status}; falling back to default gateway.`);
                 setSessionGatewayUrl(username, null);
                 payload = await requestAuth(DEFAULT_GATEWAY_URL);
             } else {
@@ -1007,13 +1012,13 @@ async function withGatewayAuthOnly(jid, operation) {
         const configuredGatewayUrl = getSessionGatewayUrl(jid);
         const hasCustomGateway = configuredGatewayUrl
             && normalizeGatewayUrl(configuredGatewayUrl) !== normalizeGatewayUrl(DEFAULT_GATEWAY_URL);
-        const staleGatewayRoute = hasCustomGateway && error?.response?.status === 404;
+        const staleGatewayRoute = hasCustomGateway && [401, 403, 404].includes(error?.response?.status);
 
         // A legacy tenant can retain an AI/webhook URL in gateway_url. It has
         // no WhatsApp endpoints, so QR/pairing/status must safely retry on the
         // default gateway instead of falsely blaming the phone scan.
         if (staleGatewayRoute) {
-            console.warn(`[Gateway] Stale custom gateway URL for ${normalizeJid(jid)} returned 404 during authenticated operation; retrying on default gateway.`);
+            console.warn(`[Gateway] Stale custom gateway URL for ${normalizeJid(jid)} returned ${error?.response?.status} during authenticated operation; retrying on default gateway.`);
             setSessionGatewayUrl(jid, null);
             removeSessionToken(jid);
             await ensureToken();
