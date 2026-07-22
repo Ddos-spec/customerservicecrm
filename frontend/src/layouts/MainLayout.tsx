@@ -130,6 +130,22 @@ const MainLayout = () => {
     return () => window.removeEventListener('keydown', handleKeydown);
   }, []);
 
+  // Unlike the command palette (which has its own backdrop), the profile
+  // menu had no way to close on an outside click — it stayed open until the
+  // same trigger was clicked again, and could end up visually stuck over
+  // other content once the page scrolled. This affects every role since the
+  // layout is shared.
+  useEffect(() => {
+    if (!profileOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest('[data-profile-menu-root]')) return;
+      setProfileOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [profileOpen]);
+
   const isActive = (to: string) => {
     const rootRoutes = ['/super-admin', '/admin', '/agent'];
     if (rootRoutes.includes(to)) return location.pathname === to;
@@ -216,7 +232,7 @@ const MainLayout = () => {
             <button className="command-trigger" onClick={() => setCommandOpen(true)}><Search size={16} /><span>Cari menu atau aksi...</span><kbd>⌘ K</kbd></button>
             <div className="topbar-live"><i /> <span>Live</span></div>
             <button className="icon-button" onClick={toggleDarkMode} aria-label={isDarkMode ? 'Gunakan mode terang' : 'Gunakan mode gelap'}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
-            <div className="profile-menu">
+            <div className="profile-menu" data-profile-menu-root>
               <button className="profile-trigger" onClick={() => setProfileOpen(!profileOpen)}>
                 <span>{user?.name?.slice(0, 1).toUpperCase()}</span>
                 <div><strong>{user?.name}</strong><small>{roleLabel}</small></div>
