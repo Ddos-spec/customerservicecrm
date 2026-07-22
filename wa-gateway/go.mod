@@ -4,7 +4,6 @@ go 1.25.4
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
-	github.com/SporkHubr/echo-http-cache v0.0.0-20200706100054-1d7ae9f38029
 	github.com/forPelevin/gomoji v1.4.1
 	github.com/go-playground/validator/v10 v10.28.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible

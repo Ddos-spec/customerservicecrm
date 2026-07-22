@@ -95,12 +95,6 @@ func main() {
 		Limit: router.BodyLimit,
 	}))
 
-	// Router Cache
-	e.Use(router.HttpCacheInMemory(
-		router.CacheCapacity,
-		router.CacheTTLSeconds,
-	))
-
 	// Router RealIP
 	e.Use(router.HttpRealIP())
 

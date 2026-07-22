@@ -6,7 +6,6 @@ import (
 
 var BaseURL, CORSOrigin, BodyLimit string
 var GZipLevel int
-var CacheCapacity, CacheTTLSeconds int
 
 func init() {
 	var err error
@@ -29,15 +28,5 @@ func init() {
 	GZipLevel, err = env.GetEnvInt("HTTP_GZIP_LEVEL")
 	if err != nil {
 		GZipLevel = 1
-	}
-
-	CacheCapacity, err = env.GetEnvInt("HTTP_CACHE_CAPACITY")
-	if err != nil {
-		CacheCapacity = 100
-	}
-
-	CacheTTLSeconds, err = env.GetEnvInt("HTTP_CACHE_TTL_SECONDS")
-	if err != nil {
-		CacheTTLSeconds = 5
 	}
 }
