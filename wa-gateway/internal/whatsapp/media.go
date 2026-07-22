@@ -37,7 +37,7 @@ func EphemeralMedia(c echo.Context) error {
 	}
 
 	pkgWhatsApp.WhatsAppInitClient(nil, jid)
-	if pkgWhatsApp.WhatsAppClient[jid] == nil {
+	if pkgWhatsApp.GetWhatsAppClient(jid) == nil {
 		return router.ResponseBadGateway(c, "WhatsApp Client is not Valid")
 	}
 
@@ -56,7 +56,11 @@ func EphemeralMedia(c echo.Context) error {
 		return router.ResponseInternalError(c, err.Error())
 	}
 
-	bytes, err := pkgWhatsApp.WhatsAppClient[jid].Download(context.Background(), downloadable)
+	client := pkgWhatsApp.GetWhatsAppClient(jid)
+	if client == nil {
+		return router.ResponseBadGateway(c, "WhatsApp Client is not Valid")
+	}
+	bytes, err := client.Download(context.Background(), downloadable)
 	if err != nil {
 		return router.ResponseBadGateway(c, fmt.Sprintf("failed to download media from WhatsApp: %v", err))
 	}

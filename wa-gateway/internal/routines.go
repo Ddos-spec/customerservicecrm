@@ -21,7 +21,8 @@ func Routines(cron *cron.Cron) {
 
 	// Run every minute to check client status
 	cron.AddFunc("0 * * * * *", func() {
-		clientCount := len(pkgWhatsApp.WhatsAppClient)
+		clients := pkgWhatsApp.SnapshotWhatsAppClients()
+		clientCount := len(clients)
 		if clientCount == 0 {
 			log.Print(nil).Debug("[HEARTBEAT] No active WhatsApp clients")
 			return
@@ -29,7 +30,7 @@ func Routines(cron *cron.Cron) {
 
 		log.Print(nil).Infof("[HEARTBEAT] Active clients: %d", clientCount)
 
-		for jid, client := range pkgWhatsApp.WhatsAppClient {
+		for jid, client := range clients {
 			// Get Real JID from Datastore
 			if client.Store.ID == nil {
 				log.Print(nil).Infof("[HEARTBEAT] (pending QR) | AWAITING_QR | session: %s", jid)

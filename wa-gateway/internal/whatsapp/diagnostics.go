@@ -11,7 +11,7 @@ import (
 
 func SessionStatus(c echo.Context) error {
 	jid := jwtPayload(c).JID
-	client := pkgWhatsApp.WhatsAppClient[jid]
+	client := pkgWhatsApp.GetWhatsAppClient(jid)
 
 	data := map[string]interface{}{
 		"sessionId":   jid,
