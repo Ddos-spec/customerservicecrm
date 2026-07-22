@@ -160,11 +160,18 @@ function buildSessionsRouter(deps) {
             sessionsData = sessionsData.filter((session) => String(session.sessionId) === String(user.session_id || ''));
         }
 
-        // Trigger background refresh for stale sessions
+        // Trigger background refresh for stale sessions. This must run one
+        // session at a time: the gateway's own session/client lookup isn't
+        // safe under concurrent access, and firing every refresh at once via
+        // forEach (which doesn't await) was flooding it with simultaneous
+        // requests for different sessions — the likely trigger behind
+        // gateway responses reporting one session's identity for another.
         if (refreshSession) {
-            sessionsData.forEach(session => {
-                refreshSession(session.sessionId).catch(() => {});
-            });
+            (async () => {
+                for (const session of sessionsData) {
+                    await refreshSession(session.sessionId).catch(() => {});
+                }
+            })();
         }
 
         return res.status(200).json(sessionsData);
