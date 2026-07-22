@@ -20,6 +20,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { confirmDialog } from '../components/ConfirmDialog';
 import api from '../lib/api';
 
 type AiConfig = {
@@ -307,6 +308,13 @@ const AiAgentSettings = () => {
   };
 
   const handleDeleteDocument = async (id: string) => {
+    const ok = await confirmDialog({
+      title: 'Hapus sumber pengetahuan ini?',
+      description: 'AI Agent tidak akan lagi menggunakan dokumen ini sebagai referensi jawaban.',
+      confirmLabel: 'Hapus',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.delete(`/ai-agent/documents/${id}`);
       setDocuments((prev) => prev.filter((doc) => doc.id !== id));
@@ -353,6 +361,8 @@ const AiAgentSettings = () => {
   };
 
   const handleDeleteFaq = async (id: string) => {
+    const ok = await confirmDialog({ title: 'Hapus FAQ ini?', description: 'AI Agent tidak akan lagi menggunakan FAQ ini sebagai referensi jawaban.', confirmLabel: 'Hapus', danger: true });
+    if (!ok) return;
     try {
       await api.delete(`/ai-agent/faq/${id}`);
       setFaqs((prev) => prev.filter((f) => f.id !== id));

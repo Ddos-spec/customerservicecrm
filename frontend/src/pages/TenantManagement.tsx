@@ -237,6 +237,16 @@ const TenantManagement = () => {
     setActiveDropdown(null);
     const newStatus = tenant.status === 'active' ? 'suspended' : 'active';
 
+    if (newStatus === 'suspended') {
+      const ok = await confirmDialog({
+        title: `Nonaktifkan tenant "${tenant.company_name}"?`,
+        description: 'Tenant akan langsung kehilangan akses ke CRM dan tidak bisa menerima chat baru sampai diaktifkan lagi.',
+        confirmLabel: 'Nonaktifkan',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
     try {
       const res = await api.patch(`/admin/tenants/${tenant.id}/status`, { status: newStatus });
       if (res.data.success) {
