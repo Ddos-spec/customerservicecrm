@@ -3,6 +3,7 @@ import {
   BarChart3, TrendingUp, Clock, Users, MessageSquare,
   CheckCircle2, AlertCircle, Calendar, Download
 } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -97,6 +98,7 @@ const AdminReports = () => {
       if (teamRes.data?.success) setTeamPerformance(teamRes.data.members || []);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
+      toast.error('Gagal memuat laporan. Coba refresh halaman.');
     }
   }, [dateRange]);
 

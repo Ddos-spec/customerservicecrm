@@ -513,8 +513,16 @@ async function loginWithPairingCode(jid) {
  */
 async function logout(jid) {
     try {
-        const form = buildUrlEncoded({});
-        const payload = await postUrlEncoded('/logout', form, getAuthHeader(jid), jid);
+        // getAuthHeader() throws immediately if no token is cached — e.g.
+        // right after a backend restart, or after an earlier auth failure —
+        // which used to abort the logout before it ever reached the gateway.
+        // The device stayed linked on WhatsApp's side while the CRM reported
+        // "disconnected". Route through withGatewayAuthOnly so a missing or
+        // expired token gets a fresh one (with its own 401 retry) before the
+        // /logout call, the same way every other gateway operation already does.
+        const payload = await withGatewayAuthOnly(jid, () => (
+            postUrlEncoded('/logout', buildUrlEncoded({}), getAuthHeader(jid), jid)
+        ));
         removeSessionToken(jid);
         return payload;
     } catch (error) {
