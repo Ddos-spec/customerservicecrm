@@ -1135,10 +1135,22 @@ router.delete('/tenants/:id', requireRole('super_admin'), async (req, res) => {
         if (!deleted) {
             return res.status(404).json({ success: false, error: 'Tenant not found' });
         }
+        let cleanup = null;
         if (existingTenant.session_id) {
-            await cleanupWhatsmeowSession(existingTenant.session_id, {
+            cleanup = await cleanupWhatsmeowSession(existingTenant.session_id, {
                 unlinkReferences: true,
                 reason: 'tenant-deleted'
+            });
+        }
+        // The tenant row is already gone at this point — that can't be
+        // undone here — but if the gateway never confirmed the WhatsApp
+        // device logged out, say so instead of a flat "deleted successfully"
+        // that leaves the device looking abandoned rather than disconnected.
+        if (cleanup && cleanup.gatewayLoggedOut === false) {
+            return res.json({
+                success: true,
+                warning: true,
+                message: `Tenant dihapus, tetapi gateway WhatsApp gagal mengonfirmasi logout (${cleanup.gatewayLogoutError || 'tidak diketahui'}). Device kemungkinan masih aktif/terhubung di WhatsApp.`
             });
         }
         res.json({ success: true, message: 'Tenant deleted successfully' });

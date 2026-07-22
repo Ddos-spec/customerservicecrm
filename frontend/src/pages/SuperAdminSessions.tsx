@@ -209,9 +209,13 @@ const SuperAdminSessions = () => {
     if (!ok) return;
 
     try {
-      await api.delete(`/sessions/${session.sessionId}`);
+      const response = await api.delete(`/sessions/${session.sessionId}`);
       setSessions(sessions.filter(s => s.sessionId !== session.sessionId));
-      toast.success(`Session ${session.sessionId} dihapus.`);
+      if (response.data?.status === 'warning') {
+        toast(response.data.message || `Session ${session.sessionId} dihapus, tapi gateway tidak konfirmasi logout.`, { icon: '⚠️', duration: 8000 });
+      } else {
+        toast.success(response.data?.message || `Session ${session.sessionId} dihapus.`);
+      }
     } catch (error: any) {
       console.error('Failed to delete session:', error);
       toast.error(error?.response?.data?.message || 'Gagal menghapus session');

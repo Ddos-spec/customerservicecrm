@@ -196,6 +196,13 @@ function buildSessionsRouter(deps) {
                 summary: `${currentUser?.name || 'Admin'} menghapus sesi WhatsApp ${sessionId}`,
             }).catch((activityError) => log('Activity log skipped', 'SYSTEM', { error: activityError.message }));
             log('Session deleted', sessionId, { event: 'session-deleted', sessionId, cleanup });
+            if (cleanup?.gatewayLoggedOut === false) {
+                return res.status(200).json({
+                    status: 'warning',
+                    message: `Session ${sessionId} dihapus di CRM, tetapi gateway WhatsApp gagal mengonfirmasi logout (${cleanup.gatewayLogoutError || 'tidak diketahui'}). Device kemungkinan masih aktif/terhubung di WhatsApp.`,
+                    cleanup
+                });
+            }
             res.status(200).json({ status: 'success', message: `Session ${sessionId} deleted.`, cleanup });
         } catch (error) {
             log('API error', 'SYSTEM', { event: 'api-error', error: error.message, endpoint: req.originalUrl });

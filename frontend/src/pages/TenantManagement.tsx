@@ -277,7 +277,13 @@ const TenantManagement = () => {
         const res = await api.delete(`/admin/tenants/${tenant.id}`);
         if (res.data.success) {
             setTenants(tenants.filter(t => t.id !== tenant.id));
-            toast.success('Tenant berhasil dihapus');
+            if (res.data.warning) {
+                // Tenant row is gone either way — this just means the gateway
+                // never confirmed the WhatsApp device logged out.
+                toast(res.data.message || 'Tenant dihapus, tapi gateway tidak konfirmasi logout.', { icon: '⚠️', duration: 8000 });
+            } else {
+                toast.success(res.data.message || 'Tenant berhasil dihapus');
+            }
         }
     } catch (error: any) {
         console.error('Failed to delete tenant:', error);
