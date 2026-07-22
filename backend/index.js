@@ -1274,10 +1274,19 @@ function buildPrivateMessageGapDiagnostic(statusResponse) {
     };
 }
 
+// Gap and Recovery each guard against re-entering themselves, but both loop
+// over every tenant and were scheduled on independent setInterval timers with
+// the same default 5-minute tick — meaning they fire within milliseconds of
+// each other, forever, and race each other's concurrent gateway requests for
+// different jids. This shared lock keeps them from ever running at the same
+// time as one another, on top of each one's own re-entrance guard.
+let gatewayIdentityInspectionBusy = false;
+
 let privateGapDetectorRunning = false;
 async function runPrivateMessageGapDetector() {
-    if (privateGapDetectorRunning || isTest) return;
+    if (privateGapDetectorRunning || gatewayIdentityInspectionBusy || isTest) return;
     privateGapDetectorRunning = true;
+    gatewayIdentityInspectionBusy = true;
 
     try {
         const tenants = await db.getAllTenants();
@@ -1308,13 +1317,15 @@ async function runPrivateMessageGapDetector() {
         }
     } finally {
         privateGapDetectorRunning = false;
+        gatewayIdentityInspectionBusy = false;
     }
 }
 
 let webhookRecoveryRunning = false;
 async function recoverMissedGatewayEvents() {
-    if (webhookRecoveryRunning || isTest) return;
+    if (webhookRecoveryRunning || gatewayIdentityInspectionBusy || isTest) return;
     webhookRecoveryRunning = true;
+    gatewayIdentityInspectionBusy = true;
 
     try {
         const tenants = await db.getAllTenants();
@@ -1335,6 +1346,7 @@ async function recoverMissedGatewayEvents() {
         }
     } finally {
         webhookRecoveryRunning = false;
+        gatewayIdentityInspectionBusy = false;
     }
 }
 
