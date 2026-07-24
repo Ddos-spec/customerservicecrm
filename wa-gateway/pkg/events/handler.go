@@ -581,7 +581,27 @@ func (h *Handler) handleLoggedOut(evt *events.LoggedOut) {
 	} else {
 		log.Print(nil).Debugf("[LOGGED_OUT] Webhook queued for session: %s", h.sessionID)
 	}
+
+	// WhatsApp already invalidated this device (unlinked from the phone, or
+	// another device took over the slot) -- our in-memory client and its
+	// persisted Store.ID are now stale. Leaving them in place used to make
+	// every later login/send for this session retry a reconnect against a
+	// device WhatsApp will never accept again (WhatsAppLogin only issues a
+	// fresh QR when Store.ID is nil), turning one logout into a permanent
+	// 500 loop until someone noticed and ran a manual disconnect. Clean up
+	// the same way an explicit logout does, so the next request for this
+	// session starts from a genuinely fresh device.
+	if LoggedOutCleanup != nil {
+		LoggedOutCleanup(h.sessionID, h.client)
+	}
 }
+
+// LoggedOutCleanup, when set, is invoked after a LoggedOut event so the
+// owning package can drop its client-map entry and delete the local device
+// store. Wired from pkg/whatsapp's init() -- that package already imports
+// this one, so the callback is set here (rather than calling into
+// pkg/whatsapp directly) purely to avoid an import cycle.
+var LoggedOutCleanup func(sessionID string, client *whatsmeow.Client)
 
 // handleHistorySync handles history sync events
 func (h *Handler) handleHistorySync(evt *events.HistorySync) {

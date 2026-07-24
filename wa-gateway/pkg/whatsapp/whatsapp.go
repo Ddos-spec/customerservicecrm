@@ -136,6 +136,19 @@ func init() {
 	WhatsAppClientProxyURL, _ = env.GetEnvString("WHATSAPP_CLIENT_PROXY_URL")
 
 	WhatsAppDatastore = datastore
+
+	// See handler.go's LoggedOutCleanup doc comment: pkg/events can't import
+	// this package back, so it exposes a callback var for us to fill in
+	// instead of calling WhatsAppLogout/DeleteWhatsAppClient directly.
+	events.LoggedOutCleanup = func(jid string, client *whatsmeow.Client) {
+		if client == nil {
+			return
+		}
+		if err := client.Store.Delete(context.Background()); err != nil {
+			log.Print(nil).Warnf("Failed to delete device store for %s after logout: %v", jid, err)
+		}
+		DeleteWhatsAppClient(jid)
+	}
 }
 
 func WhatsAppInitClient(device *store.Device, jid string) {
