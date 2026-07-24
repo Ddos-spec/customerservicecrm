@@ -136,7 +136,9 @@ const SuperAdminSessions = () => {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionErrorCode, setConnectionErrorCode] = useState<string | null>(null);
   const [isGeneratingConnection, setIsGeneratingConnection] = useState(false);
+  const [qrSecondsLeft, setQrSecondsLeft] = useState<number | null>(null);
   const ws = useRef<WebSocket | null>(null);
+  const qrCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchSessions = async () => {
     setIsLoading(true);
@@ -196,6 +198,10 @@ const SuperAdminSessions = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => () => {
+    if (qrCountdownRef.current) clearInterval(qrCountdownRef.current);
+  }, []);
+
   const handleDeleteSession = async (session: Session) => {
     const tenantWarning = session.tenantName
       ? ` Ini juga akan melepas mapping tenant ${session.tenantName}.`
@@ -253,7 +259,16 @@ const SuperAdminSessions = () => {
     }
   };
 
+  const stopQrCountdown = () => {
+    if (qrCountdownRef.current) {
+      clearInterval(qrCountdownRef.current);
+      qrCountdownRef.current = null;
+    }
+    setQrSecondsLeft(null);
+  };
+
   const closeConnectionModal = () => {
+    stopQrCountdown();
     setConnectionSessionId(null);
     setConnectionQr('');
     setPairCode('');
@@ -261,7 +276,14 @@ const SuperAdminSessions = () => {
     setConnectionErrorCode(null);
   };
 
+  // WhatsApp QR codes expire in ~20-60s (whatever the gateway reports as
+  // `timeout`). We only ever fetch a single QR per request instead of
+  // streaming the gateway's live rotation, so without this the image goes
+  // stale before a human can reasonably unlock their phone and scan it --
+  // every scan attempt then silently fails against an already-dead code.
+  // Auto-request a fresh one when the countdown hits zero.
   const requestConnection = async (sessionId: string, mode: 'qr' | 'pair') => {
+    stopQrCountdown();
     setConnectionSessionId(sessionId);
     setConnectionMode(mode);
     setConnectionQr('');
@@ -276,6 +298,22 @@ const SuperAdminSessions = () => {
         const qr = response.data?.session?.qr;
         if (!qr) throw new Error(response.data?.message || 'Gateway tidak mengembalikan QR baru.');
         setConnectionQr(asDataUrl(qr));
+
+        const timeoutSeconds = Number(response.data?.timeout);
+        if (Number.isFinite(timeoutSeconds) && timeoutSeconds > 0) {
+          setQrSecondsLeft(timeoutSeconds);
+          qrCountdownRef.current = setInterval(() => {
+            setQrSecondsLeft((current) => {
+              if (current === null) return current;
+              if (current <= 1) {
+                stopQrCountdown();
+                void requestConnection(sessionId, 'qr');
+                return null;
+              }
+              return current - 1;
+            });
+          }, 1000);
+        }
       } else {
         const response = await api.get(`/sessions/${sessionId}/pair`);
         const code = response.data?.pairCode;
@@ -663,7 +701,12 @@ const SuperAdminSessions = () => {
               ) : connectionMode === 'qr' && connectionQr ? (
                 <div className="space-y-5">
                   <div className="inline-flex rounded-2xl border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950"><img src={connectionQr} alt="QR WhatsApp" className="h-64 w-64" /></div>
-                  <div className="rounded-2xl bg-blue-50 p-4 text-left text-xs leading-5 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><strong className="block">Scan sekarang, jangan pakai QR lama.</strong>WhatsApp → Perangkat tertaut → Tautkan perangkat. Bila QR sudah lama terbuka, tekan “QR Code” untuk membuat yang baru.</div>
+                  {qrSecondsLeft !== null ? (
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                      QR baru otomatis dalam {qrSecondsLeft}s — scan sekarang
+                    </p>
+                  ) : null}
+                  <div className="rounded-2xl bg-blue-50 p-4 text-left text-xs leading-5 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200"><strong className="block">Scan sekarang, jangan pakai QR lama.</strong>WhatsApp → Perangkat tertaut → Tautkan perangkat. QR ini refresh otomatis sebelum kedaluwarsa.</div>
                 </div>
               ) : connectionMode === 'pair' && pairCode ? (
                 <div className="space-y-5">
