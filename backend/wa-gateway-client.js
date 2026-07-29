@@ -284,8 +284,17 @@ async function reauthAndReconnect(jid) {
     setSessionToken(jid, auth.data.token);
 
     // Best-effort self-healing: ensure gateway has an initialized/reconnected client.
+    // Only do this for a session that has already paired a device. /login always
+    // tears down whatever pending connection exists and issues a fresh QR (see
+    // wa-gateway WhatsAppGenerateQR/disconnectPendingLogin); calling it here for a
+    // session that was never paired can't "reconnect" anything, and on every
+    // failed-send retry it would repeatedly wipe out a QR the tenant is mid-scan on.
     try {
-        await login(jid);
+        const status = await getSessionStatus(jid);
+        const hasPairedDevice = Boolean(status?.data?.deviceJid);
+        if (hasPairedDevice) {
+            await login(jid);
+        }
     } catch (loginErr) {
         console.warn(`[Gateway-Retry] Reconnect attempt for ${jid} returned: ${loginErr.message}`);
     }
