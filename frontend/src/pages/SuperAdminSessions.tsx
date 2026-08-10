@@ -322,7 +322,7 @@ const SuperAdminSessions = () => {
       }
       await fetchSessions();
     } catch (error: any) {
-      console.error(`Failed to generate ${mode} connection for ${sessionId}:`, error);
+      console.error('Failed to generate connection', { mode, sessionId, error });
       setConnectionError(error?.response?.data?.message || error?.message || 'Gateway gagal membuat koneksi.');
       setConnectionErrorCode(error?.response?.data?.code || null);
     } finally {

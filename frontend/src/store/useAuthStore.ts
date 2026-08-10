@@ -152,8 +152,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           // Backend session is the single source of truth. This prevents a hard
           // refresh from trusting stale localStorage while impersonating a tenant.
-          const response = await api.get('/admin/me');
-          if (response.data?.success && response.data?.user) {
+          const response = await api.get('/admin/check');
+          if (response.data?.success && response.data?.authenticated && response.data?.user) {
             const token = typeof response.data.token === 'string' ? response.data.token : get().authToken;
             if (token) {
               api.defaults.headers.common.Authorization = `Bearer ${token}`;
