@@ -45,7 +45,7 @@ const eventHandlers = new Map();
 // WebSocket server reference (will be set by index.js)
 let wss = null;
 
-const RAJA_BOT_WEBHOOK_URL = process.env.RAJA_BOT_WEBHOOK_URL || 'https://filter-bot-crmcutting.qk6yxt.easypanel.host/api/bot/raja-metal/incoming';
+const RAJA_BOT_WEBHOOK_URL = process.env.RAJA_BOT_WEBHOOK_URL || 'https://crm-cutting.163.61.44.41.sslip.io/api/bot/raja-metal/incoming';
 const DEFAULT_RAJA_GROUP_JIDS = [
     '120363039888626641@g.us', // WS Raja Metal Cutting
     '120363421578507033@g.us', // Tim service

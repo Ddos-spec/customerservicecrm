@@ -13,7 +13,7 @@ const MAX_LIMIT = 200;
 const RECENT_LIMIT = 10;
 const MAX_MEDIA_SIZE_BYTES = 25 * 1024 * 1024;
 const CENTRAL_AI_CUSTOMER_SERVICE_WEBHOOK = process.env.CENTRAL_AI_CUSTOMER_SERVICE_WEBHOOK
-    || 'https://filter-bot-crmcutting.qk6yxt.easypanel.host/api/ai-operations/customer-service/incoming';
+    || 'https://crm-cutting.163.61.44.41.sslip.io/api/ai-operations/customer-service/incoming';
 
 const upload = multer({
     storage: multer.memoryStorage(),

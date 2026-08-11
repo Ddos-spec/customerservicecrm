@@ -1,7 +1,7 @@
 // Script untuk memicu fix kontak secara remote
 const https = require('https');
 
-const BASE_URL = 'https://postgres-customerservicecrm.qk6yxt.easypanel.host/api/v1/admin';
+const BASE_URL = 'https://crm-api.163.61.44.41.sslip.io/api/v1/admin';
 const EMAIL = 'myaicustom@gmail.com';
 const PASSWORD = 'superadmin123';
 
