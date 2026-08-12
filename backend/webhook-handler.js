@@ -261,7 +261,7 @@ async function resolvePersistableMediaUrl(req, sessionId, message) {
         console.warn(`[Webhook] Media ${message.id || 'no-id'} tidak memiliki token atau URL sumber untuk disimpan.`);
         return null;
     } catch (error) {
-        console.error(`[Webhook] Gagal upload media inbound ke Drive (message ${message.id || 'no-id'}):`, error.message);
+        console.error('[Webhook] Gagal upload media inbound ke Drive', message.id || 'no-id', error.message);
         return null;
     }
 }
@@ -294,7 +294,7 @@ async function emit(event, sessionId, data) {
         try {
             await handler(sessionId, data);
         } catch (error) {
-            console.error(`Error in ${event} handler:`, error);
+            console.error('Error in event handler:', event, error);
         }
     }
 }
@@ -439,7 +439,7 @@ const aiReplyBatcher = createReplyBatcher({
         });
     },
     onError: (error, batchKey) => {
-        console.error(`[Webhook] Failed AI agent batched auto-reply for ${batchKey}:`, error.message);
+        console.error('[Webhook] Failed AI agent batched auto-reply:', batchKey, error.message);
     },
 });
 
@@ -552,7 +552,7 @@ async function handleMessage(req, sessionId, data) {
 
         // Ensure we have a valid JID
         if (!targetJid) {
-            console.warn(`[Webhook] Ignored message ${message.id || 'no-id'} for session ${sessionId}: no target JID`, {
+            console.warn('[Webhook] Ignored message: no target JID', message.id || 'no-id', sessionId, {
                 from: message.from || null,
                 to: message.to || null,
                 isGroup,
@@ -920,7 +920,25 @@ async function forwardToTenantWebhooks(webhooks, payload) {
     // webhooks — without this header every forwarded message gets a silent 401
     // and the AI never sees it.
     const centralSecret = process.env.CENTRAL_AI_CUSTOMER_SERVICE_SECRET || '';
-    const isCentralAiCsWebhook = (url) => /filter-bot-crmcutting\.qk6yxt\.easypanel\.host/i.test(url || '');
+    const centralDashboardHosts = new Set([
+        'crm-cutting.163.61.44.41.sslip.io',
+        'filter-bot-crmcutting.qk6yxt.easypanel.host',
+    ]);
+    const centralDashboardPaths = new Set([
+        '/api/ai-operations/customer-service/incoming',
+        '/api/webhooks/whatsapp/incoming',
+    ]);
+    const isCentralDashboardWebhook = (url) => {
+        try {
+            const target = new URL(url);
+            const pathname = target.pathname.replace(/\/+$/, '') || '/';
+            return target.protocol === 'https:'
+                && centralDashboardHosts.has(target.hostname.toLowerCase())
+                && centralDashboardPaths.has(pathname);
+        } catch {
+            return false;
+        }
+    };
 
     const results = await Promise.allSettled(
         webhooks.map(wh =>
@@ -929,7 +947,7 @@ async function forwardToTenantWebhooks(webhooks, payload) {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Webhook-Source': 'customerservice-crm',
-                    ...(centralSecret && isCentralAiCsWebhook(wh.url) ? { 'X-Webhook-Secret': centralSecret } : {}),
+                    ...(centralSecret && isCentralDashboardWebhook(wh.url) ? { 'X-Webhook-Secret': centralSecret } : {}),
                 },
             })
         )
@@ -939,7 +957,7 @@ async function forwardToTenantWebhooks(webhooks, payload) {
         if (result.status === 'rejected') {
             const url = webhooks[i]?.url || 'unknown';
             const status = result.reason?.response?.status;
-            console.error(`[Webhook] Forward to tenant webhook failed (${url}, status=${status || 'n/a'}):`, result.reason?.message);
+            console.error('[Webhook] Forward to tenant webhook failed', url, status || 'n/a', result.reason?.message);
         }
     });
 }
